@@ -19,6 +19,7 @@ function createWindow(): void {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
+    icon: join(__dirname, '../../resources/icon.png'),
     title: "Exam Invigilator Allocation System — SXCCE",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -62,4 +63,5 @@ app.whenReady().then(async () => {
 })
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit() })
+
 

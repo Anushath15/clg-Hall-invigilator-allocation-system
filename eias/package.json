@@ -58,7 +58,7 @@
     "win": {
       "target": "nsis"
     },
-    "nsis": {
+    "icon": "resources/icon.png", "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,

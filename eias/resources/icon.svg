@@ -1,0 +1,27 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#123B2A"/>
+      <stop offset="100%" style="stop-color:#16A34A"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <!-- Graduation cap body -->
+  <polygon points="128,60 220,100 128,140 36,100" fill="#DCFCE7"/>
+  <!-- Cap top board -->
+  <rect x="112" y="55" width="32" height="12" rx="3" fill="#F0FDF4"/>
+  <!-- Tassel line -->
+  <line x1="220" y1="100" x2="220" y2="140" stroke="#DCFCE7" stroke-width="4"/>
+  <circle cx="220" cy="144" r="6" fill="#F59E0B"/>
+  <!-- Book base -->
+  <rect x="88" y="148" width="80" height="52" rx="6" fill="#F0FDF4" opacity="0.95"/>
+  <line x1="128" y1="148" x2="128" y2="200" stroke="#16A34A" stroke-width="3"/>
+  <!-- Lines on book -->
+  <line x1="98" y1="164" x2="122" y2="164" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="98" y1="174" x2="122" y2="174" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="98" y1="184" x2="122" y2="184" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="134" y1="164" x2="158" y2="164" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="134" y1="174" x2="158" y2="174" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="134" y1="184" x2="158" y2="184" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
