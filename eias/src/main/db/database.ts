@@ -1,5 +1,5 @@
-﻿/**
- * Database module using sql.js (pure WASM SQLite — no native compilation required).
+/**
+ * Database module using sql.js (pure WASM SQLite ? no native compilation required).
  * Provides a simple query interface compatible with the rest of the application.
  * Data is persisted to disk by saving the DB buffer to a .db file on every write.
  */
@@ -11,26 +11,37 @@ import initSqlJs, { Database, SqlJsStatic } from "sql.js"
 
 let SQL: SqlJsStatic
 let _db: Database
+let _isInMemory = false
+let _inTransaction = false
 
 function getDbPath(): string {
-  const base = app.isPackaged ? app.getPath("userData") : process.cwd()
+  const base = app && typeof app.getPath === "function"
+    ? (app.isPackaged ? app.getPath("userData") : process.cwd())
+    : process.cwd()
   return path.join(base, "eias.db")
 }
 
 function persistDb(): void {
+  if (_isInMemory || _inTransaction) return
+  if (!_db) return
   const data = _db.export()
   fs.writeFileSync(getDbPath(), Buffer.from(data))
 }
 
-export async function initDatabase(): Promise<void> {
+export async function initDatabase(options?: { inMemory?: boolean }): Promise<void> {
   SQL = await initSqlJs()
-  const dbPath = getDbPath()
+  _isInMemory = !!options?.inMemory
 
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath)
-    _db = new SQL.Database(fileBuffer)
-  } else {
+  if (_isInMemory) {
     _db = new SQL.Database()
+  } else {
+    const dbPath = getDbPath()
+    if (fs.existsSync(dbPath)) {
+      const fileBuffer = fs.readFileSync(dbPath)
+      _db = new SQL.Database(fileBuffer)
+    } else {
+      _db = new SQL.Database()
+    }
   }
 
   runMigrations()
@@ -38,7 +49,7 @@ export async function initDatabase(): Promise<void> {
   persistDb()
 }
 
-// ── Simple query interface ────────────────────────────────────────────────
+// ?? Simple query interface ????????????????????????????????????????????????
 
 export interface QueryResult {
   columns: string[]
@@ -71,7 +82,30 @@ export function lastInsertId(): number {
   return r?.id ?? 0
 }
 
-// ── Migrations ────────────────────────────────────────────────────────────
+export async function runTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
+  if (_inTransaction) {
+    return await fn()
+  }
+  _db.run("BEGIN TRANSACTION")
+  _inTransaction = true
+  try {
+    const result = await fn()
+    _db.run("COMMIT")
+    _inTransaction = false
+    persistDb()
+    return result
+  } catch (err) {
+    try {
+      _db.run("ROLLBACK")
+    } catch (rbErr) {
+      console.error("Rollback failed:", rbErr)
+    }
+    _inTransaction = false
+    throw err
+  }
+}
+
+// ?? Migrations ????????????????????????????????????????????????????????????
 
 function runMigrations(): void {
   run(`PRAGMA journal_mode=WAL`)
@@ -80,7 +114,8 @@ function runMigrations(): void {
   run(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, run_at TEXT)`)
 
   const migrations: Record<string, () => void> = {
-    "001_initial_schema": migration001
+    "001_initial_schema": migration001,
+    "002_rotation_global_order": migration002
   }
 
   for (const [name, fn] of Object.entries(migrations)) {
@@ -188,7 +223,26 @@ function migration001(): void {
   )`)
 }
 
-// ── Default seed data ─────────────────────────────────────────────────────
+function migration002(): void {
+  // Check if global_order column already exists
+  const cols = query<any>("PRAGMA table_info(rotation_history)")
+  const hasCol = cols.some((c: any) => c.name === "global_order")
+  if (!hasCol) {
+    run(`ALTER TABLE rotation_history ADD COLUMN global_order INTEGER`)
+  }
+
+  // Create index for fast user-specific chronological lookup
+  run(`CREATE INDEX IF NOT EXISTS idx_rotation_history_user_order ON rotation_history(user_id, global_order DESC)`)
+
+  // Backfill existing records deterministically: ORDER BY datetime(recorded_at) ASC, id ASC
+  const rows = query<any>("SELECT id FROM rotation_history ORDER BY datetime(recorded_at) ASC, id ASC")
+  let order = 1
+  for (const r of rows) {
+    run("UPDATE rotation_history SET global_order = ? WHERE id = ?", [order++, r.id])
+  }
+}
+
+// ?? Default seed data ?????????????????????????????????????????????????????
 
 function seedDefaults(): void {
   const defaults: [string, string][] = [
@@ -208,5 +262,5 @@ function seedDefaults(): void {
   }
 }
 
-// ── Export db helper ──────────────────────────────────────────────────────
-export const db = { run, query, queryOne, lastInsertId }
+// ?? Export db helper ??????????????????????????????????????????????????????
+export const db = { run, query, queryOne, lastInsertId, runTransaction }

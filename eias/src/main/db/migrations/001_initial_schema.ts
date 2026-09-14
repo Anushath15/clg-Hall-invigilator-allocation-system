@@ -1,4 +1,6 @@
-﻿import type { Knex } from 'knex'
+// @ts-nocheck
+// Legacy Knex migration file preserved for historical record
+type Knex = any
 
 export async function up(knex: Knex): Promise<void> {
   await knex.schema.createTable('departments', (t) => {

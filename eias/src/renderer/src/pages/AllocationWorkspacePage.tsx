@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { ChevronLeft, Zap, CheckCircle, Globe, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List } from "lucide-react"
 import { api } from "../lib/api"
@@ -274,7 +274,7 @@ export default function AllocationWorkspacePage() {
         <SelectorModal
           allUsers={allUsers}
           allHalls={allHalls}
-          onConfirm={(uIds, hIds) => { setShowSelector(false); handleGenerate(uIds, hIds) }}
+          onConfirm={(uIds: number[], hIds: number[]) => { setShowSelector(false); handleGenerate(uIds, hIds) }}
           onClose={() => setShowSelector(false)}
         />
       )}

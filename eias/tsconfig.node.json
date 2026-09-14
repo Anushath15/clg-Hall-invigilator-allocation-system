@@ -1,4 +1,4 @@
-﻿{
+{
   "compilerOptions": {
     "composite": true,
     "module": "ESNext",
@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "baseUrl": ".",
     "paths": { "@main/*": ["src/main/*"] }
   },
   "include": ["src/main/**/*", "src/preload/**/*", "electron.vite.config.ts"]
