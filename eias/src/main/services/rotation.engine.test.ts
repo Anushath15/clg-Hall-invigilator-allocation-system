@@ -387,13 +387,21 @@ it("T7 ? Edited hall becomes future baseline", async () => {
     expect(histCountAfter.c).toBe(2)
   })
 
-  it("T9 ? Transaction rollback on failure leaves database untouched", async () => {
+  it("T9 — Transaction rollback on failure leaves database untouched", async () => {
     await getOrCreateAllocation(1, [1, 2], [1, 2])
 
-    // Attempt a transaction that modifies allocations then throws an error
+    // Verify state before transaction
+    const sessionBefore = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id=1")
+    expect(sessionBefore.status).toBe("draft")
+    const histBefore = db.queryOne<any>("SELECT COUNT(*) as c FROM rotation_history")
+    expect(histBefore.c).toBe(0)
+
+    // Attempt a transaction that writes to rotation_history, updates session, and modifies allocations, then throws
     let threw = false
     try {
       await db.runTransaction(async () => {
+        db.run("INSERT INTO rotation_history(user_id, session_id, hall_id, rotation_step, global_order) VALUES(1, 1, 1, 1, 999)")
+        db.run("UPDATE exam_sessions SET status='confirmed' WHERE id=1")
         db.run("UPDATE allocations SET is_manually_edited=1 WHERE session_id=1 AND user_id=1")
         throw new Error("Controlled test failure")
       })
@@ -402,9 +410,13 @@ it("T7 ? Edited hall becomes future baseline", async () => {
     }
     expect(threw).toBe(true)
 
-    // Verify change was rolled back
+    // Verify all changes were rolled back atomically
     const alloc = db.queryOne<any>("SELECT is_manually_edited FROM allocations WHERE session_id=1 AND user_id=1")
     expect(alloc.is_manually_edited).toBe(0)
+    const sessionAfter = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id=1")
+    expect(sessionAfter.status).toBe("draft")
+    const histAfter = db.queryOne<any>("SELECT COUNT(*) as c FROM rotation_history")
+    expect(histAfter.c).toBe(0)
   })
 
   it("T10 ? Same-session uniqueness: duplicate staff or hall assignments cannot be confirmed", async () => {
