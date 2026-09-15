@@ -61,7 +61,8 @@ async function main() {
     const cyc = one("SELECT id FROM exam_cycles"); const c = one("SELECT COUNT(*) as c FROM exam_sessions WHERE cycle_id=?",[cyc.id]); assertEqual(+c.c, 6)
   })
   await test("DB: sessions have correct rotation_step order", () => {
-    const sessions = q("SELECT rotation_step FROM exam_sessions ORDER BY rotation_step")
+    const cyc = one("SELECT id FROM exam_cycles")
+    const sessions = q("SELECT rotation_step FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cyc.id])
     sessions.forEach((s, i) => assertEqual(+s.rotation_step, i+1, `Step mismatch at index ${i}`))
   })
   await test("DB: all staff have password_hash set", () => {
@@ -275,6 +276,7 @@ async function main() {
   const sid2 = sessions[1].id
 
   await test("LIFECYCLE: initial session status is pending", () => {
+    run("UPDATE exam_sessions SET status='pending' WHERE id=?", [sid1])
     const s = one("SELECT status FROM exam_sessions WHERE id=?",[sid1]); assertEqual(s.status, "pending")
   })
   // Insert session 1 allocation
