@@ -1,4 +1,4 @@
-﻿import { useState } from "react"
+import { useState } from "react"
 import { X, ChevronRight, ChevronLeft, Calendar } from "lucide-react"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
@@ -51,10 +51,18 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
     setLoading(true)
     try {
       const cycle = await api.createCycle({ name: cycleName, academic_year: academicYear })
+      if (!cycle || !cycle.id) {
+        throw new Error("Failed to create cycle record.")
+      }
       await api.createSessions(cycle.id, sessions)
       toast.success(`Exam cycle created with ${sessions.length} sessions!`)
       onCreated(cycle)
-    } catch { toast.error("Failed to create cycle.") } finally { setLoading(false) }
+    } catch (err: any) {
+      console.error("Failed to create cycle:", err)
+      toast.error(err?.message || "Failed to create cycle.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Generate calendar grid — 3 months from today

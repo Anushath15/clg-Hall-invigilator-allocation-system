@@ -3,7 +3,23 @@ declare global {
   interface Window { api: any }
 }
 
-export const api = window.api as {
+const apiBridge = new Proxy({}, {
+  get(_, prop: string) {
+    if (typeof window !== "undefined" && window.api && typeof window.api[prop] === "function") {
+      return window.api[prop].bind(window.api)
+    }
+    if (typeof window !== "undefined" && window.api && prop in window.api) {
+      return window.api[prop]
+    }
+    return async () => {
+      const msg = `Desktop API unavailable for "${prop}". Please run inside the EIAS Electron application.`
+      console.error(`[EIAS] ${msg}`)
+      throw new Error(msg)
+    }
+  }
+})
+
+export const api = apiBridge as {
   // Auth
   login: (staffId: string, password: string) => Promise<any>
   logout: () => Promise<any>

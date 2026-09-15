@@ -1,4 +1,4 @@
-﻿import { ipcMain } from "electron"
+import { ipcMain } from "electron"
 import { db } from "../db/database"
 import * as XLSX from "xlsx"
 import bcrypt from "bcryptjs"
@@ -11,8 +11,8 @@ export function registerMasterHandlers() {
       db.run("UPDATE departments SET code=?,name=?,is_active=? WHERE id=?", [data.code, data.name, data.is_active ? 1 : 0, data.id])
       return db.queryOne("SELECT * FROM departments WHERE id=?", [data.id])
     }
-    db.run("INSERT INTO departments(code,name) VALUES(?,?)", [data.code, data.name])
-    return db.queryOne("SELECT * FROM departments WHERE rowid=last_insert_rowid()")
+    const { lastInsertRowid } = db.run("INSERT INTO departments(code,name) VALUES(?,?)", [data.code, data.name])
+    return db.queryOne("SELECT * FROM departments WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("master:deleteDepartment", async (_, id) => {
     const inUse = db.queryOne("SELECT id FROM users WHERE department_id=?", [id])
@@ -41,11 +41,11 @@ export function registerMasterHandlers() {
       db.run(sql, params)
       return db.queryOne("SELECT * FROM users WHERE id=?", [data.id])
     }
-    db.run(
+    const { lastInsertRowid } = db.run(
       "INSERT INTO users(staff_id,name,email,designation,role,department_id,is_active,password_hash) VALUES(?,?,?,?,?,?,?,?)",
       [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, 1, hash]
     )
-    return db.queryOne("SELECT * FROM users WHERE rowid=last_insert_rowid()")
+    return db.queryOne("SELECT * FROM users WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("master:deleteUser", async (_, id) => {
     db.run("UPDATE users SET is_active=0 WHERE id=?", [id]); return { success: true }
@@ -83,9 +83,9 @@ export function registerMasterHandlers() {
       return db.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = db.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-    db.run("INSERT INTO halls(hall_code,name,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?)",
+    const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?)",
       [data.hall_code, data.name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
-    return db.queryOne("SELECT * FROM halls WHERE rowid=last_insert_rowid()")
+    return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("master:deleteHall", async (_, id) => {
     const inUse = db.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id])

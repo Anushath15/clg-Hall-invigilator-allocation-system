@@ -49,20 +49,30 @@ export async function initDatabase(options?: { inMemory?: boolean }): Promise<vo
   persistDb()
 }
 
-// ?? Simple query interface ????????????????????????????????????????????????
+let _lastInsertRowid = 0
 
 export interface QueryResult {
   columns: string[]
   values: any[][]
 }
 
-export function run(sql: string, params: any[] = []): void {
+export function run(sql: string, params: any[] = []): { lastInsertRowid: number; changes: number } {
   _db.run(sql, params)
+  const res = _db.exec("SELECT last_insert_rowid() as id")
+  if (res && res[0] && res[0].values && res[0].values[0]) {
+    const id = Number(res[0].values[0][0])
+    if (id > 0) {
+      _lastInsertRowid = id
+    }
+  }
+  const changes = _db.getRowsModified()
   persistDb()
+  return { lastInsertRowid: _lastInsertRowid, changes }
 }
 
 export function query<T = Record<string, any>>(sql: string, params: any[] = []): T[] {
-  const stmt = _db.prepare(sql)
+  const normalizedSql = sql.replace(/last_insert_rowid\(\)/gi, String(_lastInsertRowid))
+  const stmt = _db.prepare(normalizedSql)
   stmt.bind(params)
   const results: T[] = []
   while (stmt.step()) {
@@ -78,8 +88,7 @@ export function queryOne<T = Record<string, any>>(sql: string, params: any[] = [
 }
 
 export function lastInsertId(): number {
-  const r = queryOne<{ id: number }>("SELECT last_insert_rowid() as id")
-  return r?.id ?? 0
+  return _lastInsertRowid
 }
 
 export async function runTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
