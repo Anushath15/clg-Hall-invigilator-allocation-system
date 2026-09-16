@@ -30,6 +30,8 @@ const api = {
   getSessions:     (cycleId: number) => ipcRenderer.invoke("cycle:getSessions", cycleId),
   createSessions:  (cycleId: number, sessions: any[]) => ipcRenderer.invoke("cycle:createSessions", cycleId, sessions),
   updateSession:   (id: number, data: any) => ipcRenderer.invoke("cycle:updateSession", id, data),
+  addSession:      (cycleId: number, data: any) => ipcRenderer.invoke("cycle:addSession", cycleId, data),
+  deleteSession:   (id: number) => ipcRenderer.invoke("cycle:deleteSession", id),
   // Allocation
   generateAllocation:   (sessionId: number, userIds: number[], hallIds: number[]) => ipcRenderer.invoke("allocation:generate", sessionId, userIds, hallIds),
   getSessionAllocation: (sessionId: number) => ipcRenderer.invoke("allocation:getSession", sessionId),

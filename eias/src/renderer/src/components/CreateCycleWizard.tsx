@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { X, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react"
+import { X, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, AlertCircle, Settings, Sliders, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { addDays, format } from "date-fns"
@@ -14,19 +14,50 @@ interface Props {
 
 type Step = "info" | "dates" | "sessions"
 
+interface DateSessionConfig {
+  fn: boolean
+  an: boolean
+  fnReport?: string
+  fnStart?: string
+  fnEnd?: string
+  anReport?: string
+  anStart?: string
+  anEnd?: string
+}
+
 export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>("info")
   const [cycleName, setCycleName] = useState("")
   const [academicYear, setAcademicYear] = useState(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`)
   const [numDays, setNumDays] = useState(10)
   const [selectedDates, setSelectedDates] = useState<string[]>([])
-  const [sessionConfig, setSessionConfig] = useState<Record<string, { fn: boolean; an: boolean }>>({})
+  const [sessionConfig, setSessionConfig] = useState<Record<string, DateSessionConfig>>({})
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState<Record<string, string> | null>(null)
 
+  // Default global timings
+  const [fnReportDefault, setFnReportDefault] = useState("09:30")
+  const [fnStartDefault, setFnStartDefault] = useState("10:00")
+  const [fnEndDefault, setFnEndDefault] = useState("13:00")
+  const [anReportDefault, setAnReportDefault] = useState("13:30")
+  const [anStartDefault, setAnStartDefault] = useState("14:00")
+  const [anEndDefault, setAnEndDefault] = useState("17:00")
+
+  // State to toggle manual timing inputs per date card
+  const [expandedTimings, setExpandedTimings] = useState<Record<string, boolean>>({})
+  const [showGlobalPresetBar, setShowGlobalPresetBar] = useState(false)
+
   // Load college settings for default exam timings
   useEffect(() => {
-    api.getSettings().then(setSettings).catch((err) => {
+    api.getSettings().then(s => {
+      setSettings(s)
+      if (s?.["session.fn_reporting_time"]) setFnReportDefault(s["session.fn_reporting_time"])
+      if (s?.["session.fn_start_time"]) setFnStartDefault(s["session.fn_start_time"])
+      if (s?.["session.fn_end_time"]) setFnEndDefault(s["session.fn_end_time"])
+      if (s?.["session.an_reporting_time"]) setAnReportDefault(s["session.an_reporting_time"])
+      if (s?.["session.an_start_time"]) setAnStartDefault(s["session.an_start_time"])
+      if (s?.["session.an_end_time"]) setAnEndDefault(s["session.an_end_time"])
+    }).catch((err) => {
       console.warn("Could not load college settings:", err)
     })
   }, [])
@@ -52,7 +83,6 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   function handleAutoSelect(count: number) {
     const dates: string[] = []
     let cursor = new Date()
-    // Start from tomorrow
     cursor = addDays(cursor, 1)
     let safety = 0
     while (dates.length < count && safety < 120) {
@@ -65,7 +95,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
       cursor = addDays(cursor, 1)
     }
     setSelectedDates(dates)
-    const sc: Record<string, { fn: boolean; an: boolean }> = {}
+    const sc: Record<string, DateSessionConfig> = {}
     dates.forEach(d => { sc[d] = { fn: true, an: true } })
     setSessionConfig(sc)
     toast.success(`Selected ${dates.length} exam days (Sundays & holidays excluded).`)
@@ -74,10 +104,88 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   function handleClearDates() {
     setSelectedDates([])
     setSessionConfig({})
+    setExpandedTimings({})
   }
 
   function toggleSession(date: string, key: "fn" | "an") {
-    setSessionConfig(c => ({ ...c, [date]: { ...c[date], [key]: !c[date]?.[key] } }))
+    setSessionConfig(c => ({
+      ...c,
+      [date]: { ...(c[date] ?? { fn: true, an: true }), [key]: !c[date]?.[key] }
+    }))
+  }
+
+  function updateTiming(date: string, field: keyof DateSessionConfig, value: string) {
+    setSessionConfig(c => ({
+      ...c,
+      [date]: { ...(c[date] ?? { fn: true, an: true }), [field]: value }
+    }))
+  }
+
+  function toggleExpandTiming(date: string) {
+    setExpandedTimings(prev => ({ ...prev, [date]: !prev[date] }))
+  }
+
+  function removeDate(date: string) {
+    setSelectedDates(prev => prev.filter(d => d !== date))
+    setSessionConfig(sc => {
+      const next = { ...sc }
+      delete next[date]
+      return next
+    })
+    toast.success(`Removed ${date}`)
+  }
+
+  // Apply quick presets to all sessions
+  function applyPresetToAll(type: "standard" | "2hour") {
+    if (type === "standard") {
+      setFnReportDefault("09:30")
+      setFnStartDefault("10:00")
+      setFnEndDefault("13:00")
+      setAnReportDefault("13:30")
+      setAnStartDefault("14:00")
+      setAnEndDefault("17:00")
+      setSessionConfig(c => {
+        const next: Record<string, DateSessionConfig> = {}
+        Object.entries(c).forEach(([d, cfg]) => {
+          next[d] = {
+            fn: cfg.fn,
+            an: cfg.an,
+            fnReport: "09:30",
+            fnStart: "10:00",
+            fnEnd: "13:00",
+            anReport: "13:30",
+            anStart: "14:00",
+            anEnd: "17:00"
+          }
+        })
+        return next
+      })
+      toast.success("Applied Standard SXCCE 3-Hour Exam Timings to all sessions.")
+    } else if (type === "2hour") {
+      setFnReportDefault("09:30")
+      setFnStartDefault("10:00")
+      setFnEndDefault("12:00")
+      setAnReportDefault("13:30")
+      setAnStartDefault("14:00")
+      setAnEndDefault("16:00")
+      setSessionConfig(c => {
+        const next: Record<string, DateSessionConfig> = {}
+        Object.entries(c).forEach(([d, cfg]) => {
+          next[d] = {
+            fn: cfg.fn,
+            an: cfg.an,
+            fnReport: "09:30",
+            fnStart: "10:00",
+            fnEnd: "12:00",
+            anReport: "13:30",
+            anStart: "14:00",
+            anEnd: "16:00"
+          }
+        })
+        return next
+      })
+      toast.success("Applied 2-Hour Exam Timings (10:00–12:00 / 14:00–16:00) to all sessions.")
+    }
   }
 
   async function handleCreate() {
@@ -89,18 +197,18 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
         sessions.push({
           exam_date: date,
           session_type: "FN",
-          reporting_time: settings?.["session.fn_reporting_time"] ?? "09:30",
-          exam_start: settings?.["session.fn_start_time"] ?? "10:00",
-          exam_end: settings?.["session.fn_end_time"] ?? "13:00"
+          reporting_time: cfg.fnReport ?? fnReportDefault,
+          exam_start: cfg.fnStart ?? fnStartDefault,
+          exam_end: cfg.fnEnd ?? fnEndDefault
         })
       }
       if (cfg.an) {
         sessions.push({
           exam_date: date,
           session_type: "AN",
-          reporting_time: settings?.["session.an_reporting_time"] ?? "13:30",
-          exam_start: settings?.["session.an_start_time"] ?? "14:00",
-          exam_end: settings?.["session.an_end_time"] ?? "17:00"
+          reporting_time: cfg.anReport ?? anReportDefault,
+          exam_start: cfg.anStart ?? anStartDefault,
+          exam_end: cfg.anEnd ?? anEndDefault
         })
       }
     }
@@ -122,14 +230,6 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
       setLoading(false)
     }
   }
-
-  // College session timing defaults
-  const fnReporting = settings?.["session.fn_reporting_time"] ?? "09:30"
-  const fnStart = settings?.["session.fn_start_time"] ?? "10:00"
-  const fnEnd = settings?.["session.fn_end_time"] ?? "13:00"
-  const anReporting = settings?.["session.an_reporting_time"] ?? "13:30"
-  const anStart = settings?.["session.an_start_time"] ?? "14:00"
-  const anEnd = settings?.["session.an_end_time"] ?? "17:00"
 
   // Count total sessions configured
   const totalPlannedSessions = selectedDates.reduce((acc, d) => {
@@ -161,7 +261,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
           {[
             ["info", "1. Cycle Info"],
             ["dates", "2. Select Dates"],
-            ["sessions", "3. Configure Sessions"]
+            ["sessions", "3. Configure Sessions & Timings"]
           ].map(([s, label], i) => (
             <div key={s} className="flex items-center gap-2">
               <span className={cn("font-medium", step === s ? "text-brand-primary font-bold" : "text-brand-textsec")}>
@@ -225,28 +325,156 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
             />
           )}
 
-          {/* STEP 3: SESSIONS */}
+          {/* STEP 3: SESSIONS & MANUAL TIMINGS */}
           {step === "sessions" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-brand-verylight p-3.5 rounded-xl border border-brand-border">
-                <div>
-                  <p className="text-sm font-bold text-brand-textmain">
-                    Configure Session Schedule ({selectedDates.length} Exam Days)
-                  </p>
-                  <p className="text-xs text-brand-textsec mt-0.5">
-                    Select Forenoon (FN) and/or Afternoon (AN) slots for each day. Each active slot forms one chronological allocation step.
+              {/* Top Action Bar: Reselect Dates & Global Presets */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-brand-verylight p-3.5 rounded-xl border border-brand-border">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-brand-textmain">
+                      Schedule & Timings ({selectedDates.length} Exam Days)
+                    </span>
+                    <span className="text-xs bg-brand-light text-brand-dark px-2 py-0.5 rounded font-bold">
+                      {totalPlannedSessions} Planned Sessions
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-textsec">
+                    Customize reporting and exam timings per session or use global presets.
                   </p>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs font-semibold text-brand-textsec uppercase block">Planned Sessions</span>
-                  <span className="text-lg font-bold text-brand-primary">{totalPlannedSessions}</span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep("dates")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-primary bg-white text-brand-primary hover:bg-brand-light text-xs font-semibold shadow-xs transition-all"
+                    title="Return to Calendar to add, remove, or change dates"
+                  >
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    Reselect Dates
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowGlobalPresetBar(p => !p)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-border bg-white text-brand-textmain hover:border-brand-primary text-xs font-semibold shadow-xs transition-all"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-brand-primary" />
+                    Global Timings
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
+              {/* Expandable Global Presets Panel */}
+              {showGlobalPresetBar && (
+                <div className="p-4 bg-white rounded-xl border border-brand-primary/40 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between border-b pb-2 border-brand-border">
+                    <span className="text-xs font-bold text-brand-dark uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-brand-primary" /> Quick Timing Presets
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => applyPresetToAll("standard")}
+                        className="px-2.5 py-1 text-xs rounded-lg border border-brand-primary text-brand-primary hover:bg-brand-verylight font-medium transition-all"
+                      >
+                        Apply 3-Hour Standard (10:00–13:00 / 14:00–17:00)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyPresetToAll("2hour")}
+                        className="px-2.5 py-1 text-xs rounded-lg border border-brand-primary text-brand-primary hover:bg-brand-verylight font-medium transition-all"
+                      >
+                        Apply 2-Hour Exams (10:00–12:00 / 14:00–16:00)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div className="p-3 bg-brand-verylight rounded-lg space-y-2">
+                      <span className="font-bold text-brand-textmain block">Default FN (Forenoon)</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[10px] text-brand-textsec block">Report</label>
+                          <input
+                            type="time"
+                            value={fnReportDefault}
+                            onChange={e => setFnReportDefault(e.target.value)}
+                            className="input-field py-1 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-brand-textsec block">Start</label>
+                          <input
+                            type="time"
+                            value={fnStartDefault}
+                            onChange={e => setFnStartDefault(e.target.value)}
+                            className="input-field py-1 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-brand-textsec block">End</label>
+                          <input
+                            type="time"
+                            value={fnEndDefault}
+                            onChange={e => setFnEndDefault(e.target.value)}
+                            className="input-field py-1 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-brand-verylight rounded-lg space-y-2">
+                      <span className="font-bold text-brand-textmain block">Default AN (Afternoon)</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[10px] text-brand-textsec block">Report</label>
+                          <input
+                            type="time"
+                            value={anReportDefault}
+                            onChange={e => setAnReportDefault(e.target.value)}
+                            className="input-field py-1 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-brand-textsec block">Start</label>
+                          <input
+                            type="time"
+                            value={anStartDefault}
+                            onChange={e => setAnStartDefault(e.target.value)}
+                            className="input-field py-1 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-brand-textsec block">End</label>
+                          <input
+                            type="time"
+                            value={anEndDefault}
+                            onChange={e => setAnEndDefault(e.target.value)}
+                            className="input-field py-1 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Sessions List */}
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
                 {selectedDates.map((date, idx) => {
                   const cfg = sessionConfig[date] ?? { fn: true, an: true }
                   const holiday = getHoliday(date)
+                  const isExpanded = expandedTimings[date]
+
+                  const effectiveFnReport = cfg.fnReport ?? fnReportDefault
+                  const effectiveFnStart = cfg.fnStart ?? fnStartDefault
+                  const effectiveFnEnd = cfg.fnEnd ?? fnEndDefault
+
+                  const effectiveAnReport = cfg.anReport ?? anReportDefault
+                  const effectiveAnStart = cfg.anStart ?? anStartDefault
+                  const effectiveAnEnd = cfg.anEnd ?? anEndDefault
 
                   return (
                     <div
@@ -256,6 +484,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                         holiday ? "border-amber-300 bg-amber-50/20" : "border-brand-border"
                       )}
                     >
+                      {/* Date Row Header */}
                       <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
                         <div className="flex items-center gap-2">
                           <span className="w-6 h-6 rounded-full bg-brand-light text-brand-primary text-xs font-bold flex items-center justify-center">
@@ -264,71 +493,171 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           <span className="font-bold text-sm text-brand-textmain">
                             {formatFullDate(date)}
                           </span>
+                          {holiday && (
+                            <span className="inline-flex items-center gap-1 text-[11px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md font-semibold">
+                              <AlertCircle className="w-3 h-3" />
+                              {holiday.name}
+                            </span>
+                          )}
                         </div>
-                        {holiday && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md font-semibold">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            {holiday.name}
-                          </span>
-                        )}
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandTiming(date)}
+                            className={cn(
+                              "inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all",
+                              isExpanded
+                                ? "bg-brand-primary text-white border-brand-primary"
+                                : "bg-white text-brand-textsec border-brand-border hover:border-brand-primary hover:text-brand-primary"
+                            )}
+                          >
+                            <Clock className="w-3 h-3" />
+                            {isExpanded ? "Hide Timings" : "Manual Timings"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => removeDate(date)}
+                            className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            title="Remove this date"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
+                      {/* FN & AN Sessions */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {/* Forenoon Session */}
-                        <label className={cn(
-                          "flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer",
-                          cfg.fn ? "bg-brand-verylight border-brand-primary/40" : "bg-gray-50 border-gray-200 opacity-60"
-                        )}>
-                          <input
-                            type="checkbox"
-                            checked={cfg.fn}
-                            onChange={() => toggleSession(date, "fn")}
-                            className="accent-brand-primary w-4 h-4 mt-0.5"
-                          />
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-brand-textmain">FN — Forenoon</span>
-                              <span className="text-[11px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
-                                Step
-                              </span>
+                        <div
+                          className={cn(
+                            "flex flex-col p-3 rounded-xl border transition-all",
+                            cfg.fn ? "bg-brand-verylight border-brand-primary/40" : "bg-gray-50 border-gray-200 opacity-60"
+                          )}
+                        >
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={cfg.fn}
+                              onChange={() => toggleSession(date, "fn")}
+                              className="accent-brand-primary w-4 h-4 mt-0.5"
+                            />
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold text-brand-textmain">FN — Forenoon</span>
+                                <span className="text-[11px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
+                                  Step
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-brand-textsec">
+                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                <span>Reporting: <strong>{formatTime12h(effectiveFnReport)}</strong></span>
+                              </div>
+                              <div className="text-xs text-brand-textsec">
+                                Exam: <strong>{formatTime12h(effectiveFnStart)} – {formatTime12h(effectiveFnEnd)}</strong>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-brand-textsec">
-                              <Clock className="w-3.5 h-3.5 text-gray-400" />
-                              <span>Reporting: <strong>{formatTime12h(fnReporting)}</strong> ({fnReporting})</span>
+                          </label>
+
+                          {/* Expanded manual timing setup for FN */}
+                          {isExpanded && cfg.fn && (
+                            <div className="mt-3 pt-3 border-t border-brand-border/60 grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Report</label>
+                                <input
+                                  type="time"
+                                  value={effectiveFnReport}
+                                  onChange={e => updateTiming(date, "fnReport", e.target.value)}
+                                  className="input-field text-xs py-1"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Start</label>
+                                <input
+                                  type="time"
+                                  value={effectiveFnStart}
+                                  onChange={e => updateTiming(date, "fnStart", e.target.value)}
+                                  className="input-field text-xs py-1"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">End</label>
+                                <input
+                                  type="time"
+                                  value={effectiveFnEnd}
+                                  onChange={e => updateTiming(date, "fnEnd", e.target.value)}
+                                  className="input-field text-xs py-1"
+                                />
+                              </div>
                             </div>
-                            <div className="text-xs text-brand-textsec">
-                              Exam: <strong>{formatTime12h(fnStart)} – {formatTime12h(fnEnd)}</strong> ({fnStart}–{fnEnd})
-                            </div>
-                          </div>
-                        </label>
+                          )}
+                        </div>
 
                         {/* Afternoon Session */}
-                        <label className={cn(
-                          "flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer",
-                          cfg.an ? "bg-brand-verylight border-brand-primary/40" : "bg-gray-50 border-gray-200 opacity-60"
-                        )}>
-                          <input
-                            type="checkbox"
-                            checked={cfg.an}
-                            onChange={() => toggleSession(date, "an")}
-                            className="accent-brand-primary w-4 h-4 mt-0.5"
-                          />
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-brand-textmain">AN — Afternoon</span>
-                              <span className="text-[11px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
-                                Step
-                              </span>
+                        <div
+                          className={cn(
+                            "flex flex-col p-3 rounded-xl border transition-all",
+                            cfg.an ? "bg-brand-verylight border-brand-primary/40" : "bg-gray-50 border-gray-200 opacity-60"
+                          )}
+                        >
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={cfg.an}
+                              onChange={() => toggleSession(date, "an")}
+                              className="accent-brand-primary w-4 h-4 mt-0.5"
+                            />
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold text-brand-textmain">AN — Afternoon</span>
+                                <span className="text-[11px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
+                                  Step
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-brand-textsec">
+                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                <span>Reporting: <strong>{formatTime12h(effectiveAnReport)}</strong></span>
+                              </div>
+                              <div className="text-xs text-brand-textsec">
+                                Exam: <strong>{formatTime12h(effectiveAnStart)} – {formatTime12h(effectiveAnEnd)}</strong>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-brand-textsec">
-                              <Clock className="w-3.5 h-3.5 text-gray-400" />
-                              <span>Reporting: <strong>{formatTime12h(anReporting)}</strong> ({anReporting})</span>
+                          </label>
+
+                          {/* Expanded manual timing setup for AN */}
+                          {isExpanded && cfg.an && (
+                            <div className="mt-3 pt-3 border-t border-brand-border/60 grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Report</label>
+                                <input
+                                  type="time"
+                                  value={effectiveAnReport}
+                                  onChange={e => updateTiming(date, "anReport", e.target.value)}
+                                  className="input-field text-xs py-1"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Start</label>
+                                <input
+                                  type="time"
+                                  value={effectiveAnStart}
+                                  onChange={e => updateTiming(date, "anStart", e.target.value)}
+                                  className="input-field text-xs py-1"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">End</label>
+                                <input
+                                  type="time"
+                                  value={effectiveAnEnd}
+                                  onChange={e => updateTiming(date, "anEnd", e.target.value)}
+                                  className="input-field text-xs py-1"
+                                />
+                              </div>
                             </div>
-                            <div className="text-xs text-brand-textsec">
-                              Exam: <strong>{formatTime12h(anStart)} – {formatTime12h(anEnd)}</strong> ({anStart}–{anEnd})
-                            </div>
-                          </div>
-                        </label>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )

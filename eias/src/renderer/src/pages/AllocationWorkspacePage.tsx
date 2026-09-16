@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ChevronLeft, Zap, CheckCircle, Globe, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List } from "lucide-react"
+import { ChevronLeft, Zap, CheckCircle, Globe, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Clock, Calendar } from "lucide-react"
 import { api } from "../lib/api"
-import { formatDate, formatSession, cn } from "../lib/utils"
+import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn } from "../lib/utils"
 import toast from "react-hot-toast"
 import AllocationMatrixView from "../components/AllocationMatrixView"
 import RotationHistoryTimeline from "../components/RotationHistoryTimeline"
 import Tooltip from "../components/Tooltip"
+import EditSessionScheduleModal from "../components/EditSessionScheduleModal"
+import AddSessionModal from "../components/AddSessionModal"
 
 export default function AllocationWorkspacePage() {
   const { cycleId, sessionId: paramSessionId } = useParams()
@@ -24,6 +26,8 @@ export default function AllocationWorkspacePage() {
   const [showSelector, setShowSelector] = useState(false)
   const [viewMode, setViewMode] = useState<"table" | "matrix">("table")
   const [allHallsMap, setAllHallsMap] = useState<Record<number, any>>({})
+  const [editScheduleSession, setEditScheduleSession] = useState<any | null>(null)
+  const [showAddSessionModal, setShowAddSessionModal] = useState(false)
 
   const loadCycle = useCallback(async () => {
     const cycles = await api.getCycles()
@@ -163,12 +167,12 @@ export default function AllocationWorkspacePage() {
       {viewMode === "table" && (
         <>
           {/* Session tabs */}
-          <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
             {sessions.map(s => (
               <button key={s.id} onClick={() => setActiveSession(s)}
                 className={cn("px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all border flex items-center gap-2",
                   activeSession?.id === s.id
-                    ? "bg-brand-primary text-white border-brand-primary"
+                    ? "bg-brand-primary text-white border-brand-primary shadow-xs"
                     : "bg-white text-brand-textsec border-brand-border hover:border-brand-primary")}>
                 {formatDate(s.exam_date)} {s.session_type}
                 <span className={cn("w-2 h-2 rounded-full", {
@@ -179,6 +183,13 @@ export default function AllocationWorkspacePage() {
                 })} />
               </button>
             ))}
+            <button
+              onClick={() => setShowAddSessionModal(true)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all border border-dashed border-brand-primary text-brand-primary hover:bg-brand-verylight flex items-center gap-1.5"
+              title="Add an exam date / session to this cycle"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Session
+            </button>
           </div>
 
           {activeSession && (
@@ -186,11 +197,33 @@ export default function AllocationWorkspacePage() {
               {/* Session info bar */}
               <div className="card mb-4 flex items-center justify-between py-3">
                 <div className="flex items-center gap-6 text-sm flex-wrap">
-                  <div><span className="text-brand-textsec">Date: </span><span className="font-semibold">{formatDate(activeSession.exam_date)}</span></div>
-                  <div><span className="text-brand-textsec">Session: </span><span className="font-semibold">{formatSession(activeSession.session_type)}</span></div>
-                  <div><span className="text-brand-textsec">Report: </span><span className="font-semibold">{activeSession.reporting_time}</span></div>
-                  <div><span className="text-brand-textsec">Exam: </span><span className="font-semibold">{activeSession.exam_start} – {activeSession.exam_end}</span></div>
-                  <span className={`status-badge-${activeSession.status}`}>{activeSession.status.charAt(0).toUpperCase() + activeSession.status.slice(1)}</span>
+                  <div>
+                    <span className="text-brand-textsec">Date: </span>
+                    <span className="font-semibold text-brand-textmain">{formatDateWithDay(activeSession.exam_date)}</span>
+                  </div>
+                  <div>
+                    <span className="text-brand-textsec">Session: </span>
+                    <span className="font-semibold text-brand-textmain">{formatSession(activeSession.session_type)} ({activeSession.session_type})</span>
+                  </div>
+                  <div>
+                    <span className="text-brand-textsec">Report: </span>
+                    <span className="font-semibold text-brand-textmain">{formatTime12h(activeSession.reporting_time)} ({activeSession.reporting_time})</span>
+                  </div>
+                  <div>
+                    <span className="text-brand-textsec">Exam: </span>
+                    <span className="font-semibold text-brand-textmain">{formatTime12h(activeSession.exam_start)} – {formatTime12h(activeSession.exam_end)}</span>
+                  </div>
+                  <span className={`status-badge-${activeSession.status}`}>
+                    {activeSession.status.charAt(0).toUpperCase() + activeSession.status.slice(1)}
+                  </span>
+                  <button
+                    onClick={() => setEditScheduleSession(activeSession)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-border bg-white text-brand-textmain hover:border-brand-primary hover:text-brand-primary hover:bg-brand-verylight transition-all shadow-xs"
+                    title="Reselect date, edit report time, or change exam hours"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-brand-primary" />
+                    Edit Schedule & Timings
+                  </button>
                 </div>
                 <div className="flex-shrink-0">{statusActions[activeSession.status]}</div>
               </div>
@@ -340,6 +373,38 @@ export default function AllocationWorkspacePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Session Schedule Modal */}
+      {editScheduleSession && (
+        <EditSessionScheduleModal
+          session={editScheduleSession}
+          onClose={() => setEditScheduleSession(null)}
+          onSaved={(updated) => {
+            setEditScheduleSession(null)
+            setActiveSession(updated)
+            loadCycle()
+          }}
+          onDeleted={() => {
+            setEditScheduleSession(null)
+            loadCycle()
+          }}
+        />
+      )}
+
+      {/* Add Session Modal */}
+      {showAddSessionModal && (
+        <AddSessionModal
+          cycleId={Number(cycleId)}
+          existingSessionsCount={sessions.length}
+          onClose={() => setShowAddSessionModal(false)}
+          onAdded={(newSession) => {
+            setShowAddSessionModal(false)
+            loadCycle().then(() => {
+              setActiveSession(newSession)
+            })
+          }}
+        />
       )}
     </div>
   )

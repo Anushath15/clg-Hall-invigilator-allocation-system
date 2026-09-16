@@ -28,10 +28,39 @@ export function registerCycleHandlers() {
     })
   })
   ipcMain.handle("cycle:updateSession", async (_, id, data) => {
+    const current = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
+    if (!current) return null
+    const examDate = data.exam_date ?? current.exam_date
+    const sessionType = data.session_type ?? current.session_type
+    const reportingTime = data.reporting_time !== undefined ? data.reporting_time : current.reporting_time
+    const examStart = data.exam_start !== undefined ? data.exam_start : current.exam_start
+    const examEnd = data.exam_end !== undefined ? data.exam_end : current.exam_end
+    const status = data.status ?? current.status
+    const rotationStep = data.rotation_step !== undefined ? data.rotation_step : current.rotation_step
+
     db.run(
-      "UPDATE exam_sessions SET reporting_time=?,exam_start=?,exam_end=?,status=?,updated_at=datetime('now') WHERE id=?",
-      [data.reporting_time??null, data.exam_start??null, data.exam_end??null, data.status, id]
+      "UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,status=?,rotation_step=?,updated_at=datetime('now') WHERE id=?",
+      [examDate, sessionType, reportingTime, examStart, examEnd, status, rotationStep, id]
     )
     return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [id])
+  })
+  ipcMain.handle("cycle:addSession", async (_, cycleId, data) => {
+    const maxStep = db.queryOne<any>("SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?", [cycleId])
+    const step = (maxStep?.m ?? 0) + 1
+    const { lastInsertRowid } = db.run(
+      "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
+      [cycleId, data.exam_date, data.session_type, step, data.reporting_time??null, data.exam_start??null, data.exam_end??null, "pending"]
+    )
+    return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
+  })
+  ipcMain.handle("cycle:deleteSession", async (_, id) => {
+    const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
+    if (!session) return { success: false, error: "Session not found." }
+    const hasAllocations = db.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id=?", [id])
+    if (hasAllocations && hasAllocations.c > 0) {
+      return { success: false, error: "Cannot delete session: allocations already exist." }
+    }
+    db.run("DELETE FROM exam_sessions WHERE id=?", [id])
+    return { success: true }
   })
 }
