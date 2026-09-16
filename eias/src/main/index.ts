@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, shell, ipcMain } from "electron"
+import { app, BrowserWindow, shell, ipcMain } from "electron"
 import { join } from "path"
 // electron-toolkit inlined
 import { initDatabase } from "./db/database"
@@ -29,7 +29,18 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on("ready-to-show", () => { mainWindow?.show() })
+  mainWindow.on("ready-to-show", () => {
+    mainWindow?.show()
+    mainWindow?.focus()
+  })
+
+  // Fallback: Ensure window shows even if ready-to-show is delayed
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  }, 1200)
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -44,24 +55,25 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  app.setAppUserModelId("in.edu.sxcce.eias")
-  
+  try {
+    app.setAppUserModelId("in.edu.sxcce.eias")
 
-  // Init DB and seed defaults
-  await initDatabase()
-  await ensureDefaultAdmin()
+    // Init DB and seed defaults
+    await initDatabase()
+    await ensureDefaultAdmin()
 
-  // Register all IPC handlers
-  registerAuthHandlers()
-  registerAllocationHandlers()
-  registerMasterHandlers()
-  registerReportHandlers()
-  registerCycleHandlers()
+    // Register all IPC handlers
+    registerAuthHandlers()
+    registerAllocationHandlers()
+    registerMasterHandlers()
+    registerReportHandlers()
+    registerCycleHandlers()
 
-  createWindow()
-  app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+    createWindow()
+    app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  } catch (err) {
+    console.error("[EIAS Main Startup Error]:", err)
+  }
 })
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit() })
-
-
