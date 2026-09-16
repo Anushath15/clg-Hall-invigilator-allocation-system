@@ -30,8 +30,12 @@ function createWindow(): void {
   })
 
   mainWindow.on("ready-to-show", () => {
-    mainWindow?.show()
-    mainWindow?.focus()
+    if (!mainWindow) return
+    mainWindow.show()
+    mainWindow.focus()
+    // Windows foreground bypass: pulse always-on-top so it pops over Chrome
+    mainWindow.setAlwaysOnTop(true)
+    mainWindow.setAlwaysOnTop(false)
   })
 
   // Fallback: Ensure window shows even if ready-to-show is delayed
@@ -39,6 +43,8 @@ function createWindow(): void {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.show()
       mainWindow.focus()
+      mainWindow.setAlwaysOnTop(true)
+      mainWindow.setAlwaysOnTop(false)
     }
   }, 1200)
 

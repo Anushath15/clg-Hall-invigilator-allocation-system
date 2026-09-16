@@ -17,6 +17,10 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
+    if (!isDesktop) {
+      toast.error("Desktop app required. Please click the EIAS desktop app on your taskbar to sign in.", { duration: 6000 })
+      return
+    }
     if (!staffId.trim() || !password) return toast.error("Please enter Staff ID and password.")
     setLoading(true)
     try {
