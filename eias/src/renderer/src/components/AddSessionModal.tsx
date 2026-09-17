@@ -2,20 +2,20 @@ import { useState, useMemo } from "react"
 import { X, Calendar, Clock, Plus, Zap, AlertTriangle } from "lucide-react"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
-import { formatFullDate, formatTime12h } from "../lib/utils"
+import { formatFullDate, formatTime12h, cn } from "../lib/utils"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { parseISO } from "date-fns"
 
 interface AddSessionModalProps {
   cycleId: number
-  existingSessionsCount: number
+  existingSessions: any[]
   onClose: () => void
   onAdded: (newSession: any) => void
 }
 
 export default function AddSessionModal({
   cycleId,
-  existingSessionsCount,
+  existingSessions,
   onClose,
   onAdded
 }: AddSessionModalProps) {
@@ -25,6 +25,14 @@ export default function AddSessionModal({
   const [examStart, setExamStart] = useState<string>("10:00")
   const [examEnd, setExamEnd] = useState<string>("13:00")
   const [saving, setSaving] = useState(false)
+
+  // Real-time duplicate check
+  const isDuplicate = useMemo(() => {
+    if (!examDate) return false
+    return existingSessions?.some(
+      s => s.exam_date === examDate && s.session_type === sessionType
+    )
+  }, [examDate, sessionType, existingSessions])
 
   // Date metadata
   const dateInfo = useMemo(() => {
@@ -62,6 +70,9 @@ export default function AddSessionModal({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+    if (isDuplicate) {
+      return toast.error(`A ${sessionType === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"} session already exists for ${examDate}.`)
+    }
     if (!examDate.trim()) return toast.error("Please choose an exam date.")
     if (!reportingTime.trim()) return toast.error("Please enter reporting time.")
     if (!examStart.trim() || !examEnd.trim()) return toast.error("Please enter exam start and end times.")
@@ -97,7 +108,7 @@ export default function AddSessionModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-brand-textmain">Add Exam Session</h2>
-              <p className="text-xs text-brand-textsec">New Session Step #{existingSessionsCount + 1}</p>
+              <p className="text-xs text-brand-textsec">New Session Step #{existingSessions.length + 1}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -107,6 +118,21 @@ export default function AddSessionModal({
 
         {/* Form Body */}
         <form onSubmit={handleAdd} className="p-6 space-y-4 flex-1 overflow-y-auto">
+          {/* Duplicate Session Error Banner */}
+          {isDuplicate && (
+            <div className="p-3.5 bg-red-50 border border-red-300 rounded-xl text-xs text-red-800 flex items-start gap-2.5 shadow-xs">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-red-900">Duplicate Date & Session Error</p>
+                <p className="mt-0.5 text-red-800">
+                  A <strong>{sessionType === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"}</strong> session is already scheduled for <strong>{dateInfo?.formatted ?? examDate}</strong> in this cycle.
+                </p>
+                <p className="mt-1 font-medium text-red-900">
+                  Please choose another date or switch to {sessionType === "FN" ? "Afternoon (AN)" : "Forenoon (FN)"}.
+                </p>
+              </div>
+            </div>
+          )}
           {/* Quick Presets */}
           <div>
             <label className="text-xs font-bold text-brand-textsec uppercase tracking-wider block mb-1.5">
@@ -240,7 +266,14 @@ export default function AddSessionModal({
             <button type="button" onClick={onClose} className="btn-secondary text-xs">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="btn-primary text-xs flex items-center gap-1.5">
+            <button
+              type="submit"
+              disabled={saving || isDuplicate || !examDate}
+              className={cn(
+                "btn-primary text-xs flex items-center gap-1.5",
+                (isDuplicate || !examDate) && "opacity-50 cursor-not-allowed"
+              )}
+            >
               <Plus className="w-4 h-4" />
               {saving ? "Adding..." : "Add Session"}
             </button>

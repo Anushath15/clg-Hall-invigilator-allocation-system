@@ -191,7 +191,8 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   async function handleCreate() {
     if (!cycleName.trim()) return toast.error("Cycle name is required.")
     const sessions: any[] = []
-    for (const date of selectedDates) {
+    const uniqueDates = Array.from(new Set(selectedDates)).sort()
+    for (const date of uniqueDates) {
       const cfg = sessionConfig[date] ?? { fn: true, an: false }
       if (cfg.fn) {
         sessions.push({

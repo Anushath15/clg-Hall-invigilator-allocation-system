@@ -2,12 +2,13 @@ import { useState, useMemo } from "react"
 import { X, Calendar, Clock, AlertTriangle, Trash2, CheckCircle, Zap } from "lucide-react"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
-import { formatFullDate, formatTime12h } from "../lib/utils"
+import { formatFullDate, formatTime12h, cn } from "../lib/utils"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { parseISO } from "date-fns"
 
 interface EditSessionScheduleModalProps {
   session: any
+  existingSessions?: any[]
   onClose: () => void
   onSaved: (updated: any) => void
   onDeleted?: (sessionId: number) => void
@@ -15,6 +16,7 @@ interface EditSessionScheduleModalProps {
 
 export default function EditSessionScheduleModal({
   session,
+  existingSessions,
   onClose,
   onSaved,
   onDeleted
@@ -26,6 +28,22 @@ export default function EditSessionScheduleModal({
   const [examEnd, setExamEnd] = useState<string>(session.exam_end ?? "13:00")
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // Real-time conflict check if new date + session_type conflicts with another session
+  const isDuplicate = useMemo(() => {
+    if (!examDate || !existingSessions) return false
+    return existingSessions.some(
+      s => s.id !== session.id && s.exam_date === examDate && s.session_type === sessionType
+    )
+  }, [examDate, sessionType, session.id, existingSessions])
+
+  // Check if current session was already a duplicate
+  const isCurrentlyDuplicate = useMemo(() => {
+    if (!existingSessions) return false
+    return existingSessions.some(
+      s => s.id !== session.id && s.exam_date === session.exam_date && s.session_type === session.session_type
+    )
+  }, [session, existingSessions])
 
   // Calculate duration in minutes and format
   const durationText = useMemo(() => {
@@ -86,6 +104,9 @@ export default function EditSessionScheduleModal({
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
+    if (isDuplicate) {
+      return toast.error(`A ${sessionType === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"} session already exists for ${examDate} in this cycle.`)
+    }
     if (!examDate.trim()) return toast.error("Exam date is required.")
     if (!reportingTime.trim()) return toast.error("Reporting time is required.")
     if (!examStart.trim() || !examEnd.trim()) return toast.error("Exam start and end times are required.")
@@ -158,6 +179,35 @@ export default function EditSessionScheduleModal({
 
         {/* Form Body */}
         <form onSubmit={handleSave} className="p-6 space-y-5 flex-1 overflow-y-auto">
+          {/* Unresolved existing duplicate banner */}
+          {isCurrentlyDuplicate && (
+            <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-800 flex items-start gap-2.5 shadow-xs">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-bold text-amber-900">Duplicate Session Detected</p>
+                <p className="mt-0.5 text-amber-800">
+                  This session currently has the identical date and slot (<strong>{session.exam_date} {session.session_type}</strong>) as another session in this cycle.
+                </p>
+                <p className="mt-1 text-amber-900 font-medium">
+                  Please pick a different date/slot below, or use the "Delete Session" button below to remove this duplicate.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* New conflict banner */}
+          {isDuplicate && (
+            <div className="p-3.5 bg-red-50 border border-red-300 rounded-xl text-xs text-red-800 flex items-start gap-2.5 shadow-xs">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-red-900">Duplicate Schedule Error</p>
+                <p className="mt-0.5 text-red-800">
+                  Another session is already scheduled for <strong>{dateInfo?.formatted ?? examDate} ({sessionType})</strong>. Each exam date can only have at most one FN and one AN session.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Preset buttons */}
           <div>
             <label className="text-xs font-bold text-brand-textsec uppercase tracking-wider block mb-2">
@@ -338,8 +388,11 @@ export default function EditSessionScheduleModal({
               </button>
               <button
                 type="submit"
-                disabled={saving}
-                className="btn-primary text-xs flex items-center gap-1.5"
+                disabled={saving || isDuplicate || !examDate}
+                className={cn(
+                  "btn-primary text-xs flex items-center gap-1.5",
+                  (isDuplicate || !examDate) && "opacity-50 cursor-not-allowed"
+                )}
               >
                 <CheckCircle className="w-4 h-4" />
                 {saving ? "Saving..." : "Save Schedule"}

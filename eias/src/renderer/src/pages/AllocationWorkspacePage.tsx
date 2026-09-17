@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ChevronLeft, Zap, CheckCircle, Globe, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Clock, Calendar } from "lucide-react"
+import { ChevronLeft, Zap, CheckCircle, Globe, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Clock, Calendar, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn } from "../lib/utils"
 import toast from "react-hot-toast"
@@ -28,6 +28,39 @@ export default function AllocationWorkspacePage() {
   const [allHallsMap, setAllHallsMap] = useState<Record<number, any>>({})
   const [editScheduleSession, setEditScheduleSession] = useState<any | null>(null)
   const [showAddSessionModal, setShowAddSessionModal] = useState(false)
+
+  // Detect duplicate sessions (sessions with same date and session_type)
+  const duplicateSessionKeys = useMemo(() => {
+    const counts = new Map<string, number>()
+    sessions.forEach(s => {
+      const key = `${s.exam_date}_${s.session_type}`
+      counts.set(key, (counts.get(key) || 0) + 1)
+    })
+    const dupes = new Set<string>()
+    counts.forEach((count, key) => {
+      if (count > 1) dupes.add(key)
+    })
+    return dupes
+  }, [sessions])
+
+  const isActiveSessionDuplicate = activeSession
+    ? duplicateSessionKeys.has(`${activeSession.exam_date}_${activeSession.session_type}`)
+    : false
+
+  async function handleDeleteDuplicateSession(sessionId: number) {
+    if (!window.confirm("Are you sure you want to remove this duplicate session?")) return
+    try {
+      const res = await api.deleteSession(sessionId)
+      if (res.success) {
+        toast.success("Duplicate session removed successfully.")
+        await loadCycle()
+      } else {
+        toast.error(res.error || "Could not delete duplicate session.")
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete duplicate session.")
+    }
+  }
 
   const loadCycle = useCallback(async () => {
     const cycles = await api.getCycles()
@@ -168,21 +201,33 @@ export default function AllocationWorkspacePage() {
         <>
           {/* Session tabs */}
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
-            {sessions.map(s => (
-              <button key={s.id} onClick={() => setActiveSession(s)}
-                className={cn("px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all border flex items-center gap-2",
-                  activeSession?.id === s.id
-                    ? "bg-brand-primary text-white border-brand-primary shadow-xs"
-                    : "bg-white text-brand-textsec border-brand-border hover:border-brand-primary")}>
-                {formatDate(s.exam_date)} {s.session_type}
-                <span className={cn("w-2 h-2 rounded-full", {
-                  "bg-gray-300": s.status === "pending",
-                  "bg-yellow-400": s.status === "draft",
-                  "bg-blue-400": s.status === "confirmed",
-                  "bg-green-400": s.status === "published"
-                })} />
-              </button>
-            ))}
+            {sessions.map(s => {
+              const isDupe = duplicateSessionKeys.has(`${s.exam_date}_${s.session_type}`)
+              return (
+                <button key={s.id} onClick={() => setActiveSession(s)}
+                  className={cn("px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all border flex items-center gap-2",
+                    activeSession?.id === s.id
+                      ? isDupe
+                        ? "bg-red-600 text-white border-red-600 shadow-xs"
+                        : "bg-brand-primary text-white border-brand-primary shadow-xs"
+                      : isDupe
+                        ? "bg-red-50 text-red-700 border-red-300 hover:border-red-500"
+                        : "bg-white text-brand-textsec border-brand-border hover:border-brand-primary")}>
+                  {formatDate(s.exam_date)} {s.session_type}
+                  {isDupe && (
+                    <span className="px-1.5 py-0.2 bg-red-100 text-red-700 text-[10px] font-bold rounded-full border border-red-200 uppercase tracking-tight">
+                      Duplicate
+                    </span>
+                  )}
+                  <span className={cn("w-2 h-2 rounded-full", {
+                    "bg-gray-300": s.status === "pending",
+                    "bg-yellow-400": s.status === "draft",
+                    "bg-blue-400": s.status === "confirmed",
+                    "bg-green-400": s.status === "published"
+                  })} />
+                </button>
+              )
+            })}
             <button
               onClick={() => setShowAddSessionModal(true)}
               className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all border border-dashed border-brand-primary text-brand-primary hover:bg-brand-verylight flex items-center gap-1.5"
@@ -194,6 +239,41 @@ export default function AllocationWorkspacePage() {
 
           {activeSession && (
             <>
+              {/* Duplicate Session Error Banner */}
+              {isActiveSessionDuplicate && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-2xl flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-red-900 text-sm">Duplicate Session Error Detected</h4>
+                      <p className="text-red-700 text-xs mt-0.5">
+                        Multiple sessions are scheduled for <strong>{formatDate(activeSession.exam_date)} ({activeSession.session_type})</strong> in this cycle. Each exam date can only have at most one Forenoon (FN) and one Afternoon (AN) session.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditScheduleSession(activeSession)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-red-300 text-red-800 hover:bg-red-100 transition-all flex items-center gap-1.5"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Reschedule Date/Slot
+                    </button>
+                    {activeSession.status === "pending" && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDuplicateSession(activeSession.id)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Remove Duplicate
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Session info bar */}
               <div className="card mb-4 flex items-center justify-between py-3">
                 <div className="flex items-center gap-6 text-sm flex-wrap">
@@ -379,6 +459,7 @@ export default function AllocationWorkspacePage() {
       {editScheduleSession && (
         <EditSessionScheduleModal
           session={editScheduleSession}
+          existingSessions={sessions}
           onClose={() => setEditScheduleSession(null)}
           onSaved={(updated) => {
             setEditScheduleSession(null)
@@ -396,7 +477,7 @@ export default function AllocationWorkspacePage() {
       {showAddSessionModal && (
         <AddSessionModal
           cycleId={Number(cycleId)}
-          existingSessionsCount={sessions.length}
+          existingSessions={sessions}
           onClose={() => setShowAddSessionModal(false)}
           onAdded={(newSession) => {
             setShowAddSessionModal(false)
