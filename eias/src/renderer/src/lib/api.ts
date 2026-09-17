@@ -1,18 +1,27 @@
-// Typed bridge to the Electron preload API
+import { webApi } from "./web-api"
+
+// Typed bridge: uses window.api in Electron desktop, or webApi in web browser / Firebase Hosting
 declare global {
   interface Window { api: any }
 }
 
 const apiBridge = new Proxy({}, {
   get(_, prop: string) {
-    if (typeof window !== "undefined" && window.api && typeof window.api[prop] === "function") {
-      return window.api[prop].bind(window.api)
+    if (typeof window !== "undefined" && window.api) {
+      if (typeof window.api[prop] === "function") {
+        return window.api[prop].bind(window.api)
+      }
+      if (prop in window.api) {
+        return window.api[prop]
+      }
     }
-    if (typeof window !== "undefined" && window.api && prop in window.api) {
-      return window.api[prop]
+    // Web browser / Firebase Hosting fallback
+    if (prop in webApi) {
+      const fn = (webApi as any)[prop]
+      return typeof fn === "function" ? fn.bind(webApi) : fn
     }
     return async () => {
-      const msg = `Desktop API unavailable for "${prop}". Please run inside the EIAS Electron application.`
+      const msg = `API method "${prop}" is not implemented.`
       console.error(`[EIAS] ${msg}`)
       throw new Error(msg)
     }

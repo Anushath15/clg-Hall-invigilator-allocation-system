@@ -10,7 +10,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "package": "npm run build && electron-builder",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:firebase": "electron-vite build && firebase deploy --only hosting"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

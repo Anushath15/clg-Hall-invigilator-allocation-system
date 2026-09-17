@@ -4,7 +4,9 @@ dist-electron
 out
 release
 *.db
+!src/renderer/public/default-eias.db
 *.db-shm
 *.db-wal
 .env
 *.tsbuildinfo
+.firebase
