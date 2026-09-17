@@ -71,8 +71,14 @@ export default function AllocationWorkspacePage() {
     const halls = await api.getHalls()
     setAllHallsMap(Object.fromEntries(halls.map((h: any) => [h.id, h])))
     if (s.length > 0) {
-      const target = paramSessionId ? s.find((x: any) => x.id === Number(paramSessionId)) : s[0]
-      setActiveSession(target ?? s[0])
+      setActiveSession((prev: any) => {
+        if (!prev) {
+          const target = paramSessionId ? s.find((x: any) => x.id === Number(paramSessionId)) : s[0]
+          return target ?? s[0]
+        }
+        const updated = s.find((x: any) => x.id === prev.id)
+        return updated ?? s[0]
+      })
     }
   }, [cycleId, paramSessionId])
 
@@ -100,10 +106,22 @@ export default function AllocationWorkspacePage() {
     setLoading(true)
     try {
       const result = await api.generateAllocation(activeSession.id, userIds, hallIds)
-      setAllocation(await api.getSessionAllocation(activeSession.id))
+      const freshAllocation = await api.getSessionAllocation(activeSession.id)
+      setAllocation(freshAllocation)
       setValidation(result.validation)
-      if (result.validation?.isValid) toast.success("Allocation generated!")
-      else toast.error(`${result.validation?.blockingErrors?.length ?? 1} validation error(s). Review below.`)
+
+      // Immediately refresh cycle sessions so activeSession.status transitions to 'draft'
+      const freshSessions = await api.getSessions(Number(cycleId))
+      setSessions(freshSessions)
+      const freshActive = freshSessions.find((s: any) => s.id === activeSession.id)
+      if (freshActive) {
+        setActiveSession(freshActive)
+      } else {
+        setActiveSession((prev: any) => ({ ...prev, status: "draft" }))
+      }
+
+      if (result.validation?.isValid) toast.success("Draft allocation generated successfully!")
+      else toast.error(`${result.validation?.blockingErrors?.length ?? 1} validation issue(s). Review below.`)
     } finally { setLoading(false) }
   }
 
@@ -123,8 +141,14 @@ export default function AllocationWorkspacePage() {
     setLoading(true)
     try {
       const r = await api.confirmAllocation(activeSession.id)
-      if (r.success) { toast.success("Allocation confirmed and locked!"); loadCycle(); loadAllocation() }
-      else { toast.error("Validation failed — check errors below."); setValidation(r.validation) }
+      if (r.success) {
+        toast.success("Allocation confirmed and locked!")
+        await loadCycle()
+        await loadAllocation()
+      } else {
+        toast.error(r.error || "Validation failed — check errors below.")
+        setValidation(r.validation)
+      }
     } finally { setLoading(false) }
   }
 
@@ -134,18 +158,31 @@ export default function AllocationWorkspacePage() {
     else toast.error(r.error)
   }
 
+  const effectiveStatus = (activeSession?.status === "pending" && allocation.length > 0)
+    ? "draft"
+    : (activeSession?.status ?? "pending")
+
   const statusActions: Record<string, React.ReactNode> = {
-    pending: (
+    pending: allocation.length > 0 ? (
+      <div className="flex gap-2">
+        <button onClick={() => handleGenerate()} disabled={loading} className="btn-secondary flex items-center gap-2">
+          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} /> Regenerate
+        </button>
+        <button onClick={handleConfirm} disabled={loading} className="btn-primary flex items-center gap-2">
+          <CheckCircle className="w-4 h-4" /> Confirm Allocation
+        </button>
+      </div>
+    ) : (
       <button onClick={() => handleGenerate()} disabled={loading}
         className="btn-primary flex items-center gap-2">
         {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-        {allocation.length === 0 ? "Select Staff & Generate" : "Regenerate"}
+        Select Staff & Generate
       </button>
     ),
     draft: (
       <div className="flex gap-2">
         <button onClick={() => handleGenerate()} disabled={loading} className="btn-secondary flex items-center gap-2">
-          <RefreshCw className="w-4 h-4" /> Regenerate
+          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} /> Regenerate
         </button>
         <button onClick={handleConfirm} disabled={loading} className="btn-primary flex items-center gap-2">
           <CheckCircle className="w-4 h-4" /> Confirm Allocation
@@ -293,8 +330,8 @@ export default function AllocationWorkspacePage() {
                     <span className="text-brand-textsec">Exam: </span>
                     <span className="font-semibold text-brand-textmain">{formatTime12h(activeSession.exam_start)} – {formatTime12h(activeSession.exam_end)}</span>
                   </div>
-                  <span className={`status-badge-${activeSession.status}`}>
-                    {activeSession.status.charAt(0).toUpperCase() + activeSession.status.slice(1)}
+                  <span className={`status-badge-${effectiveStatus}`}>
+                    {effectiveStatus.charAt(0).toUpperCase() + effectiveStatus.slice(1)}
                   </span>
                   <button
                     onClick={() => setEditScheduleSession(activeSession)}
@@ -305,7 +342,7 @@ export default function AllocationWorkspacePage() {
                     Edit Schedule & Timings
                   </button>
                 </div>
-                <div className="flex-shrink-0">{statusActions[activeSession.status]}</div>
+                <div className="flex-shrink-0">{statusActions[effectiveStatus] ?? statusActions[activeSession.status]}</div>
               </div>
 
               {/* Validation banners */}
@@ -315,7 +352,21 @@ export default function AllocationWorkspacePage() {
                     <AlertTriangle className="w-4 h-4" /> {validation.blockingErrors.length} Validation Error(s)
                   </div>
                   {validation.blockingErrors.map((e: any, i: number) => (
-                    <p key={i} className="text-sm text-red-600">• <span className="font-mono font-bold">[{e.rule}]</span> {e.message}</p>
+                    <div key={i} className="text-sm text-red-600 mb-1.5 flex items-center justify-between flex-wrap gap-2">
+                      <p>• <span className="font-mono font-bold">[{e.rule}]</span> {e.message}</p>
+                      {e.rule === "R4" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const unconfirmed = sessions.find(s => s.rotation_step < activeSession.rotation_step && s.status !== "confirmed" && s.status !== "published")
+                            if (unconfirmed) setActiveSession(unconfirmed)
+                          }}
+                          className="text-xs font-bold text-red-700 hover:text-red-900 underline ml-2 whitespace-nowrap bg-red-100 px-2.5 py-1 rounded-md transition-all"
+                        >
+                          → Go to unconfirmed session
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
