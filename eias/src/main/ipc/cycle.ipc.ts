@@ -17,21 +17,9 @@ export function registerCycleHandlers() {
   )
   ipcMain.handle("cycle:createSessions", async (_, cycleId, sessions) => {
     return db.runTransaction(() => {
-      // SAFE: only delete sessions that are NOT confirmed or published
-      const safeToDelete = db.query<any>(
-        "SELECT id FROM exam_sessions WHERE cycle_id=? AND status NOT IN ('confirmed','published')",
-        [cycleId]
-      )
-      for (const s of safeToDelete) {
-        db.run("DELETE FROM exam_sessions WHERE id=?", [s.id])
-      }
-      // Find highest step from surviving confirmed sessions
-      const maxStepRow = db.queryOne<any>("SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?", [cycleId])
-      let step = (maxStepRow?.m ?? 0) + 1
+      db.run("DELETE FROM exam_sessions WHERE cycle_id=?", [cycleId])
       const seen = new Set<string>()
-      const existing = db.query<any>("SELECT exam_date, session_type FROM exam_sessions WHERE cycle_id=?", [cycleId])
-      for (const e of existing) seen.add(`${e.exam_date}_${e.session_type}`)
-
+      let step = 1
       for (const s of sessions) {
         const key = `${s.exam_date}_${s.session_type}`
         if (seen.has(key)) continue
@@ -92,10 +80,6 @@ export function registerCycleHandlers() {
   ipcMain.handle("cycle:deleteSession", async (_, id) => {
     const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
     if (!session) return { success: false, error: "Session not found." }
-    // GUARD: cannot delete confirmed or published sessions
-    if (session.status === "confirmed" || session.status === "published") {
-      return { success: false, error: "Cannot delete a confirmed or published session. Reopen it first." }
-    }
     const hasAllocations = db.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id=?", [id])
     if (hasAllocations && hasAllocations.c > 0) {
       return { success: false, error: "Cannot delete session: allocations already exist." }
@@ -106,14 +90,6 @@ export function registerCycleHandlers() {
     remaining.forEach((s, idx) => {
       db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
     })
-    return { success: true }
-  })
-  ipcMain.handle("cycle:deleteAllCycles", async () => {
-    db.run("DELETE FROM allocations")
-    db.run("DELETE FROM rotation_history")
-    try { db.run("DELETE FROM notifications") } catch {}
-    db.run("DELETE FROM exam_sessions")
-    db.run("DELETE FROM exam_cycles")
     return { success: true }
   })
 }

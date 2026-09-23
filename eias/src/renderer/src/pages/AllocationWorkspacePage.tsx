@@ -29,33 +29,6 @@ export default function AllocationWorkspacePage() {
   const [editScheduleSession, setEditScheduleSession] = useState<any | null>(null)
   const [showAddSessionModal, setShowAddSessionModal] = useState(false)
 
-  // Remove allocation modals
-  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
-  const [removeTargetUserId, setRemoveTargetUserId] = useState<number | null>(null)
-
-  async function handleRemoveAllocation(userId: number) {
-    setRemoveTargetUserId(userId)
-    setShowRemoveConfirm(true)
-  }
-
-  async function confirmRemoveAllocation() {
-    if (!activeSession || removeTargetUserId == null) return
-    try {
-      const res = await api.removeAllocation(activeSession.id, removeTargetUserId)
-      if (res.success) {
-        toast.success("Invigilator removed from this session.")
-        await loadAllocation()
-      } else {
-        toast.error(res.error || "Could not remove allocation.")
-      }
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to remove allocation.")
-    } finally {
-      setShowRemoveConfirm(false)
-      setRemoveTargetUserId(null)
-    }
-  }
-
   // Detect duplicate sessions (sessions with same date and session_type)
   const duplicateSessionKeys = useMemo(() => {
     const counts = new Map<string, number>()
@@ -124,11 +97,6 @@ export default function AllocationWorkspacePage() {
   }
 
   async function handleGenerate(userIds?: number[], hallIds?: number[]) {
-    // Guard: never allow regeneration of a confirmed or published session
-    if (activeSession?.status === "confirmed" || activeSession?.status === "published") {
-      toast.error("This session is already confirmed. Use 'Reopen Session' before regenerating.")
-      return
-    }
     if (!userIds || !hallIds) {
       setShowSelector(true)
       await loadSelectors()
@@ -166,7 +134,7 @@ export default function AllocationWorkspacePage() {
   async function applyEdit(hallId: number) {
     const r = await api.editAllocation(activeSession.id, editEntry.userId, hallId)
     if (r.success) { toast.success("Hall updated!"); setEditEntry(null); loadAllocation() }
-    else toast.error(r.error ?? "Invalid assignment.")
+    else toast.error(r.error?.message ?? "Invalid assignment.")
   }
 
   async function handleConfirm() {
@@ -190,28 +158,6 @@ export default function AllocationWorkspacePage() {
     else toast.error(r.error)
   }
 
-  async function handleReopen() {
-    if (!window.confirm(
-      "Reopen this confirmed session?\n\n" +
-      "WARNING: This will reset the session status to 'draft'.\n" +
-      "The existing rotation history for this session will be cleared.\n" +
-      "You must regenerate and re-confirm the allocation.\n\n" +
-      "Are you sure you want to continue?"
-    )) return
-    setLoading(true)
-    try {
-      const r = await api.reopenSession(activeSession.id)
-      if (r.success) {
-        toast.success("Session reopened. You can now regenerate the allocation.")
-        await loadCycle()
-        await loadAllocation()
-        setValidation(null)
-      } else {
-        toast.error(r.error ?? "Could not reopen session.")
-      }
-    } finally { setLoading(false) }
-  }
-
   const effectiveStatus = (activeSession?.status === "pending" && allocation.length > 0)
     ? "draft"
     : (activeSession?.status ?? "pending")
@@ -230,7 +176,7 @@ export default function AllocationWorkspacePage() {
       <button onClick={() => handleGenerate()} disabled={loading}
         className="btn-primary flex items-center gap-2">
         {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-        Select Staff {'&'} Generate
+        Select Staff & Generate
       </button>
     ),
     draft: (
@@ -244,26 +190,14 @@ export default function AllocationWorkspacePage() {
       </div>
     ),
     confirmed: (
-      <div className="flex gap-2">
-        <button onClick={handleReopen} disabled={loading}
-          className="btn-secondary flex items-center gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
-          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} /> Reopen Session
-        </button>
-        <button onClick={handlePublish} disabled={loading} className="btn-primary flex items-center gap-2">
-          <Globe className="w-4 h-4" /> Publish to Staff
-        </button>
-      </div>
+      <button onClick={handlePublish} className="btn-primary flex items-center gap-2">
+        <Globe className="w-4 h-4" /> Publish to Staff
+      </button>
     ),
     published: (
-      <div className="flex gap-2 items-center">
-        <span className="flex items-center gap-2 text-green-600 font-medium text-sm">
-          <CheckCircle className="w-4 h-4" /> Published — visible to staff
-        </span>
-        <button onClick={handleReopen} disabled={loading}
-          className="btn-secondary flex items-center gap-2 text-xs text-amber-700 border-amber-300 hover:bg-amber-50">
-          <RefreshCw className="w-3.5 h-3.5" /> Reopen
-        </button>
-      </div>
+      <span className="flex items-center gap-2 text-green-600 font-medium text-sm">
+        <CheckCircle className="w-4 h-4" /> Published — visible to staff
+      </span>
     )
   }
 
@@ -473,16 +407,10 @@ export default function AllocationWorkspacePage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             {activeSession.status !== "published" && (
-                              <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => openEdit(a)}
-                                  className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec" title="Edit hall assignment">
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => handleRemoveAllocation(a.userId)}
-                                  className="p-1.5 rounded hover:bg-red-50 text-red-500" title="Remove from this session">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
+                              <button onClick={() => openEdit(a)}
+                                className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec" title="Edit hall assignment">
+                                <Pencil className="w-4 h-4" />
+                              </button>
                             )}
                           </td>
                         </tr>

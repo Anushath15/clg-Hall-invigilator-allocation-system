@@ -46,7 +46,7 @@ export const api = apiBridge as {
   getHalls: () => Promise<any[]>
   saveHall: (data: any) => Promise<any>
   deleteHall: (id: number) => Promise<any>
-  reOrderHalls: (hallIds: number[]) => Promise<any>
+  reorderHalls: (hallIds: number[]) => Promise<any>
   // Settings
   getSettings: () => Promise<Record<string, string>>
   saveSetting: (key: string, value: string) => Promise<any>
@@ -59,7 +59,6 @@ export const api = apiBridge as {
   updateSession: (id: number, data: any) => Promise<any>
   addSession: (cycleId: number, data: any) => Promise<any>
   deleteSession: (id: number) => Promise<any>
-  deleteAllCycles: () => Promise<any>
   // Allocation
   generateAllocation: (sessionId: number, userIds: number[], hallIds: number[]) => Promise<any>
   getSessionAllocation: (sessionId: number) => Promise<any[]>
@@ -67,22 +66,13 @@ export const api = apiBridge as {
   getValidHalls: (userId: number, sessionId: number) => Promise<any[]>
   confirmAllocation: (sessionId: number) => Promise<any>
   publishAllocation: (sessionId: number) => Promise<any>
-  reopenSession: (sessionId: number) => Promise<any>
   getStaffDutyHistory: (userId: number) => Promise<any[]>
-  removeAllocation:     (sessionId: number, userId: number) => Promise<any>
   getAllocationHistory: (filters: any) => Promise<any[]>
   // Reports
   getStaffWiseReport: (userId?: number, fromYear?: string, toYear?: string) => Promise<any[]>
   getDateWiseReport: (sessionId: number) => Promise<any[]>
   getCompleteTimetable: (cycleId: number) => Promise<any>
   getAuditReport: (cycleId: number) => Promise<any[]>
-  // Notifications
-  getNotifications: (userId: number) => Promise<any[]>
-  getUnreadNotificationCount: (userId: number) => Promise<number>
-  markNotificationRead: (id: number) => Promise<any>
-  markAllNotificationsRead: (userId: number) => Promise<any>
-  // Audit Log
-  getAuditLog: (limit?: number) => Promise<any[]>
   // Dashboard
   getDashboardStats: () => Promise<any>
   // File dialogs

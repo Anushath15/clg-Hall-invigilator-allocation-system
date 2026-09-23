@@ -230,16 +230,6 @@ function migration001(): void {
     payload TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   )`)
-
-  run(`CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    session_id INTEGER REFERENCES exam_sessions(id) ON DELETE CASCADE,
-    is_read INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
-  )`)
 }
 
 function migration002(): void {
@@ -283,67 +273,3 @@ function seedDefaults(): void {
 
 // ?? Export db helper ??????????????????????????????????????????????????????
 export const db = { run, query, queryOne, lastInsertId, runTransaction }
-
-// ?? Migration 003: Soft delete support ????????????????????????????????????????????
-
-function migration003(): void {
-  // Add is_deleted column to departments
-  const deptCols = query<any>("PRAGMA table_info(departments)")
-  if (!deptCols.some((c: any) => c.name === "is_deleted")) {
-    run(`ALTER TABLE departments ADD COLUMN is_deleted INTEGER DEFAULT 0`)
-  }
-
-  // Add is_deleted column to users
-  const userCols = query<any>("PRAGMA table_info(users)")
-  if (!userCols.some((c: any) => c.name === "is_deleted")) {
-    run(`ALTER TABLE users ADD COLUMN is_deleted INTEGER DEFAULT 0`)
-  }
-
-  // Add is_deleted column to halls
-  const hallCols = query<any>("PRAGMA table_info(halls)")
-  if (!hallCols.some((c: any) => c.name === "is_deleted")) {
-    run(`ALTER TABLE halls ADD COLUMN is_deleted INTEGER DEFAULT 0`)
-  }
-
-  // Add required_invigilators column to halls
-  if (!hallCols.some((c: any) => c.name === "required_invigilators")) {
-    run(`ALTER TABLE halls ADD COLUMN required_invigilators INTEGER DEFAULT 0`)
-  }
-
-  // Create index for faster soft-delete filtering
-  run(`CREATE INDEX IF NOT EXISTS idx_departments_is_deleted ON departments(is_deleted)`)
-  run(`CREATE INDEX IF NOT EXISTS idx_users_is_deleted ON users(is_deleted)`)
-  run(`CREATE INDEX IF NOT EXISTS idx_halls_is_deleted ON halls(is_deleted)`)
-  run(`CREATE INDEX IF NOT EXISTS idx_halls_required_invigilators ON halls(required_invigilators)`)
-}
-
-// Update migrations list
-function migration004(): void {
-  run(`CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    session_id INTEGER,
-    is_read INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
-  )`)
-}
-
-const migrations: Record<string, () => void> = {
-  "001_initial_schema": migration001,
-  "002_rotation_global_order": migration002,
-  "003_soft_delete_support": migration003,
-  "004_notifications": migration004
-}
-
-export function writeAuditLog(userId: number | null, action: string, description: string, payload?: any) {
-  try {
-    run(
-      "INSERT INTO audit_log(user_id, action, description, payload, created_at) VALUES(?,?,?,?,datetime('now'))",
-      [userId, action, description, payload ? JSON.stringify(payload) : null]
-    )
-  } catch (e) {
-    console.warn("[EIAS Audit Log] Failed to write audit log:", e)
-  }
-}

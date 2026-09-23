@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+﻿import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Plus, Pencil, Trash2, Upload, Download, CheckCircle, XCircle } from "lucide-react"
 import { api } from "../lib/api"
@@ -33,7 +33,7 @@ export default function MasterDataPage() {
   )
 }
 
-// -- STAFF TAB ------------------------------------------------
+// ── STAFF TAB ────────────────────────────────────────────────
 function StaffTab() {
   const [users, setUsers] = useState<any[]>([])
   const [depts, setDepts] = useState<any[]>([])
@@ -87,7 +87,7 @@ function StaffTab() {
               <div>
                 <label className="label">Department</label>
                 <select className="input-field" value={form.department_id ?? ""} onChange={e => setForm({ ...form, department_id: Number(e.target.value) || null })}>
-                  <option value="">� Select �</option>
+                  <option value="">— Select —</option>
                   {depts.map((d: any) => <option key={d.id} value={d.id}>{d.name} ({d.code})</option>)}
                 </select>
               </div>
@@ -112,8 +112,8 @@ function StaffTab() {
               <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs">{u.staff_id}</td>
                 <td className="px-4 py-3 font-medium">{u.name}</td>
-                <td className="px-4 py-3 text-brand-textsec">{u.department_name ?? "�"}</td>
-                <td className="px-4 py-3 text-brand-textsec">{u.designation ?? "�"}</td>
+                <td className="px-4 py-3 text-brand-textsec">{u.department_name ?? "—"}</td>
+                <td className="px-4 py-3 text-brand-textsec">{u.designation ?? "—"}</td>
                 <td className="px-4 py-3">
                   {u.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><XCircle className="w-3.5 h-3.5" /> Inactive</span>}
@@ -132,7 +132,7 @@ function StaffTab() {
   )
 }
 
-// -- HALLS TAB ------------------------------------------------
+// ── HALLS TAB ────────────────────────────────────────────────
 function HallsTab() {
   const [halls, setHalls] = useState<any[]>([])
   const [form, setForm] = useState<any>(null)
@@ -155,7 +155,7 @@ function HallsTab() {
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <p className="text-sm text-brand-textsec">{halls.length} halls � Ordered by rotation sequence (top = first in rotation)</p>
+        <p className="text-sm text-brand-textsec">{halls.length} halls · Ordered by rotation sequence (top = first in rotation)</p>
         <button onClick={() => setForm({ is_active: true })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
       </div>
 
@@ -189,7 +189,7 @@ function HallsTab() {
                 <td className="px-4 py-3 text-brand-textsec text-xs">#{i + 1}</td>
                 <td className="px-4 py-3 font-mono text-xs font-bold text-brand-primary">{h.hall_code}</td>
                 <td className="px-4 py-3 font-medium">{h.name}</td>
-                <td className="px-4 py-3 text-brand-textsec">{h.block ?? "�"}</td>
+                <td className="px-4 py-3 text-brand-textsec">{h.block ?? "—"}</td>
                 <td className="px-4 py-3 text-brand-textsec">{h.capacity}</td>
                 <td className="px-4 py-3">
                   {h.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
@@ -209,7 +209,7 @@ function HallsTab() {
   )
 }
 
-// -- DEPARTMENTS TAB ------------------------------------------
+// ── DEPARTMENTS TAB ──────────────────────────────────────────
 function DepartmentsTab() {
   const [depts, setDepts] = useState<any[]>([])
   const [form, setForm] = useState<any>(null)

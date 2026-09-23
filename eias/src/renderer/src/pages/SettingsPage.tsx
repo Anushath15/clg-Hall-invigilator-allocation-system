@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
-import { Save, Download, Upload, Lock, CheckCircle, AlertTriangle, Info, Activity, RefreshCw } from "lucide-react"
+import { Save, Download, Upload, Lock, CheckCircle, AlertTriangle, Info } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
 
-const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore", "Audit Log"]
+const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore"]
 
 export default function SettingsPage() {
   const { user } = useAuthStore()
@@ -14,22 +14,6 @@ export default function SettingsPage() {
   const [pw, setPw] = useState({ old: "", new1: "", new2: "" })
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving, setSaving] = useState(false)
-  const [auditLogs, setAuditLogs] = useState<any[]>([])
-  const [loadingAudit, setLoadingAudit] = useState(false)
-
-  const loadAudit = async () => {
-    setLoadingAudit(true)
-    try {
-      const logs = await api.getAuditLog(100)
-      setAuditLogs(logs)
-    } finally {
-      setLoadingAudit(false)
-    }
-  }
-
-  useEffect(() => {
-    if (active === "Audit Log") loadAudit()
-  }, [active])
 
   useEffect(() => { api.getSettings().then(s => { setSettings(s); setChanged({}) }) }, [])
 
@@ -241,86 +225,6 @@ export default function SettingsPage() {
                   <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-400" />
                   <p>The database file is stored at <code className="bg-gray-200 px-1 rounded text-xs">%APPDATA%\eias\eias.db</code> on this machine. Back up regularly before major exam cycles.</p>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Audit Log */}
-          {active === "Audit Log" && (
-            <div className="space-y-4">
-              <div className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-brand-primary" />
-                    <div>
-                      <h3 className="font-semibold text-brand-textmain">System Audit Trail</h3>
-                      <p className="text-xs text-brand-textsec">Complete chronological record of administrative actions, allocations, and status changes.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={loadAudit}
-                    disabled={loadingAudit}
-                    className="btn-secondary text-xs flex items-center gap-1.5"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loadingAudit ? "animate-spin" : ""}`} />
-                    Refresh
-                  </button>
-                </div>
-
-                {auditLogs.length === 0 ? (
-                  <div className="py-12 text-center text-gray-400">
-                    <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm font-medium">No audit logs recorded yet</p>
-                    <p className="text-xs mt-1">Actions performed by administrators will appear here.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-200 text-brand-textsec">
-                          <th className="text-left py-2.5 px-3 font-semibold">Timestamp</th>
-                          <th className="text-left py-2.5 px-3 font-semibold">Action</th>
-                          <th className="text-left py-2.5 px-3 font-semibold">Description</th>
-                          <th className="text-left py-2.5 px-3 font-semibold">Details</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {auditLogs.map((log) => {
-                          const actionColor =
-                            log.action === "CONFIRM_ALLOCATION" ? "bg-teal-50 text-teal-700 border-teal-200" :
-                            log.action === "PUBLISH_ALLOCATION" ? "bg-green-50 text-green-700 border-green-200" :
-                            log.action === "REOPEN_SESSION" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                            log.action === "EDIT_ALLOCATION" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                            log.action === "GENERATE_ALLOCATION" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
-                            log.action === "LOGIN" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                            "bg-gray-50 text-gray-700 border-gray-200"
-
-                          return (
-                            <tr key={log.id} className="hover:bg-gray-50/80 transition-colors">
-                              <td className="py-2.5 px-3 text-gray-500 whitespace-nowrap">
-                                {log.created_at ? new Date(log.created_at).toLocaleString("en-IN", {
-                                  dateStyle: "short",
-                                  timeStyle: "medium"
-                                }) : "-"}
-                              </td>
-                              <td className="py-2.5 px-3 whitespace-nowrap">
-                                <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${actionColor}`}>
-                                  {log.action}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 font-medium text-gray-800">
-                                {log.description}
-                              </td>
-                              <td className="py-2.5 px-3 text-gray-400 font-mono text-[10px] max-w-xs truncate">
-                                {log.payload || "-"}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </div>
             </div>
           )}
