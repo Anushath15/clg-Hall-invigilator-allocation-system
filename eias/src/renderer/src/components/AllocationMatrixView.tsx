@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { api } from "../lib/api"
 import { formatDate, cn } from "../lib/utils"
 import { Loader2 } from "lucide-react"
@@ -27,7 +27,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
     </div>
   )
 
-  const { sessions, allocations, users, halls } = data
+  const { sessions, allocations, users } = data
   const confirmedSessions = sessions.filter((s: any) => s.status === "confirmed" || s.status === "published")
   if (!confirmedSessions.length) return (
     <div className="text-center py-12 text-brand-textsec text-sm">
@@ -35,12 +35,19 @@ export default function AllocationMatrixView({ cycleId }: Props) {
     </div>
   )
 
-  // Build lookup: { [userId_sessionId]: hall_code }
+  if (!users || users.length === 0) return (
+    <div className="text-center py-12 text-brand-textsec text-sm">
+      No allocation data found for confirmed sessions.
+    </div>
+  )
+
+  // Build lookup: { "userId_sessionId": hall_code } using user_id and session_id directly from API
   const lookup: Record<string, string> = {}
+  const editedLookup: Record<string, boolean> = {}
   for (const a of allocations) {
-    const hall = halls.find((h: any) => h.id === a.hall_id)
-    lookup[`${a.user_id}_${a.session_id}`] = hall?.hall_code ?? "?"
-    if (a.is_manually_edited) lookup[`${a.user_id}_${a.session_id}_edited`] = "1"
+    const key = `${a.user_id}_${a.session_id}`
+    lookup[key] = a.hall_code ?? "?"
+    editedLookup[key] = !!a.is_manually_edited
   }
 
   return (
@@ -67,8 +74,9 @@ export default function AllocationMatrixView({ cycleId }: Props) {
                 <div className="text-[10px] text-brand-textsec">{u.staff_id} · {u.deptName ?? "—"}</div>
               </td>
               {confirmedSessions.map((s: any) => {
-                const hallCode = lookup[`${u.id}_${s.id}`]
-                const isEdited = lookup[`${u.id}_${s.id}_edited`] === "1"
+                const key = `${u.id}_${s.id}`
+                const hallCode = lookup[key]
+                const isEdited = editedLookup[key]
                 return (
                   <td key={s.id} className="px-1 py-1 text-center border-l border-brand-border">
                     {hallCode ? (
@@ -106,3 +114,4 @@ export default function AllocationMatrixView({ cycleId }: Props) {
     </div>
   )
 }
+

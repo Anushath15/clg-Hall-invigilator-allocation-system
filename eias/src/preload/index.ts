@@ -18,7 +18,7 @@ const api = {
   getHalls:        () => ipcRenderer.invoke("master:getHalls"),
   saveHall:        (data: any) => ipcRenderer.invoke("master:saveHall", data),
   deleteHall:      (id: number) => ipcRenderer.invoke("master:deleteHall", id),
-  reorderHalls:    (hallIds: number[]) => ipcRenderer.invoke("master:reorderHalls", hallIds),
+  reOrderHalls:    (hallIds: number[]) => ipcRenderer.invoke("master:reorderHalls", hallIds),
   // Settings
   getSettings:     () => ipcRenderer.invoke("master:getSettings"),
   saveSetting:     (key: string, value: string) => ipcRenderer.invoke("master:saveSetting", key, value),
@@ -32,15 +32,24 @@ const api = {
   updateSession:   (id: number, data: any) => ipcRenderer.invoke("cycle:updateSession", id, data),
   addSession:      (cycleId: number, data: any) => ipcRenderer.invoke("cycle:addSession", cycleId, data),
   deleteSession:   (id: number) => ipcRenderer.invoke("cycle:deleteSession", id),
+  deleteAllCycles: () => ipcRenderer.invoke("cycle:deleteAllCycles"),
   // Allocation
   generateAllocation:   (sessionId: number, userIds: number[], hallIds: number[]) => ipcRenderer.invoke("allocation:generate", sessionId, userIds, hallIds),
   getSessionAllocation: (sessionId: number) => ipcRenderer.invoke("allocation:getSession", sessionId),
   editAllocation:       (sessionId: number, userId: number, hallId: number, reason?: string) => ipcRenderer.invoke("allocation:edit", sessionId, userId, hallId, reason),
+  removeAllocation:     (sessionId: number, userId: number) => ipcRenderer.invoke("allocation:removeEntry", sessionId, userId),
   getValidHalls:        (userId: number, sessionId: number) => ipcRenderer.invoke("allocation:getValidHalls", userId, sessionId),
   confirmAllocation:    (sessionId: number) => ipcRenderer.invoke("allocation:confirm", sessionId),
   publishAllocation:    (sessionId: number) => ipcRenderer.invoke("allocation:publish", sessionId),
+  reopenSession:        (sessionId: number) => ipcRenderer.invoke("allocation:reopen", sessionId),
   getStaffDutyHistory:  (userId: number) => ipcRenderer.invoke("allocation:staffDutyHistory", userId),
   getAllocationHistory:  (filters: any) => ipcRenderer.invoke("allocation:history", filters),
+  // Notifications
+  getNotifications:           (userId: number) => ipcRenderer.invoke("notification:get", userId),
+  getUnreadNotificationCount: (userId: number) => ipcRenderer.invoke("notification:unreadCount", userId),
+  markNotificationRead:       (id: number) => ipcRenderer.invoke("notification:markRead", id),
+  markAllNotificationsRead:   (userId: number) => ipcRenderer.invoke("notification:markAllRead", userId),
+  getAuditLog:                (limit?: number) => ipcRenderer.invoke("audit:get", limit),
   // Reports
   getStaffWiseReport:   (userId?: number, fromYear?: string, toYear?: string) => ipcRenderer.invoke("report:staffWise", userId, fromYear, toYear),
   getDateWiseReport:    (sessionId: number) => ipcRenderer.invoke("report:dateWise", sessionId),

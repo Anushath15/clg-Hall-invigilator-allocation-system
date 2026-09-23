@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from "react"
-import { Calendar, Clock, MapPin, Building2, Printer, ChevronRight } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Calendar, Clock, MapPin, Building2, Printer, ChevronRight, Bell } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import { formatDate, formatSession } from "../lib/utils"
@@ -8,9 +8,13 @@ export default function StaffDutyPage() {
   const { user } = useAuthStore()
   const [duties, setDuties] = useState<any[]>([])
   const [settings, setSettings] = useState<Record<string, string>>({})
+  const [unreadNotifications, setUnreadNotifications] = useState<any[]>([])
 
   useEffect(() => {
-    if (user) api.getStaffDutyHistory(user.id).then(setDuties)
+    if (user) {
+      api.getStaffDutyHistory(user.id).then(setDuties)
+      api.getNotifications(user.id).then(notes => setUnreadNotifications(notes.filter((n: any) => !n.is_read)))
+    }
     api.getSettings().then(setSettings)
   }, [user])
 
@@ -77,6 +81,27 @@ export default function StaffDutyPage() {
           </button>
         )}
       </div>
+
+      {unreadNotifications.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <Bell className="w-5 h-5 text-brand-primary flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-blue-900">New Exam Duty Assignment</p>
+              <p className="text-xs text-blue-800 mt-0.5">{unreadNotifications[0].message}</p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              if (user) await api.markAllNotificationsRead(user.id)
+              setUnreadNotifications([])
+            }}
+            className="text-xs bg-brand-primary text-white px-3 py-1.5 rounded-lg hover:bg-brand-primary/90 font-medium whitespace-nowrap"
+          >
+            Acknowledge
+          </button>
+        </div>
+      )}
 
       {/* Next upcoming duty */}
       {next ? (

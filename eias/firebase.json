@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "myapplication-2adb30a9",
     "public": "out/renderer",
     "ignore": [
       "firebase.json",

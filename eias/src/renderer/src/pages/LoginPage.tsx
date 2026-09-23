@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { GraduationCap, Eye, EyeOff, Loader2, AlertTriangle } from "lucide-react"
+import { GraduationCap, Eye, EyeOff, Loader2 } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
@@ -13,14 +13,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { login } = useAuthStore()
-  const isDesktop = typeof window !== "undefined" && typeof window.api !== "undefined"
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    if (!isDesktop) {
-      toast.error("Desktop app required. Please click the EIAS desktop app on your taskbar to sign in.", { duration: 6000 })
-      return
-    }
     if (!staffId.trim() || !password) return toast.error("Please enter Staff ID and password.")
     setLoading(true)
     try {
@@ -57,20 +52,6 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-lg font-semibold text-brand-textmain mb-4">Sign in to your account</h2>
 
-          {!isDesktop && (
-            <div className="mb-5 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs flex items-start gap-2.5">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
-              <div>
-                <p className="font-semibold text-amber-900">Web Browser Detected</p>
-                <p className="mt-1 text-amber-800 leading-relaxed">
-                  You are viewing EIAS inside a web browser. EIAS is a desktop app requiring Electron to access the local SQLite database and allocation engine.
-                </p>
-                <p className="mt-1 font-medium text-amber-900">
-                  Please look for the EIAS desktop application window on your taskbar, or launch via the desktop shortcut.
-                </p>
-              </div>
-            </div>
-          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -88,16 +69,6 @@ export default function LoginPage() {
                 <button type="button" onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <div className="flex items-center justify-between text-xs text-gray-400 mt-1.5">
-                <span>Default admin: <strong className="text-gray-600">ADMIN001</strong> / <strong className="text-gray-600">admin123</strong></span>
-                <button
-                  type="button"
-                  onClick={() => { setStaffId("ADMIN001"); setPassword("admin123") }}
-                  className="text-brand-primary hover:text-brand-dark font-medium underline"
-                >
-                  Fill credentials
                 </button>
               </div>
             </div>

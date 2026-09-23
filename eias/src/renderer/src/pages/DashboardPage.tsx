@@ -1,13 +1,18 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Users, Building2, Calendar, CheckCircle, Clock, AlertCircle, Plus, ArrowRight, Activity } from "lucide-react"
+import { Users, Building2, Calendar, CheckCircle, Clock, Plus, ArrowRight, Activity } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate } from "../lib/utils"
 import { useAuthStore } from "../store/auth.store"
 
 interface Stats {
-  totalStaff: number; totalHalls: number; totalCycles: number
-  upcomingSessions: number; confirmedSessions: number; pendingAllocations: number
+  totalStaff: number
+  totalHalls: number
+  totalCycles: number
+  confirmedSessions: number
+  upcomingSessions: number
+  allocatedHalls: number
+  totalExamDays: number
 }
 
 function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: string; value: number; color: string; sub?: string }) {
@@ -79,14 +84,13 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-5 mb-8">
-        <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" />
-        <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" />
-        <StatCard icon={Calendar}     label="Exam Cycles"           value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" />
-        <StatCard icon={Clock}        label="Upcoming Sessions"     value={stats?.upcomingSessions ?? 0}   color="bg-yellow-50 text-yellow-600" sub="Pending allocation" />
-        <StatCard icon={CheckCircle}  label="Confirmed Sessions"    value={stats?.confirmedSessions ?? 0}  color="bg-teal-50 text-teal-600" />
-        <StatCard icon={AlertCircle}  label="Pending Allocations"   value={stats?.pendingAllocations ?? 0} color="bg-red-50 text-red-500" />
+      {/* Stats grid — 5 cards as per approved spec */}
+      <div className="grid grid-cols-5 gap-4 mb-8">
+        <StatCard icon={Users}       label="Total Invigilators" value={stats?.totalStaff ?? 0}       color="bg-blue-50 text-blue-600" />
+        <StatCard icon={Calendar}    label="Total Exam Days"     value={stats?.totalExamDays ?? 0}    color="bg-green-50 text-green-600" />
+        <StatCard icon={Building2}   label="Total Halls"         value={stats?.totalHalls ?? 0}       color="bg-purple-50 text-purple-600" />
+        <StatCard icon={CheckCircle} label="Allocated Halls"     value={stats?.allocatedHalls ?? 0}   color="bg-teal-50 text-teal-600" sub="Confirmed sessions" />
+        <StatCard icon={Clock}       label="Upcoming Exams"      value={stats?.upcomingSessions ?? 0} color="bg-yellow-50 text-yellow-600" sub="Pending sessions" />
       </div>
 
       <div className="grid grid-cols-5 gap-6">

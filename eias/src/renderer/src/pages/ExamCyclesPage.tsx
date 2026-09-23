@@ -1,6 +1,6 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Plus, ChevronRight, Calendar, Loader2 } from "lucide-react"
+import { Plus, ChevronRight, Calendar, Loader2, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, getStatusColor } from "../lib/utils"
 import toast from "react-hot-toast"
@@ -18,6 +18,19 @@ export default function ExamCyclesPage() {
     navigate(`/allocation/${cycle.id}`)
   }
 
+  async function handleDeleteAllCycles() {
+    if (!window.confirm("Are you sure you want to delete ALL exam cycles?\n\nThis will permanently remove all cycles, sessions, allocations, and rotation history. Staff, halls, and departments will be preserved.")) {
+      return
+    }
+    try {
+      await api.deleteAllCycles()
+      toast.success("All exam cycles deleted successfully.")
+      load()
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete cycles.")
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -25,9 +38,20 @@ export default function ExamCyclesPage() {
           <h1 className="text-2xl font-bold text-brand-textmain">Exam Cycles</h1>
           <p className="text-brand-textsec mt-1">Create and manage exam allocation cycles</p>
         </div>
-        <button onClick={() => setShowWizard(true)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Create Exam Allocation
-        </button>
+        <div className="flex items-center gap-3">
+          {cycles.length > 0 && (
+            <button
+              onClick={handleDeleteAllCycles}
+              className="px-3.5 py-2 rounded-xl text-red-600 border border-red-200 hover:bg-red-50 text-sm font-medium flex items-center gap-1.5 transition-colors"
+              title="Delete all cycles and allocations"
+            >
+              <Trash2 className="w-4 h-4" /> Delete All Cycles
+            </button>
+          )}
+          <button onClick={() => setShowWizard(true)} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Create Exam Allocation
+          </button>
+        </div>
       </div>
 
       {showWizard && (

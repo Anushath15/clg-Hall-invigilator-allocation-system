@@ -10,17 +10,13 @@ export interface ValidationResult {
   isValid: boolean; blockingErrors: ValidationError[]; warnings: string[]
 }
 
-export function validateAllocation(
-  sessionId: number,
-  entries: ValidationEntry[],
-  hallIds: number[],
-  userIds: number[]
-): ValidationResult {
+export function validateAllocation(sessionId: number, entries: ValidationEntry[], hallIds: number[], userIds: number[], hallRequirements?: Map<number, number>): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: string[] = []
 
-  // R7 ? Count match
-  if (entries.length !== hallIds.length || entries.length !== userIds.length) {
+  // R7 - Count match
+  const totalSlotsNeeded = hallRequirements ? Array.from(hallRequirements.values()).reduce((a, b) => a + b, 0) : hallIds.length
+  if (entries.length !== totalSlotsNeeded) {
     errors.push({ rule: "R7", message: `Staff count (${userIds.length}) must equal hall count (${hallIds.length}).` })
   }
 

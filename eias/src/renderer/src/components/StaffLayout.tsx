@@ -1,8 +1,9 @@
-﻿import { Outlet, useNavigate } from "react-router-dom"
+import { Outlet, useNavigate } from "react-router-dom"
 import { LogOut, GraduationCap } from "lucide-react"
 import { useAuthStore } from "../store/auth.store"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
+import NotificationBell from "./NotificationBell"
 
 export default function StaffLayout() {
   const { user, logout } = useAuthStore()
@@ -23,6 +24,7 @@ export default function StaffLayout() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {user?.id && <NotificationBell userId={user.id} />}
           <div className="text-right">
             <p className="text-sm font-medium">{user?.name}</p>
             <p className="text-xs text-gray-400">{user?.staff_id}</p>

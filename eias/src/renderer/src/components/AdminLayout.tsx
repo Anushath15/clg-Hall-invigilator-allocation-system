@@ -1,4 +1,4 @@
-﻿import { Outlet, NavLink, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useNavigate } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
   BarChart3, Settings, LogOut, GraduationCap, History
@@ -91,7 +91,7 @@ export default function AdminLayout() {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-gray-400 truncate">{user?.staff_id} · Admin</p>
+              <p className="text-xs text-gray-400 truncate">{user?.staff_id} � Admin</p>
             </div>
           </div>
           <button onClick={handleLogout}
