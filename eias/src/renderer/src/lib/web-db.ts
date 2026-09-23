@@ -4,6 +4,7 @@
  */
 
 import initSqlJs, { Database, SqlJsStatic } from "sql.js"
+import bcrypt from "bcryptjs"
 
 let SQL: SqlJsStatic | null = null
 let _db: Database | null = null
@@ -71,35 +72,22 @@ export async function initWebDatabase(): Promise<void> {
       locateFile: (file) => `/${file}`
     })
 
-    // 1. Try to load saved database from browser IndexedDB
+    // 1. Try to load saved database from browser IndexedDB (returning users)
     const savedBuffer = await loadFromIndexedDB()
     if (savedBuffer && savedBuffer.length > 0) {
       _db = new SQL.Database(savedBuffer)
       console.log("[EIAS Web DB] Loaded existing database from IndexedDB")
     } else {
-      // 2. Try to load pre-seeded default-eias.db from server
-      let loadedPreseed = false
-      try {
-        const res = await fetch("/default-eias.db")
-        if (res.ok) {
-          const arrayBuffer = await res.arrayBuffer()
-          const u8 = new Uint8Array(arrayBuffer)
-          _db = new SQL.Database(u8)
-          await saveToIndexedDB(u8)
-          loadedPreseed = true
-          console.log("[EIAS Web DB] Loaded pre-seeded college database from /default-eias.db")
-        }
-      } catch (e) {
-        console.warn("[EIAS Web DB] Could not fetch default-eias.db, initializing blank database", e)
-      }
-
-      if (!loadedPreseed) {
-        _db = new SQL.Database()
-        runMigrations()
-        seedDefaults()
-        persistDb()
-      }
+      // 2. First load: initialize empty schema. No pre-baked file is fetched.
+      // ensureDefaultAdmin() below will create the admin account on first run.
+      _db = new SQL.Database()
+      console.log("[EIAS Web DB] Initialized fresh empty database")
     }
+
+    runMigrations()
+    seedDefaults()
+    await ensureDefaultAdmin()
+    persistDb()
   })()
 
   return _initPromise
@@ -279,6 +267,34 @@ function runMigrations(): void {
         payload TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       )`)
+
+      run(`CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        session_id INTEGER REFERENCES exam_sessions(id) ON DELETE CASCADE,
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`)
+    },
+    "002_notifications": () => {
+      run(`CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        session_id INTEGER,
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`)
+    },
+    "003_clear_all_cycles": () => {
+      try { run("DELETE FROM allocations") } catch {}
+      try { run("DELETE FROM rotation_history") } catch {}
+      try { run("DELETE FROM notifications") } catch {}
+      try { run("DELETE FROM exam_sessions") } catch {}
+      try { run("DELETE FROM exam_cycles") } catch {}
     }
   }
 
@@ -306,6 +322,17 @@ function seedDefaults(): void {
   for (const [key, value] of defaults) {
     const existing = queryOne("SELECT key FROM settings WHERE key = ?", [key])
     if (!existing) run("INSERT INTO settings(key, value) VALUES(?,?)", [key, value])
+  }
+}
+
+async function ensureDefaultAdmin(): Promise<void> {
+  const adminExists = queryOne<any>("SELECT id FROM users WHERE role = 'admin'")
+  if (!adminExists) {
+    const hash = await bcrypt.hash("admin123", 12)
+    run(
+      "INSERT INTO users(staff_id, name, role, password_hash, is_active) VALUES(?,?,?,?,?)",
+      ["ADMIN001", "System Administrator", "admin", hash, 1]
+    )
   }
 }
 
