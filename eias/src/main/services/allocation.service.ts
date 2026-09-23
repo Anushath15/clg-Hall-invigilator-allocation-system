@@ -1,10 +1,24 @@
-import { db } from "../db/database"
+import { db, writeAuditLog } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, validateSingleEdit, getValidHallsForStaff } from "./validation.engine"
 
-export async function getOrCreateAllocation(sessionId: number, userIds: number[], hallIds: number[]) {
-  // BUG 1 fix: generateAllocation handles both new and existing staff individually
-  const entries = await generateAllocation(sessionId, userIds, hallIds)
+export async function getOrCreateAllocation(
+  sessionId: number,
+  userIds: number[],
+  hallIds: number[],
+  hallCapacities?: Map<number, number>
+) {
+  // Build hall requirements if capacities provided
+  let hallRequirements: Map<number, number> | undefined
+  if (hallCapacities && hallCapacities.size > 0) {
+    hallRequirements = new Map()
+    for (const hallId of hallIds) {
+      const capacity = hallCapacities.get(hallId) || 30
+      hallRequirements.set(hallId, Math.max(1, Math.ceil(capacity / 30)))
+    }
+  }
+
+  const entries = await generateAllocation(sessionId, userIds, hallIds, hallCapacities)
 
   // Save to allocations table
   db.run("DELETE FROM allocations WHERE session_id = ?", [sessionId])
@@ -18,7 +32,7 @@ export async function getOrCreateAllocation(sessionId: number, userIds: number[]
   db.run("UPDATE exam_sessions SET status='draft' WHERE id=?", [sessionId])
 
   const validationEntries = entries.map(e => ({ ...e, sessionId }))
-  const validation = validateAllocation(sessionId, validationEntries, hallIds, userIds)
+  const validation = validateAllocation(sessionId, validationEntries, hallIds, userIds, hallRequirements)
   const fullAllocation = getSessionAllocationFull(sessionId)
   return { entries: fullAllocation, validation }
 }
@@ -35,6 +49,7 @@ export function editAllocationEntry(sessionId: number, userId: number, newHallId
     "UPDATE allocations SET hall_id=?, is_manually_edited=1, edit_reason=?, updated_at=datetime('now') WHERE session_id=? AND user_id=?",
     [newHallId, editReason ?? null, sessionId, userId]
   )
+  writeAuditLog(null, "EDIT_ALLOCATION", `Manual override for session ${sessionId}, user ${userId} to hall ${newHallId}`, { sessionId, userId, newHallId, editReason })
   return { success: true }
 }
 
@@ -64,6 +79,7 @@ export async function confirmAllocation(sessionId: number) {
       )
       db.run("UPDATE exam_sessions SET status='confirmed', updated_at=datetime('now') WHERE id=?", [sessionId])
     })
+    writeAuditLog(null, "CONFIRM_ALLOCATION", `Session ${sessionId} confirmed`, { sessionId, count: entries.length })
     return { success: true, validation }
   } catch (err: any) {
     return { success: false, error: err?.message || "Confirmation failed during transaction." }
@@ -71,9 +87,64 @@ export async function confirmAllocation(sessionId: number) {
 }
 
 export function publishAllocation(sessionId: number) {
-  const session = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
-  if (session?.status !== "confirmed") return { success: false, error: "Allocation must be confirmed before publishing." }
+  const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id = ?", [sessionId])
+  if (!session) return { success: false, error: "Session not found." }
+  if (session.status !== "confirmed") return { success: false, error: "Allocation must be confirmed before publishing." }
   db.run("UPDATE exam_sessions SET status='published', updated_at=datetime('now') WHERE id=?", [sessionId])
+  // Roll up cycle status: if all sessions in cycle are published, mark cycle as published
+  const unpublished = db.queryOne<any>(
+    "SELECT COUNT(*) as c FROM exam_sessions WHERE cycle_id=? AND status != 'published'",
+    [session.cycle_id]
+  )
+  if (!unpublished || unpublished.c === 0) {
+    db.run("UPDATE exam_cycles SET status='published' WHERE id=?", [session.cycle_id])
+  }
+  writeAuditLog(null, "PUBLISH_ALLOCATION", `Session ${sessionId} published`, { sessionId })
+
+  // In-app notifications for assigned staff
+  try {
+    const allocations = db.query<any>(
+      `SELECT a.user_id, h.hall_code, ec.name as cycle_name
+       FROM allocations a
+       JOIN halls h ON a.hall_id = h.id
+       JOIN exam_sessions es ON a.session_id = es.id
+       JOIN exam_cycles ec ON es.cycle_id = ec.id
+       WHERE a.session_id = ?`,
+      [sessionId]
+    )
+    const sessionLabel = `${session.exam_date} ${session.session_type}`
+    for (const a of allocations) {
+      db.run(
+        "INSERT INTO notifications(user_id, title, message, session_id) VALUES(?,?,?,?)",
+        [
+          a.user_id,
+          "New Exam Duty Published",
+          `Your invigilation duty has been published for ${sessionLabel} — Hall ${a.hall_code} (${a.cycle_name}).`,
+          sessionId
+        ]
+      )
+    }
+  } catch (e) {
+    console.warn("[EIAS] Failed to create notifications in desktop:", e)
+  }
+
+  return { success: true }
+}
+
+export function reopenSession(sessionId: number) {
+  const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [sessionId])
+  if (!session) return { success: false, error: "Session not found." }
+  if (session.status !== "confirmed" && session.status !== "published") {
+    return { success: false, error: "Only confirmed or published sessions can be reopened." }
+  }
+  // Remove rotation_history so round-robin treats this session as unconfirmed
+  db.run("DELETE FROM rotation_history WHERE session_id=?", [sessionId])
+  // Reset manual edits (keep allocations visible but mark as system-generated)
+  db.run("UPDATE allocations SET is_manually_edited=0, edit_reason=NULL WHERE session_id=?", [sessionId])
+  db.run("UPDATE exam_sessions SET status='draft', updated_at=datetime('now') WHERE id=?", [sessionId])
+  // Roll back cycle status if it was published
+  db.run("UPDATE exam_cycles SET status='active' WHERE id=? AND status='published'", [session.cycle_id])
+  writeAuditLog(null, "REOPEN_SESSION", `Session ${sessionId} reopened`, { sessionId })
   return { success: true }
 }
 
@@ -103,14 +174,30 @@ export function getValidHallsFor(userId: number, sessionId: number) {
      FROM allocations a
      JOIN halls h ON h.id = COALESCE(a.generated_hall_id, a.hall_id)
      WHERE a.session_id = ?
-     ORDER BY h.sort_order`,
+     ORDER BY h.sort_order, h.id`,
     [sessionId]
   )
   let sessionHalls = poolRows.map((r: any) => r.id)
   if (sessionHalls.length === 0) {
-    sessionHalls = db.query<any>("SELECT id FROM halls WHERE is_active = 1 ORDER BY sort_order").map((h: any) => h.id)
+    sessionHalls = db.query<any>("SELECT id FROM halls WHERE is_active = 1 ORDER BY sort_order, id").map((h: any) => h.id)
   }
   return getValidHallsForStaff(userId, sessionId, sessionHalls, occupied)
+}
+
+export async function removeAllocationEntry(sessionId: number, userId: number) {
+  const session = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
+  if (!session) return { success: false, error: "Session not found." }
+  if (session.status === "published") {
+    return { success: false, error: "Cannot remove allocations from a published session. Reopen it first." }
+  }
+  const existing = db.queryOne<any>(
+    "SELECT id FROM allocations WHERE session_id = ? AND user_id = ?",
+    [sessionId, userId]
+  )
+  if (!existing) return { success: false, error: "Allocation entry not found." }
+  db.run("DELETE FROM allocations WHERE session_id = ? AND user_id = ?", [sessionId, userId])
+  writeAuditLog(null, "REMOVE_ALLOCATION", `Removed allocation for session ${sessionId}, user ${userId}`, { sessionId, userId })
+  return { success: true }
 }
 
 export function getStaffDutyHistory(userId: number) {

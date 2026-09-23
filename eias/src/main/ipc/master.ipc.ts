@@ -75,7 +75,10 @@ export function registerMasterHandlers() {
   })
 
   // HALLS
-  ipcMain.handle("master:getHalls", () => db.query("SELECT * FROM halls ORDER BY sort_order"))
+  // id is an explicit tiebreak: sort_order defaults to 0 for every hall and the
+  // UI never sets it, so without this the row order is undefined SQL tie-break
+  // behavior — and this array's order is what the rotation engine indexes into.
+  ipcMain.handle("master:getHalls", () => db.query("SELECT * FROM halls ORDER BY sort_order, id"))
   ipcMain.handle("master:saveHall", async (_, data) => {
     if (data.id) {
       db.run("UPDATE halls SET hall_code=?,name=?,capacity=?,block=?,is_active=? WHERE id=?",
@@ -110,12 +113,13 @@ export function registerMasterHandlers() {
   ipcMain.handle("master:dashboardStats", () => {
     const today = new Date().toISOString().split("T")[0]
     return {
-      totalStaff:          db.queryOne<any>("SELECT COUNT(*) as c FROM users WHERE is_active=1 AND role='staff'")?.c ?? 0,
-      totalHalls:          db.queryOne<any>("SELECT COUNT(*) as c FROM halls WHERE is_active=1")?.c ?? 0,
-      totalCycles:         db.queryOne<any>("SELECT COUNT(*) as c FROM exam_cycles")?.c ?? 0,
-      upcomingSessions:    db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE status='pending' AND exam_date>=?", [today])?.c ?? 0,
-      confirmedSessions:   db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE status='confirmed'")?.c ?? 0,
-      pendingAllocations:  db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE status='pending'")?.c ?? 0
+      totalStaff:       db.queryOne<any>("SELECT COUNT(*) as c FROM users WHERE is_active=1 AND role='staff'")?.c ?? 0,
+      totalHalls:       db.queryOne<any>("SELECT COUNT(*) as c FROM halls WHERE is_active=1")?.c ?? 0,
+      totalCycles:      db.queryOne<any>("SELECT COUNT(*) as c FROM exam_cycles")?.c ?? 0,
+      confirmedSessions:db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE status IN ('confirmed','published')")?.c ?? 0,
+      upcomingSessions: db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE exam_date>=? AND status != 'published'", [today])?.c ?? 0,
+      allocatedHalls:   db.queryOne<any>(`SELECT COUNT(DISTINCT a.hall_id) as c FROM allocations a JOIN exam_sessions es ON a.session_id=es.id WHERE es.status IN ('confirmed','published')`)?.c ?? 0,
+      totalExamDays:    db.queryOne<any>("SELECT COUNT(DISTINCT exam_date) as c FROM exam_sessions")?.c ?? 0
     }
   })
 }

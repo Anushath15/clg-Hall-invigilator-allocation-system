@@ -258,6 +258,21 @@ function getSessionAllocationFull(sessionId: number) {
   )
 }
 
+
+// -------------------------------------------------------------
+// Audit Log Helper
+// -------------------------------------------------------------
+function writeAuditLog(userId: number | null, action: string, description: string, payload?: any) {
+  try {
+    webDb.run(
+      "INSERT INTO audit_log(user_id, action, description, payload, created_at) VALUES(?,?,?,?,datetime('now'))",
+      [userId, action, description, payload ? JSON.stringify(payload) : null]
+    )
+  } catch {
+    // Audit log failure must never crash the main operation
+  }
+}
+
 // -------------------------------------------------------------
 // The Web API Object
 // -------------------------------------------------------------
@@ -265,8 +280,9 @@ export const webApi = {
   // Auth
   login: async (staffId: string, password: string) => {
     await ensureDb()
-    const user = webDb.queryOne<any>("SELECT * FROM users WHERE staff_id = ? AND is_active = 1", [staffId])
+    const user = webDb.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
     if (!user) return { success: false, error: "Invalid Staff ID or password." }
+    if (!user.is_active) return { success: false, error: "Account is inactive. Please contact administrator." }
 
     if (!user.password_hash) {
       const hash = await bcrypt.hash(password, 12)
@@ -276,6 +292,7 @@ export const webApi = {
 
     const valid = await bcrypt.compare(password, user.password_hash)
     if (!valid) return { success: false, error: "Invalid Staff ID or password." }
+    writeAuditLog(user.id, "LOGIN", `User ${user.staff_id} logged in`, { role: user.role })
     return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
   },
 
@@ -340,18 +357,21 @@ export const webApi = {
       if (hash) { sql += `,password_hash=?`; params.push(hash) }
       sql += ` WHERE id=?`; params.push(data.id)
       webDb.run(sql, params)
+      writeAuditLog(null, "STAFF_STATUS_CHANGE", `Staff ${data.staff_id} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM users WHERE id=?", [data.id])
     }
     const { lastInsertRowid } = webDb.run(
       "INSERT INTO users(staff_id,name,email,designation,role,department_id,is_active,password_hash) VALUES(?,?,?,?,?,?,?,?)",
       [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, 1, hash]
     )
+    writeAuditLog(null, "CREATE_STAFF", `Staff created: ${data.staff_id} - ${data.name}`, { id: lastInsertRowid, staff_id: data.staff_id })
     return webDb.queryOne("SELECT * FROM users WHERE id=?", [lastInsertRowid])
   },
 
   deleteUser: async (id: number) => {
     await ensureDb()
     webDb.run("UPDATE users SET is_active=0 WHERE id=?", [id])
+    writeAuditLog(null, "STAFF_STATUS_CHANGE", `Staff ID ${id} deactivated`, { id, is_active: 0 })
     return { success: true }
   },
 
@@ -392,7 +412,12 @@ export const webApi = {
   // Halls
   getHalls: async () => {
     await ensureDb()
-    return webDb.query("SELECT * FROM halls ORDER BY sort_order")
+    // NOTE: sort_order defaults to 0 for every hall and is never set by the UI,
+    // so it does not actually order anything. h.id is added as an explicit,
+    // immutable tiebreak because this array's order is what the rotation
+    // engine indexes into — an undefined tiebreak here silently breaks the
+    // "visit every hall before repeating" guarantee.
+    return webDb.query("SELECT * FROM halls ORDER BY sort_order, id")
   },
 
   saveHall: async (data: any) => {
@@ -400,11 +425,13 @@ export const webApi = {
     if (data.id) {
       webDb.run("UPDATE halls SET hall_code=?,name=?,capacity=?,block=?,is_active=? WHERE id=?",
         [data.hall_code, data.name, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
+      writeAuditLog(null, "HALL_STATUS_CHANGE", `Hall ${data.hall_code} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = webDb.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
     const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?)",
       [data.hall_code, data.name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
+    writeAuditLog(null, "CREATE_HALL", `Hall created: ${data.hall_code}`, { id: lastInsertRowid, hall_code: data.hall_code })
     return webDb.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   },
 
@@ -413,10 +440,11 @@ export const webApi = {
     const inUse = webDb.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: hall has existing allocations." }
     webDb.run("DELETE FROM halls WHERE id=?", [id])
+    writeAuditLog(null, "DELETE_HALL", `Hall ID ${id} deleted`, { id })
     return { success: true }
   },
 
-  reorderHalls: async (hallIds: number[]) => {
+  reOrderHalls: async (hallIds: number[]) => {
     await ensureDb()
     hallIds.forEach((id, i) => webDb.run("UPDATE halls SET sort_order=? WHERE id=?", [i+1, id]))
     return { success: true }
@@ -439,22 +467,33 @@ export const webApi = {
 
   getDashboardStats: async () => {
     await ensureDb()
-    const cycles = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_cycles")
-    const sessions = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_sessions WHERE status IN ('confirmed','published')")
-    const staff = webDb.queryOne<any>("SELECT COUNT(*) as total FROM users WHERE role='staff' AND is_active=1")
-    const halls = webDb.queryOne<any>("SELECT COUNT(*) as total FROM halls WHERE is_active=1")
-    const upcoming = webDb.query<any>(
-      `SELECT es.*, ec.name as cycle_name FROM exam_sessions es
-       JOIN exam_cycles ec ON es.cycle_id=ec.id
-       WHERE es.exam_date >= date('now')
-       ORDER BY es.exam_date, es.session_type LIMIT 5`
+    const staffRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM users WHERE role='staff' AND is_active=1")
+    const hallsRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM halls WHERE is_active=1")
+    const cyclesRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_cycles")
+    const confirmedRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_sessions WHERE status IN ('confirmed','published')")
+    // Upcoming = sessions from today onwards that are not yet published
+    const upcomingRow = webDb.queryOne<any>(
+      `SELECT COUNT(*) as total FROM exam_sessions WHERE exam_date >= date('now') AND status != 'published'`
+    )
+    // Allocated halls = distinct halls that have at least one allocation in confirmed/published sessions
+    const allocatedRow = webDb.queryOne<any>(
+      `SELECT COUNT(DISTINCT a.hall_id) as total
+       FROM allocations a
+       JOIN exam_sessions es ON a.session_id = es.id
+       WHERE es.status IN ('confirmed','published')`
+    )
+    // Total unique exam days (distinct exam_date values across all sessions)
+    const examDaysRow = webDb.queryOne<any>(
+      `SELECT COUNT(DISTINCT exam_date) as total FROM exam_sessions`
     )
     return {
-      totalCycles: cycles?.total ?? 0,
-      activeSessions: sessions?.total ?? 0,
-      totalStaff: staff?.total ?? 0,
-      totalHalls: halls?.total ?? 0,
-      upcomingSessions: upcoming
+      totalStaff: staffRow?.total ?? 0,
+      totalHalls: hallsRow?.total ?? 0,
+      totalCycles: cyclesRow?.total ?? 0,
+      confirmedSessions: confirmedRow?.total ?? 0,
+      upcomingSessions: upcomingRow?.total ?? 0,
+      allocatedHalls: allocatedRow?.total ?? 0,
+      totalExamDays: examDaysRow?.total ?? 0
     }
   },
 
@@ -467,6 +506,7 @@ export const webApi = {
   createCycle: async (data: any) => {
     await ensureDb()
     const { lastInsertRowid } = webDb.run("INSERT INTO exam_cycles(name,academic_year,status) VALUES(?,?,?)", [data.name, data.academic_year, "draft"])
+    writeAuditLog(null, "CREATE_CYCLE", `Exam cycle created: ${data.name}`, { id: lastInsertRowid, name: data.name, academic_year: data.academic_year })
     return webDb.queryOne("SELECT * FROM exam_cycles WHERE id=?", [lastInsertRowid])
   },
 
@@ -477,6 +517,17 @@ export const webApi = {
     return webDb.queryOne("SELECT * FROM exam_cycles WHERE id=?", [id])
   },
 
+  deleteAllCycles: async () => {
+    await ensureDb()
+    webDb.run("DELETE FROM allocations")
+    webDb.run("DELETE FROM rotation_history")
+    try { webDb.run("DELETE FROM notifications") } catch {}
+    webDb.run("DELETE FROM exam_sessions")
+    webDb.run("DELETE FROM exam_cycles")
+    writeAuditLog(null, "DELETE_ALL_CYCLES", "All exam cycles and related allocation data deleted")
+    return { success: true }
+  },
+
   getSessions: async (cycleId: number) => {
     await ensureDb()
     return webDb.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
@@ -485,9 +536,29 @@ export const webApi = {
   createSessions: async (cycleId: number, sessions: any[]) => {
     await ensureDb()
     return webDb.runTransaction(() => {
-      webDb.run("DELETE FROM exam_sessions WHERE cycle_id=?", [cycleId])
+      // Safety guard: only delete sessions that are NOT confirmed or published
+      // Never cascade-delete historical/confirmed allocation data
+      const safeToDelete = webDb.query<any>(
+        "SELECT id FROM exam_sessions WHERE cycle_id=? AND status NOT IN ('confirmed','published')",
+        [cycleId]
+      )
+      for (const s of safeToDelete) {
+        webDb.run("DELETE FROM exam_sessions WHERE id=?", [s.id])
+      }
+      // Find the highest existing rotation_step (from surviving confirmed sessions)
+      const maxStepRow = webDb.queryOne<any>(
+        "SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?",
+        [cycleId]
+      )
+      let step = (maxStepRow?.m ?? 0) + 1
       const seen = new Set<string>()
-      let step = 1
+      // Don't re-add sessions that already exist (confirmed/published)
+      const existing = webDb.query<any>(
+        "SELECT exam_date, session_type FROM exam_sessions WHERE cycle_id=?",
+        [cycleId]
+      )
+      for (const e of existing) seen.add(`${e.exam_date}_${e.session_type}`)
+
       for (const s of sessions) {
         const key = `${s.exam_date}_${s.session_type}`
         if (seen.has(key)) continue
@@ -497,6 +568,7 @@ export const webApi = {
           [cycleId, s.exam_date, s.session_type, step++, s.reporting_time??null, s.exam_start??null, s.exam_end??null, "pending"]
         )
       }
+      writeAuditLog(null, "CREATE_SESSION", `Generated ${sessions.length} sessions for cycle ${cycleId}`, { cycleId, count: sessions.length })
       return webDb.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
     })
   },
@@ -545,6 +617,7 @@ export const webApi = {
       "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
       [cycleId, data.exam_date, data.session_type, step, data.reporting_time??null, data.exam_start??null, data.exam_end??null, "pending"]
     )
+    writeAuditLog(null, "CREATE_SESSION", `Added session ${data.exam_date} ${data.session_type} for cycle ${cycleId}`, { id: lastInsertRowid, cycleId, ...data })
     return webDb.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
   },
 
@@ -552,6 +625,9 @@ export const webApi = {
     await ensureDb()
     const session = webDb.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
     if (!session) return { success: false, error: "Session not found." }
+    if (session.status === "confirmed" || session.status === "published") {
+      return { success: false, error: "Cannot delete a confirmed or published session. Reopen it first." }
+    }
     const hasAllocations = webDb.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id=?", [id])
     if (hasAllocations && hasAllocations.c > 0) {
       return { success: false, error: "Cannot delete session: allocations already exist." }
@@ -561,6 +637,28 @@ export const webApi = {
     remaining.forEach((s, idx) => {
       webDb.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
     })
+    writeAuditLog(null, "DELETE_SESSION", `Session ID ${id} deleted`, { id, cycle_id: session.cycle_id })
+    return { success: true }
+  },
+
+  reopenSession: async (sessionId: number) => {
+    await ensureDb()
+    const session = webDb.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [sessionId])
+    if (!session) return { success: false, error: "Session not found." }
+    if (session.status !== "confirmed" && session.status !== "published") {
+      return { success: false, error: "Only confirmed or published sessions can be reopened." }
+    }
+    // Remove rotation_history for this session so the round-robin treats it as unconfirmed
+    webDb.run("DELETE FROM rotation_history WHERE session_id=?", [sessionId])
+    // Reset allocation to draft (keep allocations so admin can see previous state)
+    webDb.run("UPDATE allocations SET is_manually_edited=0, edit_reason=NULL WHERE session_id=?", [sessionId])
+    webDb.run("UPDATE exam_sessions SET status='draft', updated_at=datetime('now') WHERE id=?", [sessionId])
+    // If cycle was marked published, roll back its status too
+    webDb.run(
+      `UPDATE exam_cycles SET status='active' WHERE id=? AND status='published'`,
+      [session.cycle_id]
+    )
+    writeAuditLog(null, "REOPEN_SESSION", `Session ${sessionId} reopened`, { sessionId })
     return { success: true }
   },
 
@@ -577,6 +675,7 @@ export const webApi = {
       )
     }
     webDb.run("UPDATE exam_sessions SET status='draft' WHERE id=?", [sessionId])
+    writeAuditLog(null, "GENERATE_ALLOCATION", `Draft allocation generated for session ${sessionId}`, { sessionId, staffCount: userIds.length, hallCount: hallIds.length })
 
     const validationEntries = entries.map(e => ({ ...e, sessionId }))
     const validation = validateAllocation(sessionId, validationEntries, hallIds, userIds)
@@ -601,6 +700,7 @@ export const webApi = {
       "UPDATE allocations SET hall_id=?, is_manually_edited=1, edit_reason=?, updated_at=datetime('now') WHERE session_id=? AND user_id=?",
       [newHallId, editReason ?? null, sessionId, userId]
     )
+    writeAuditLog(null, "EDIT_ALLOCATION", `Manual override for session ${sessionId}, user ${userId} to hall ${newHallId}`, { sessionId, userId, newHallId, editReason })
     return { success: true }
   },
 
@@ -642,6 +742,7 @@ export const webApi = {
       return {
         success: false,
         error: "Validation failed. Cannot confirm.",
+        validation,
         blockingErrors: validation.blockingErrors
       }
     }
@@ -674,6 +775,7 @@ export const webApi = {
     }
 
     webDb.run("UPDATE exam_sessions SET status = 'confirmed', updated_at = datetime('now') WHERE id = ?", [sessionId])
+    writeAuditLog(null, "CONFIRM_ALLOCATION", `Session ${sessionId} confirmed`, { sessionId, count: entries.length })
     return { success: true }
   },
 
@@ -690,6 +792,53 @@ export const webApi = {
     if (!unpub || unpub.c === 0) {
       webDb.run("UPDATE exam_cycles SET status = 'published' WHERE id = ?", [session.cycle_id])
     }
+    writeAuditLog(null, "PUBLISH_ALLOCATION", `Session ${sessionId} published`, { sessionId })
+
+    // Create in-app notifications for all staff assigned in this session
+    try {
+      const allocations = webDb.query<any>(
+        `SELECT a.user_id, h.hall_code, ec.name as cycle_name
+         FROM allocations a
+         JOIN halls h ON a.hall_id = h.id
+         JOIN exam_sessions es ON a.session_id = es.id
+         JOIN exam_cycles ec ON es.cycle_id = ec.id
+         WHERE a.session_id = ?`,
+        [sessionId]
+      )
+      const sessionLabel = `${session.exam_date} ${session.session_type}`
+      for (const a of allocations) {
+        webDb.run(
+          "INSERT INTO notifications(user_id, title, message, session_id) VALUES(?,?,?,?)",
+          [
+            a.user_id,
+            "New Exam Duty Published",
+            `Your invigilation duty has been published for ${sessionLabel} — Hall ${a.hall_code} (${a.cycle_name}).`,
+            sessionId
+          ]
+        )
+      }
+    } catch (e) {
+      // Notification failure must never block publish
+      console.warn("[EIAS] Failed to create notifications:", e)
+    }
+
+    return { success: true }
+  },
+
+  removeAllocation: async (sessionId: number, userId: number) => {
+    await ensureDb()
+    const session = webDb.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
+    if (!session) return { success: false, error: "Session not found." }
+    if (session.status === "published") {
+      return { success: false, error: "Cannot remove allocations from a published session. Reopen it first." }
+    }
+    const existing = webDb.queryOne<any>(
+      "SELECT id FROM allocations WHERE session_id = ? AND user_id = ?",
+      [sessionId, userId]
+    )
+    if (!existing) return { success: false, error: "Allocation entry not found." }
+    webDb.run("DELETE FROM allocations WHERE session_id = ? AND user_id = ?", [sessionId, userId])
+    writeAuditLog(null, "REMOVE_ALLOCATION", `Removed allocation for session ${sessionId}, user ${userId}`, { sessionId, userId })
     return { success: true }
   },
 
@@ -779,8 +928,11 @@ export const webApi = {
       "SELECT * FROM exam_sessions WHERE cycle_id = ? ORDER BY rotation_step",
       [cycleId]
     )
+    // Include hall_id and user_id explicitly so AllocationMatrixView lookups work correctly
     const allocations = webDb.query<any>(
-      `SELECT a.session_id, u.staff_id, u.name as staffName, d.code as deptCode, h.hall_code
+      `SELECT a.session_id, a.user_id, a.hall_id, a.is_manually_edited,
+              u.staff_id, u.name as staffName, d.code as deptCode,
+              h.hall_code, h.name as hallName
        FROM allocations a
        JOIN exam_sessions es ON a.session_id = es.id
        JOIN users u ON a.user_id = u.id
@@ -790,7 +942,20 @@ export const webApi = {
        ORDER BY es.rotation_step, h.sort_order`,
       [cycleId]
     )
-    return { cycle, sessions, allocations }
+    // Build unique ordered staff list from allocations in this cycle
+    const userMap = new Map<number, any>()
+    for (const a of allocations) {
+      if (!userMap.has(a.user_id)) {
+        userMap.set(a.user_id, {
+          id: a.user_id,
+          staff_id: a.staffId ?? a.staff_id,
+          name: a.staffName,
+          deptName: a.deptCode ?? null
+        })
+      }
+    }
+    const users = Array.from(userMap.values())
+    return { cycle, sessions, allocations, users }
   },
 
   getAuditReport: async (cycleId: number) => {
@@ -863,5 +1028,55 @@ export const webApi = {
     } catch (e: any) {
       return { success: false, error: e.message }
     }
+  },
+
+  // ─── Notifications ─────────────────────────────────────────────────────────
+  getNotifications: async (userId: number) => {
+    await ensureDb()
+    return webDb.query(
+      `SELECT n.*, es.exam_date, es.session_type, h.hall_code
+       FROM notifications n
+       LEFT JOIN exam_sessions es ON n.session_id = es.id
+       LEFT JOIN allocations a ON a.session_id = n.session_id AND a.user_id = n.user_id
+       LEFT JOIN halls h ON a.hall_id = h.id
+       WHERE n.user_id = ?
+       ORDER BY n.created_at DESC
+       LIMIT 50`,
+      [userId]
+    )
+  },
+
+  getUnreadNotificationCount: async (userId: number) => {
+    await ensureDb()
+    const row = webDb.queryOne<any>(
+      "SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND is_read=0",
+      [userId]
+    )
+    return row?.c ?? 0
+  },
+
+  markNotificationRead: async (notificationId: number) => {
+    await ensureDb()
+    webDb.run("UPDATE notifications SET is_read=1 WHERE id=?", [notificationId])
+    return { success: true }
+  },
+
+  markAllNotificationsRead: async (userId: number) => {
+    await ensureDb()
+    webDb.run("UPDATE notifications SET is_read=1 WHERE user_id=?", [userId])
+    return { success: true }
+  },
+
+  // ─── Audit Log (admin view) ────────────────────────────────────────────────
+  getAuditLog: async (limit = 100) => {
+    await ensureDb()
+    return webDb.query(
+      `SELECT al.*, u.name as actor_name, u.staff_id as actor_staff_id
+       FROM audit_log al
+       LEFT JOIN users u ON al.user_id = u.id
+       ORDER BY al.created_at DESC
+       LIMIT ?`,
+      [limit]
+    )
   }
 }
