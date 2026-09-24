@@ -273,3 +273,19 @@ function seedDefaults(): void {
 
 // ?? Export db helper ??????????????????????????????????????????????????????
 export const db = { run, query, queryOne, lastInsertId, runTransaction }
+
+export function writeAuditLog(
+  userId: number | null,
+  action: string,
+  description: string,
+  payload?: any
+): void {
+  try {
+    run(
+      "INSERT INTO audit_log(user_id, action, description, payload, created_at) VALUES(?,?,?,?,datetime('now'))",
+      [userId, action, description, payload ? JSON.stringify(payload) : null]
+    )
+  } catch (e) {
+    console.warn("[EIAS Audit Log] Failed to write audit log:", e)
+  }
+}
