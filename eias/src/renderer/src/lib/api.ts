@@ -46,7 +46,6 @@ export const api = apiBridge as {
   getHalls: () => Promise<any[]>
   saveHall: (data: any) => Promise<any>
   deleteHall: (id: number) => Promise<any>
-  reorderHalls: (hallIds: number[]) => Promise<any>
   // Settings
   getSettings: () => Promise<Record<string, string>>
   saveSetting: (key: string, value: string) => Promise<any>

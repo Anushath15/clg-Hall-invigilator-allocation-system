@@ -242,18 +242,18 @@ function generateRotation(sessionId: number, userIds: number[], hallIds: number[
 
 function getSessionAllocationFull(sessionId: number) {
   return webDb.query(
-    `SELECT a.*, 
-            u.name as staff_name, u.staff_id, u.designation,
-            d.name as department_name, d.code as department_code,
-            h.hall_code, h.name as hall_name, h.block,
-            gh.hall_code as generated_hall_code
+    `SELECT a.id, a.is_manually_edited, a.edit_reason,
+            u.id as userId, u.staff_id, u.name as userName, u.designation,
+            d.name as deptName, d.code as deptCode,
+            h.id as hallId, h.hall_code, h.name as hallName,
+            gh.hall_code as generatedHallCode
      FROM allocations a
      JOIN users u ON a.user_id = u.id
      JOIN halls h ON a.hall_id = h.id
-     LEFT JOIN halls gh ON a.generated_hall_id = gh.id
      LEFT JOIN departments d ON u.department_id = d.id
+     LEFT JOIN halls gh ON a.generated_hall_id = gh.id
      WHERE a.session_id = ?
-     ORDER BY h.sort_order, h.hall_code`,
+     ORDER BY d.code, u.name`,
     [sessionId]
   )
 }
@@ -441,12 +441,6 @@ export const webApi = {
     if (inUse) return { success: false, error: "Cannot delete: hall has existing allocations." }
     webDb.run("DELETE FROM halls WHERE id=?", [id])
     writeAuditLog(null, "DELETE_HALL", `Hall ID ${id} deleted`, { id })
-    return { success: true }
-  },
-
-  reOrderHalls: async (hallIds: number[]) => {
-    await ensureDb()
-    hallIds.forEach((id, i) => webDb.run("UPDATE halls SET sort_order=? WHERE id=?", [i+1, id]))
     return { success: true }
   },
 
@@ -997,55 +991,6 @@ export const webApi = {
     } catch (e: any) {
       return { success: false, error: e.message }
     }
-  },
-
-  // ─── Notifications ─────────────────────────────────────────────────────────
-  getNotifications: async (userId: number) => {
-    await ensureDb()
-    return webDb.query(
-      `SELECT n.*, es.exam_date, es.session_type, h.hall_code
-       FROM notifications n
-       LEFT JOIN exam_sessions es ON n.session_id = es.id
-       LEFT JOIN allocations a ON a.session_id = n.session_id AND a.user_id = n.user_id
-       LEFT JOIN halls h ON a.hall_id = h.id
-       WHERE n.user_id = ?
-       ORDER BY n.created_at DESC
-       LIMIT 50`,
-      [userId]
-    )
-  },
-
-  getUnreadNotificationCount: async (userId: number) => {
-    await ensureDb()
-    const row = webDb.queryOne<any>(
-      "SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND is_read=0",
-      [userId]
-    )
-    return row?.c ?? 0
-  },
-
-  markNotificationRead: async (notificationId: number) => {
-    await ensureDb()
-    webDb.run("UPDATE notifications SET is_read=1 WHERE id=?", [notificationId])
-    return { success: true }
-  },
-
-  markAllNotificationsRead: async (userId: number) => {
-    await ensureDb()
-    webDb.run("UPDATE notifications SET is_read=1 WHERE user_id=?", [userId])
-    return { success: true }
-  },
-
-  // ─── Audit Log (admin view) ────────────────────────────────────────────────
-  getAuditLog: async (limit = 100) => {
-    await ensureDb()
-    return webDb.query(
-      `SELECT al.*, u.name as actor_name, u.staff_id as actor_staff_id
-       FROM audit_log al
-       LEFT JOIN users u ON al.user_id = u.id
-       ORDER BY al.created_at DESC
-       LIMIT ?`,
-      [limit]
-    )
   }
 }
+

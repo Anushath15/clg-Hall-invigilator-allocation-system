@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { GraduationCap, Eye, EyeOff, Loader2, AlertTriangle } from "lucide-react"
+import { GraduationCap, Eye, EyeOff, Loader2 } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
@@ -13,7 +13,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { login } = useAuthStore()
-  const isDesktop = typeof window !== "undefined" && typeof window.api !== "undefined"
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()

@@ -95,10 +95,6 @@ export function registerMasterHandlers() {
     if (inUse) return { success: false, error: "Cannot delete: hall has existing allocations." }
     db.run("DELETE FROM halls WHERE id=?", [id]); return { success: true }
   })
-  ipcMain.handle("master:reorderHalls", async (_, hallIds: number[]) => {
-    hallIds.forEach((id, i) => db.run("UPDATE halls SET sort_order=? WHERE id=?", [i+1, id]))
-    return { success: true }
-  })
 
   // SETTINGS
   ipcMain.handle("master:getSettings", () => {

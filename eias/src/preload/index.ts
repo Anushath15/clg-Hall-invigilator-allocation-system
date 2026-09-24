@@ -18,7 +18,6 @@ const api = {
   getHalls:        () => ipcRenderer.invoke("master:getHalls"),
   saveHall:        (data: any) => ipcRenderer.invoke("master:saveHall", data),
   deleteHall:      (id: number) => ipcRenderer.invoke("master:deleteHall", id),
-  reorderHalls:    (hallIds: number[]) => ipcRenderer.invoke("master:reorderHalls", hallIds),
   // Settings
   getSettings:     () => ipcRenderer.invoke("master:getSettings"),
   saveSetting:     (key: string, value: string) => ipcRenderer.invoke("master:saveSetting", key, value),
