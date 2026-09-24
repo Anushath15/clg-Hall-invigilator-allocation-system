@@ -1,4 +1,4 @@
-﻿import bcrypt from "bcryptjs"
+import bcrypt from "bcryptjs"
 import { db } from "../db/database"
 
 export interface LoginResult {
@@ -8,8 +8,9 @@ export interface LoginResult {
 }
 
 export async function login(staffId: string, password: string): Promise<LoginResult> {
-  const user = db.queryOne<any>("SELECT * FROM users WHERE staff_id = ? AND is_active = 1", [staffId])
+  const user = db.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
   if (!user) return { success: false, error: "Invalid Staff ID or password." }
+  if (!user.is_active) return { success: false, error: "Account is inactive. Please contact administrator." }
 
   if (!user.password_hash) {
     const hash = await bcrypt.hash(password, 12)
@@ -19,6 +20,14 @@ export async function login(staffId: string, password: string): Promise<LoginRes
 
   const valid = await bcrypt.compare(password, user.password_hash)
   if (!valid) return { success: false, error: "Invalid Staff ID or password." }
+  try {
+    db.run(
+      "INSERT INTO audit_log(user_id, action, description, payload, created_at) VALUES(?,?,?,?,datetime('now'))",
+      [user.id, "LOGIN", `User ${user.staff_id} logged in`, JSON.stringify({ role: user.role })]
+    )
+  } catch (e) {
+    // Ignore audit failure
+  }
   return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
 }
 
