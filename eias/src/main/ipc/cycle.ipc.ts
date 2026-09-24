@@ -92,6 +92,9 @@ export function registerCycleHandlers() {
   ipcMain.handle("cycle:deleteSession", async (_, id) => {
     const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
     if (!session) return { success: false, error: "Session not found." }
+    if (session.status === "confirmed" || session.status === "published") {
+      return { success: false, error: "Cannot delete a confirmed or published session." }
+    }
     const hasAllocations = db.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id=?", [id])
     if (hasAllocations && hasAllocations.c > 0) {
       return { success: false, error: "Cannot delete session: allocations already exist." }
