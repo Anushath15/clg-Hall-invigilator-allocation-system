@@ -431,7 +431,7 @@ export default function AllocationWorkspacePage() {
                 <div className="card text-center py-16 text-brand-textsec">
                   <Zap className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p className="font-medium">No allocation for this session yet</p>
-                  <p className="text-sm mt-1">Click &quot;Select Staff {&apos;&amp;&apos;} Generate&quot; to begin.</p>
+                  <p className="text-sm mt-1">Click &quot;Select Staff {'&'} Generate&quot; to begin.</p>
                 </div>
               )}
             </>
