@@ -17,10 +17,6 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    if (!isDesktop) {
-      toast.error("Desktop app required. Please click the EIAS desktop app on your taskbar to sign in.", { duration: 6000 })
-      return
-    }
     if (!staffId.trim() || !password) return toast.error("Please enter Staff ID and password.")
     setLoading(true)
     try {
@@ -56,21 +52,6 @@ export default function LoginPage() {
         {/* Login card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-lg font-semibold text-brand-textmain mb-4">Sign in to your account</h2>
-
-          {!isDesktop && (
-            <div className="mb-5 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs flex items-start gap-2.5">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
-              <div>
-                <p className="font-semibold text-amber-900">Web Browser Detected</p>
-                <p className="mt-1 text-amber-800 leading-relaxed">
-                  You are viewing EIAS inside a web browser. EIAS is a desktop app requiring Electron to access the local SQLite database and allocation engine.
-                </p>
-                <p className="mt-1 font-medium text-amber-900">
-                  Please look for the EIAS desktop application window on your taskbar, or launch via the desktop shortcut.
-                </p>
-              </div>
-            </div>
-          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
