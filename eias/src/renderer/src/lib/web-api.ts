@@ -517,17 +517,6 @@ export const webApi = {
     return webDb.queryOne("SELECT * FROM exam_cycles WHERE id=?", [id])
   },
 
-  deleteAllCycles: async () => {
-    await ensureDb()
-    webDb.run("DELETE FROM allocations")
-    webDb.run("DELETE FROM rotation_history")
-    try { webDb.run("DELETE FROM notifications") } catch {}
-    webDb.run("DELETE FROM exam_sessions")
-    webDb.run("DELETE FROM exam_cycles")
-    writeAuditLog(null, "DELETE_ALL_CYCLES", "All exam cycles and related allocation data deleted")
-    return { success: true }
-  },
-
   getSessions: async (cycleId: number) => {
     await ensureDb()
     return webDb.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
@@ -641,26 +630,6 @@ export const webApi = {
     return { success: true }
   },
 
-  reopenSession: async (sessionId: number) => {
-    await ensureDb()
-    const session = webDb.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [sessionId])
-    if (!session) return { success: false, error: "Session not found." }
-    if (session.status !== "confirmed" && session.status !== "published") {
-      return { success: false, error: "Only confirmed or published sessions can be reopened." }
-    }
-    // Remove rotation_history for this session so the round-robin treats it as unconfirmed
-    webDb.run("DELETE FROM rotation_history WHERE session_id=?", [sessionId])
-    // Reset allocation to draft (keep allocations so admin can see previous state)
-    webDb.run("UPDATE allocations SET is_manually_edited=0, edit_reason=NULL WHERE session_id=?", [sessionId])
-    webDb.run("UPDATE exam_sessions SET status='draft', updated_at=datetime('now') WHERE id=?", [sessionId])
-    // If cycle was marked published, roll back its status too
-    webDb.run(
-      `UPDATE exam_cycles SET status='active' WHERE id=? AND status='published'`,
-      [session.cycle_id]
-    )
-    writeAuditLog(null, "REOPEN_SESSION", `Session ${sessionId} reopened`, { sessionId })
-    return { success: true }
-  },
 
   // Allocation
   generateAllocation: async (sessionId: number, userIds: number[], hallIds: number[]) => {

@@ -131,22 +131,6 @@ export function publishAllocation(sessionId: number) {
   return { success: true }
 }
 
-export function reopenSession(sessionId: number) {
-  const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [sessionId])
-  if (!session) return { success: false, error: "Session not found." }
-  if (session.status !== "confirmed" && session.status !== "published") {
-    return { success: false, error: "Only confirmed or published sessions can be reopened." }
-  }
-  // Remove rotation_history so round-robin treats this session as unconfirmed
-  db.run("DELETE FROM rotation_history WHERE session_id=?", [sessionId])
-  // Reset manual edits (keep allocations visible but mark as system-generated)
-  db.run("UPDATE allocations SET is_manually_edited=0, edit_reason=NULL WHERE session_id=?", [sessionId])
-  db.run("UPDATE exam_sessions SET status='draft', updated_at=datetime('now') WHERE id=?", [sessionId])
-  // Roll back cycle status if it was published
-  db.run("UPDATE exam_cycles SET status='active' WHERE id=? AND status='published'", [session.cycle_id])
-  writeAuditLog(null, "REOPEN_SESSION", `Session ${sessionId} reopened`, { sessionId })
-  return { success: true }
-}
 
 export function getSessionAllocationFull(sessionId: number) {
   return db.query(
