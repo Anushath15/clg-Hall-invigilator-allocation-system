@@ -97,6 +97,11 @@ export default function AllocationWorkspacePage() {
   }
 
   async function handleGenerate(userIds?: number[], hallIds?: number[]) {
+    // Guard: never allow regeneration of a confirmed or published session
+    if (activeSession?.status === "confirmed" || activeSession?.status === "published") {
+      toast.error("This session is already confirmed. It cannot be regenerated.")
+      return
+    }
     if (!userIds || !hallIds) {
       setShowSelector(true)
       await loadSelectors()
@@ -176,7 +181,7 @@ export default function AllocationWorkspacePage() {
       <button onClick={() => handleGenerate()} disabled={loading}
         className="btn-primary flex items-center gap-2">
         {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-        Select Staff & Generate
+        Select Staff {'&'} Generate
       </button>
     ),
     draft: (
@@ -425,7 +430,7 @@ export default function AllocationWorkspacePage() {
                 <div className="card text-center py-16 text-brand-textsec">
                   <Zap className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p className="font-medium">No allocation for this session yet</p>
-                  <p className="text-sm mt-1">Click "Select Staff & Generate" to begin.</p>
+                  <p className="text-sm mt-1">Click &quot;Select Staff {&apos;&amp;&apos;} Generate&quot; to begin.</p>
                 </div>
               )}
             </>
