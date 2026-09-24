@@ -86,6 +86,7 @@ export default function AllocationWorkspacePage() {
   useEffect(() => { if (activeSession) loadAllocation() }, [activeSession])
 
   async function loadAllocation() {
+    setValidation(null)
     const data = await api.getSessionAllocation(activeSession.id)
     setAllocation(data)
   }
