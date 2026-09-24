@@ -168,22 +168,6 @@ export function getValidHallsFor(userId: number, sessionId: number) {
   return getValidHallsForStaff(userId, sessionId, sessionHalls, occupied)
 }
 
-export async function removeAllocationEntry(sessionId: number, userId: number) {
-  const session = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
-  if (!session) return { success: false, error: "Session not found." }
-  if (session.status === "published") {
-    return { success: false, error: "Cannot remove allocations from a published session. Reopen it first." }
-  }
-  const existing = db.queryOne<any>(
-    "SELECT id FROM allocations WHERE session_id = ? AND user_id = ?",
-    [sessionId, userId]
-  )
-  if (!existing) return { success: false, error: "Allocation entry not found." }
-  db.run("DELETE FROM allocations WHERE session_id = ? AND user_id = ?", [sessionId, userId])
-  writeAuditLog(null, "REMOVE_ALLOCATION", `Removed allocation for session ${sessionId}, user ${userId}`, { sessionId, userId })
-  return { success: true }
-}
-
 export function getStaffDutyHistory(userId: number) {
   return db.query(
     `SELECT es.exam_date, es.session_type, es.reporting_time, es.exam_start, es.exam_end,
