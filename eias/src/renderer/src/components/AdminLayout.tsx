@@ -1,4 +1,4 @@
-﻿import { Outlet, NavLink, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useNavigate } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
   BarChart3, Settings, LogOut, GraduationCap, History
@@ -9,7 +9,7 @@ import toast from "react-hot-toast"
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/cycles", icon: Calendar, label: "Exam Cycles" },
+  { to: "/cycles", icon: Calendar, label: "Allocation Batches" },
   { to: "/history", icon: History, label: "Allocation History" },
   { to: "/reports", icon: BarChart3, label: "Reports" },
 ]

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Plus, ChevronRight, Calendar, Loader2 } from "lucide-react"
 import { api } from "../lib/api"
@@ -22,11 +22,11 @@ export default function ExamCyclesPage() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-brand-textmain">Exam Cycles</h1>
-          <p className="text-brand-textsec mt-1">Create and manage exam allocation cycles</p>
+          <h1 className="text-2xl font-bold text-brand-textmain">Allocation Batches</h1>
+          <p className="text-brand-textsec mt-1">Create and manage exam allocation batches</p>
         </div>
         <button onClick={() => setShowWizard(true)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Create Exam Allocation
+          <Plus className="w-4 h-4" /> New Allocation Batch
         </button>
       </div>
 
@@ -41,8 +41,8 @@ export default function ExamCyclesPage() {
         {cycles.length === 0 && (
           <div className="card text-center py-16 text-brand-textsec">
             <Calendar className="w-12 h-12 mx-auto mb-4 opacity-30" />
-            <p className="font-medium text-base">No exam cycles created yet</p>
-            <p className="text-sm mt-1">Click "Create Exam Allocation" to begin.</p>
+            <p className="font-medium text-base">No allocation batches created yet</p>
+            <p className="text-sm mt-1">Click &quot;New Allocation Batch&quot; to begin.</p>
           </div>
         )}
         {cycles.map((c) => (

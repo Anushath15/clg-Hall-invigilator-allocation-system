@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { History, Download } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate } from "../lib/utils"
@@ -48,7 +48,7 @@ export default function AllocationHistoryPage() {
     doc.text(`Generated: ${new Date().toLocaleString()}  ·  Records: ${history.length}`, 14, 27)
     autoTable(doc, {
       startY: 32,
-      head: [["Staff ID","Name","Dept","Date","Session","Hall","Cycle","Edited"]],
+      head: [["Staff ID","Name","Dept","Date","Session","Hall","Batch","Edited"]],
       body: history.map(r => [r.staff_id, r.staffName, r.deptCode ?? "—", formatDate(r.exam_date), r.session_type, r.hall_code, r.cycleName, r.is_manually_edited ? "Yes" : "No"]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [18, 59, 42] }
@@ -68,10 +68,10 @@ export default function AllocationHistoryPage() {
         <h2 className="text-sm font-semibold text-brand-textmain mb-4">Filter Records</h2>
         <div className="grid grid-cols-4 gap-4">
           <div>
-            <label className="label">By Exam Cycle</label>
+            <label className="label">By Allocation Batch</label>
             <select className="input-field" value={filters.cycleId}
               onChange={e => setFilters(f => ({ ...f, cycleId: e.target.value, sessionId: "" }))}>
-              <option value="">— All Cycles —</option>
+              <option value="">— All Batches —</option>
               {cycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
@@ -122,7 +122,7 @@ export default function AllocationHistoryPage() {
           <div className="card p-0 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-brand-border">
-                <tr>{["Staff ID","Name","Dept","Date","Session","Hall","Cycle","Type"].map(h =>
+                <tr>{["Staff ID","Name","Dept","Date","Session","Hall","Batch","Type"].map(h =>
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}
                 </tr>
               </thead>
@@ -153,7 +153,7 @@ export default function AllocationHistoryPage() {
         <div className="card text-center py-16 text-brand-textsec">
           <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">Set filters above and click Search Records</p>
-          <p className="text-sm mt-1">Filter by cycle, session, staff member, or hall</p>
+          <p className="text-sm mt-1">Filter by batch, session, staff member, or hall</p>
         </div>
       )}
     </div>

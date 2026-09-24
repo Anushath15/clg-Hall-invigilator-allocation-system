@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Calendar, Clock, MapPin, Building2, Printer, ChevronRight } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
@@ -49,7 +49,7 @@ export default function StaffDutyPage() {
         <tr><td>Session</td><td>${formatSession(next.session_type)}</td></tr>
         <tr><td>Reporting Time</td><td>${next.reporting_time}</td></tr>
         <tr><td>Exam Time</td><td>${next.exam_start} – ${next.exam_end}</td></tr>
-        <tr><td>Exam Cycle</td><td>${next.cycleName}</td></tr>
+        <tr><td>Allocation Batch</td><td>${next.cycleName}</td></tr>
       </table>
       <div class="hall-box">${next.hall_code}</div>
       <p style="text-align:center; font-size:12px; color:#555;">${next.hallName}</p>
@@ -153,7 +153,7 @@ export default function StaffDutyPage() {
           <h2 className="text-sm font-semibold text-brand-textmain mb-3">Past Duties</h2>
           <table className="w-full text-sm">
             <thead>
-              <tr>{["Date","Session","Hall","Reporting","Exam Time","Cycle"].map(h =>
+              <tr>{["Date","Session","Hall","Reporting","Exam Time","Batch"].map(h =>
                 <th key={h} className="text-left py-2 text-xs font-semibold text-brand-textsec uppercase tracking-wider pr-4">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-brand-border">

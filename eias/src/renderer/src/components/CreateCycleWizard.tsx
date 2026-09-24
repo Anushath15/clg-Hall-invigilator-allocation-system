@@ -189,7 +189,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   }
 
   async function handleCreate() {
-    if (!cycleName.trim()) return toast.error("Cycle name is required.")
+    if (!cycleName.trim()) return toast.error("Batch name is required.")
     const sessions: any[] = []
     const uniqueDates = Array.from(new Set(selectedDates)).sort()
     for (const date of uniqueDates) {
@@ -222,11 +222,11 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
         throw new Error("Failed to create cycle record.")
       }
       await api.createSessions(cycle.id, sessions)
-      toast.success(`Exam cycle created with ${sessions.length} sessions!`)
+      toast.success(`Allocation batch created with ${sessions.length} sessions!`)
       onCreated(cycle)
     } catch (err: any) {
       console.error("Failed to create cycle:", err)
-      toast.error(err?.message || "Failed to create cycle.")
+      toast.error(err?.message || "Failed to create batch.")
     } finally {
       setLoading(false)
     }
@@ -248,8 +248,8 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
               <CalendarIcon className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-brand-textmain">Create Exam Allocation</h2>
-              <p className="text-xs text-brand-textsec">St. Xavier&apos;s Catholic College of Engineering — Exam Cycle Setup</p>
+              <h2 className="text-lg font-bold text-brand-textmain">New Allocation Batch</h2>
+              <p className="text-xs text-brand-textsec">St. Xavier&apos;s Catholic College of Engineering — Allocation Batch Setup</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -260,7 +260,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
         {/* Step indicator */}
         <div className="flex items-center gap-3 px-6 py-3 bg-brand-verylight border-b border-brand-border text-sm">
           {[
-            ["info", "1. Cycle Info"],
+            ["info", "1. Batch Info"],
             ["dates", "2. Select Dates"],
             ["sessions", "3. Configure Sessions & Timings"]
           ].map(([s, label], i) => (
@@ -279,7 +279,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
           {step === "info" && (
             <div className="space-y-4 max-w-xl">
               <div>
-                <label className="label">Cycle Name *</label>
+                <label className="label">Batch Name *</label>
                 <input
                   className="input-field"
                   value={cycleName}
@@ -310,7 +310,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                   value={numDays}
                   onChange={e => setNumDays(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
                 />
-                <p className="text-xs text-brand-textsec mt-1">Specify how many examination days will take place in this cycle.</p>
+                <p className="text-xs text-brand-textsec mt-1">Specify how many examination days will take place in this batch.</p>
               </div>
             </div>
           )}
@@ -684,7 +684,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
               type="button"
               onClick={() => {
                 if (step === "info") {
-                  if (!cycleName.trim()) return toast.error("Cycle name is required.")
+                  if (!cycleName.trim()) return toast.error("Batch name is required.")
                   setStep("dates")
                 } else if (step === "dates") {
                   if (selectedDates.length !== numDays) {
@@ -704,7 +704,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
               disabled={loading || totalPlannedSessions === 0}
               className="btn-primary flex items-center gap-1.5"
             >
-              {loading ? "Creating Allocation..." : `Create Allocation (${totalPlannedSessions} Sessions)`}
+              {loading ? "Creating Batch..." : `Create Batch (${totalPlannedSessions} Sessions)`}
               <ChevronRight className="w-4 h-4" />
             </button>
           )}

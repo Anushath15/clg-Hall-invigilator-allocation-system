@@ -223,7 +223,7 @@ export default function SettingsPage() {
               <div className="card bg-gray-50 border-gray-200">
                 <div className="flex items-start gap-3 text-sm text-brand-textsec">
                   <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-400" />
-                  <p>The database file is stored at <code className="bg-gray-200 px-1 rounded text-xs">%APPDATA%\eias\eias.db</code> on this machine. Back up regularly before major exam cycles.</p>
+                  <p>The database file is stored at <code className="bg-gray-200 px-1 rounded text-xs">%APPDATA%\eias\eias.db</code> on this machine. Back up regularly before major allocation batches.</p>
                 </div>
               </div>
             </div>

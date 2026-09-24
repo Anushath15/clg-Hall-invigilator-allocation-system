@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Users, Building2, Calendar, CheckCircle, Clock, AlertCircle, Plus, ArrowRight, Activity } from "lucide-react"
 import { api } from "../lib/api"
@@ -75,7 +75,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <button onClick={() => navigate("/cycles")} className="btn-primary flex items-center gap-2 shadow-sm">
-          <Plus className="w-4 h-4" /> Create Exam Allocation
+          <Plus className="w-4 h-4" /> New Allocation Batch
         </button>
       </div>
 
@@ -83,7 +83,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-3 gap-5 mb-8">
         <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" />
         <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" />
-        <StatCard icon={Calendar}     label="Exam Cycles"           value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" />
+        <StatCard icon={Calendar}     label="Allocation Batches"    value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" />
         <StatCard icon={Clock}        label="Upcoming Sessions"     value={stats?.upcomingSessions ?? 0}   color="bg-yellow-50 text-yellow-600" sub="Pending allocation" />
         <StatCard icon={CheckCircle}  label="Confirmed Sessions"    value={stats?.confirmedSessions ?? 0}  color="bg-teal-50 text-teal-600" />
         <StatCard icon={AlertCircle}  label="Pending Allocations"   value={stats?.pendingAllocations ?? 0} color="bg-red-50 text-red-500" />
@@ -93,7 +93,7 @@ export default function DashboardPage() {
         {/* Recent cycles */}
         <div className="col-span-3 card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-brand-textmain">Recent Exam Cycles</h2>
+            <h2 className="text-sm font-semibold text-brand-textmain">Recent Allocation Batches</h2>
             <button onClick={() => navigate("/cycles")} className="text-xs text-brand-primary flex items-center gap-1 hover:underline">
               View all <ArrowRight className="w-3 h-3" />
             </button>
@@ -101,7 +101,7 @@ export default function DashboardPage() {
           {cycles.length === 0 ? (
             <div className="text-center py-10 text-brand-textsec">
               <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm font-medium">No exam cycles yet</p>
+              <p className="text-sm font-medium">No allocation batches yet</p>
               <p className="text-xs mt-1">Create your first allocation to begin.</p>
               <button onClick={() => navigate("/cycles")} className="btn-primary mt-4 text-xs">+ Create</button>
             </div>

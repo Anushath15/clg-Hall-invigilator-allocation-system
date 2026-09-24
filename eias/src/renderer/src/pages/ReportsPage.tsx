@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { FileText, Download, BarChart3, Users, Calendar, AlertCircle, Grid } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate } from "../lib/utils"
@@ -69,7 +69,7 @@ export default function ReportsPage() {
     if (active === "staffwise" && Array.isArray(data)) {
       autoTable(doc, {
         startY: 33,
-        head: [["Staff ID","Name","Dept","Date","Session","Hall","Report Time","Exam","Cycle"]],
+        head: [["Staff ID","Name","Dept","Date","Session","Hall","Report Time","Exam","Batch"]],
         body: data.map((r: any) => [r.staff_id, r.staffName, r.deptName ?? "—", formatDate(r.exam_date), r.session_type, r.hall_code, r.reporting_time, `${r.exam_start}–${r.exam_end}`, r.cycleName]),
         styles: { fontSize: 8 }, headStyles: { fillColor: [22, 163, 74] }
       })
@@ -121,7 +121,7 @@ export default function ReportsPage() {
     : Array.isArray(data) ? data : []
 
   const COLS: Record<string, string[]> = {
-    staffwise: ["Staff ID","Name","Dept","Date","Session","Hall","Report","Exam","Cycle"],
+    staffwise: ["Staff ID","Name","Dept","Date","Session","Hall","Report","Exam","Batch"],
     datewise: ["Hall","Hall Name","Cap","Staff ID","Name","Dept","Designation","Report","Exam"],
     audit: ["Staff ID","Name","Dept","Date","Session","Assigned Hall","Generated Hall","Edited","Reason"]
   }
@@ -149,9 +149,9 @@ export default function ReportsPage() {
       <div className="card mb-4">
         <div className="flex flex-wrap gap-4 items-end">
           {showCycleFilter && (
-            <div><label className="label">Exam Cycle *</label>
+            <div><label className="label">Allocation Batch *</label>
               <select className="input-field w-60" value={selectedCycle ?? ""} onChange={e => setSelectedCycle(Number(e.target.value) || null)}>
-                <option value="">— Select Cycle —</option>
+                <option value="">— Select Batch —</option>
                 {cycles.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select></div>
           )}
