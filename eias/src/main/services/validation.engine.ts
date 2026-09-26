@@ -54,11 +54,12 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
 
   // BUG 2 fix: Rotation cycle length ALWAYS equals current session's hall pool size
   const cycleLength = hallIds.length
+  const lookback = Math.max(0, cycleLength - 1)
   for (const e of entries) {
     // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
     const recentRows = db.query<any>(
       "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-      [e.userId, cycleLength]
+      [e.userId, lookback]
     )
     const usedInCycle = recentRows.map((r: any) => r.hall_id)
     if (usedInCycle.includes(e.hallId)) {
@@ -134,10 +135,11 @@ export function validateSingleEdit(
 
   // BUG 2 fix: Use session hall pool size for cycleLength
   const cycleLength = sessionHalls.length > 0 ? sessionHalls.length : 10
+  const lookback = Math.max(0, cycleLength - 1)
   // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
   const recentRows = db.query<any>(
     "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, cycleLength]
+    [userId, lookback]
   )
   const usedInCycle = recentRows.map((r: any) => r.hall_id)
   if (usedInCycle.includes(hallId)) {
@@ -165,10 +167,11 @@ export function getValidHallsForStaff(
 ): { hallId: number; isValid: boolean; reason?: string }[] {
   // BUG 2 fix: Use sessionHallIds.length for cycle length
   const cycleLength = sessionHallIds.length > 0 ? sessionHallIds.length : 10
+  const lookback = Math.max(0, cycleLength - 1)
   // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
   const recentRows = db.query<any>(
     "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, cycleLength]
+    [userId, lookback]
   )
   const usedInCycle = new Set(recentRows.map((r: any) => r.hall_id))
   return sessionHallIds.map(hallId => {

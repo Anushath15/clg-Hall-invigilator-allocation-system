@@ -477,4 +477,40 @@ it("T7 ? Edited hall becomes future baseline", async () => {
     const staff2Alloc = s3.find(r => r.userId === 2)
     expect(staff2Alloc?.hallId).toBe(3)
   })
+
+  it("T13 — Regression: 2 staff, 2 halls full-cycle restart: Session 3 returns to (A,B) with ZERO validation errors", async () => {
+    const userIds = [1, 2]
+    const hallIds = [1, 2]
+
+    // Session 1: generate draft -> (Staff 1 -> Hall 1, Staff 2 -> Hall 2)
+    const s1Draft = await getOrCreateAllocation(1, userIds, hallIds)
+    expect(s1Draft.entries.find(e => e.userId === 1)?.hallId).toBe(1)
+    expect(s1Draft.entries.find(e => e.userId === 2)?.hallId).toBe(2)
+    const conf1 = await confirmAllocation(1)
+    expect(conf1.success).toBe(true)
+
+    // Session 2: generate draft -> (Staff 1 -> Hall 2, Staff 2 -> Hall 1)
+    const s2Draft = await getOrCreateAllocation(2, userIds, hallIds)
+    expect(s2Draft.entries.find(e => e.userId === 1)?.hallId).toBe(2)
+    expect(s2Draft.entries.find(e => e.userId === 2)?.hallId).toBe(1)
+    const conf2 = await confirmAllocation(2)
+    expect(conf2.success).toBe(true)
+
+    // Session 3: generate draft -> returns to (Staff 1 -> Hall 1, Staff 2 -> Hall 2)
+    const s3Draft = await getOrCreateAllocation(3, userIds, hallIds)
+    const staff1 = s3Draft.entries.find(e => e.userId === 1)
+    const staff2 = s3Draft.entries.find(e => e.userId === 2)
+    expect(staff1?.hallId).toBe(1)
+    expect(staff2?.hallId).toBe(2)
+
+    // Validate Session 3: must have ZERO validation errors (R1 was previously blocking full-cycle restart)
+    const valResult = validateAllocation(3, s3Draft.entries, hallIds, userIds)
+    expect(valResult.isValid).toBe(true)
+    expect(valResult.blockingErrors).toHaveLength(0)
+    expect(valResult.warnings).toHaveLength(0)
+
+    // Confirm Session 3 succeeds cleanly with zero errors
+    const conf3 = await confirmAllocation(3)
+    expect(conf3.success).toBe(true)
+  })
 })

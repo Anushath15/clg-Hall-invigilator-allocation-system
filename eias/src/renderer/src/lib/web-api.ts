@@ -65,10 +65,11 @@ function validateAllocation(
 
   // R1 - Circular rotation non-repetition within cycle length
   const cycleLength = hallIds.length
+  const lookback = Math.max(0, cycleLength - 1)
   for (const e of entries) {
     const recentRows = webDb.query<any>(
       "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-      [e.userId, cycleLength]
+      [e.userId, lookback]
     )
     const usedInCycle = recentRows.map((r: any) => r.hall_id)
     if (usedInCycle.includes(e.hallId)) {
@@ -139,9 +140,10 @@ function validateSingleEdit(
   if (hallTaken) return `Hall ${hall.hall_code} is already assigned to another invigilator in this session.`
 
   const cycleLength = sessionHalls.length > 0 ? sessionHalls.length : 10
+  const lookback = Math.max(0, cycleLength - 1)
   const recentRows = webDb.query<any>(
     "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, cycleLength]
+    [userId, lookback]
   )
   const usedInCycle = recentRows.map((r: any) => r.hall_id)
   if (usedInCycle.includes(hallId)) {
@@ -161,9 +163,10 @@ function validateSingleEdit(
 // Rotation Engine
 // -------------------------------------------------------------
 function isUsedInCurrentCycle(userId: number, hallId: number, cycleLength: number): boolean {
+  const lookback = Math.max(0, cycleLength - 1)
   const recentRows = webDb.query<any>(
     "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, cycleLength]
+    [userId, lookback]
   )
   return recentRows.some(r => r.hall_id === hallId)
 }
@@ -673,10 +676,11 @@ export const webApi = {
     const sessionHallIds = Array.from(new Set(allocations.map((a: any) => a.generated_hall_id || a.hall_id))) as number[]
     const occupiedHallIds = allocations.filter((a: any) => a.user_id !== userId).map((a: any) => a.hall_id)
     const cycleLength = sessionHallIds.length > 0 ? sessionHallIds.length : 10
+    const lookback = Math.max(0, cycleLength - 1)
 
     const recentRows = webDb.query<any>(
       "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-      [userId, cycleLength]
+      [userId, lookback]
     )
     const usedInCycle = new Set(recentRows.map((r: any) => r.hall_id))
     return sessionHallIds.map(hallId => {
