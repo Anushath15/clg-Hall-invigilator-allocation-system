@@ -14,6 +14,84 @@ async function ensureDb() {
   await webDb.initWebDatabase()
 }
 
+// Column names accepted in the staff import sheet, matched case-insensitively
+// against the header row so "Staff ID", "staff id" and "staff_id" all work.
+const STAFF_ID_ALIASES = ["staff id", "staff_id", "staffid", "id"]
+const NAME_ALIASES = ["name", "staff name", "full name"]
+const DEPARTMENT_ALIASES = ["department", "department code", "dept", "dept code", "department_code"]
+
+function findColumn(headers: string[], aliases: string[]) {
+  return headers.find(h => aliases.includes(h.trim().toLowerCase()))
+}
+
+// Mirrors the Electron main-process version in master.ipc.ts: checks the header row first so a
+// whole-file problem ("no Department column at all") is reported once, up front, rather than as
+// N confusing per-row errors. Only once all three required columns are confirmed present does it
+// walk the data rows, collecting a specific reason for every row it skips (missing field, unknown
+// department, duplicate staff ID) so the UI can show exactly what to fix instead of a bare count.
+function importStaffFromSheet(
+  sheet: XLSX.WorkSheet,
+  findDepartment: (code: string) => { id: number } | undefined,
+  findExistingStaff: (staffId: string) => { id: number } | undefined,
+  insertStaff: (staffId: string, name: string, email: string | null, designation: string | null, deptId: number) => void
+) {
+  const headerRow = ((XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] as any[]) || []).map(h => String(h ?? "").trim())
+  const staffIdCol = findColumn(headerRow, STAFF_ID_ALIASES)
+  const nameCol = findColumn(headerRow, NAME_ALIASES)
+  const deptCol = findColumn(headerRow, DEPARTMENT_ALIASES)
+
+  const missingColumns: string[] = []
+  if (!staffIdCol) missingColumns.push("Staff ID")
+  if (!nameCol) missingColumns.push("Name")
+  if (!deptCol) missingColumns.push("Department")
+  if (missingColumns.length) {
+    return {
+      success: false,
+      error: `This Excel file is missing required column(s): ${missingColumns.join(", ")}. The first row must have a column for Staff ID, Name and Department.`,
+      missingColumns
+    }
+  }
+
+  const rows: any[] = XLSX.utils.sheet_to_json(sheet)
+  if (rows.length === 0) {
+    return { success: false, error: "This Excel file has no data rows below the header." }
+  }
+
+  let inserted = 0
+  const issues: { row: number; reason: string }[] = []
+  rows.forEach((row, idx) => {
+    const excelRow = idx + 2 // +1 for 0-index, +1 for the header row
+    const staffId = String(row[staffIdCol!] ?? "").trim()
+    const name = String(row[nameCol!] ?? "").trim()
+    const deptCode = String(row[deptCol!] ?? "").trim()
+
+    const missing: string[] = []
+    if (!staffId) missing.push("Staff ID")
+    if (!name) missing.push("Name")
+    if (!deptCode) missing.push("Department")
+    if (missing.length) {
+      issues.push({ row: excelRow, reason: `Missing ${missing.join(", ")}` })
+      return
+    }
+
+    const dept = findDepartment(deptCode)
+    if (!dept) {
+      issues.push({ row: excelRow, reason: `Department "${deptCode}" does not match any existing department (check Master Data → Departments).` })
+      return
+    }
+
+    if (findExistingStaff(staffId)) {
+      issues.push({ row: excelRow, reason: `Staff ID "${staffId}" already exists — skipped.` })
+      return
+    }
+
+    insertStaff(staffId, name, row["Email"] ?? null, row["Designation"] ?? null, dept.id)
+    inserted++
+  })
+
+  return { success: true, inserted, skipped: issues.length, issues }
+}
+
 // -------------------------------------------------------------
 // Validation Engine
 // -------------------------------------------------------------
@@ -398,7 +476,7 @@ export const webApi = {
     return { success: true }
   },
 
-  importUsersFromExcel: async (filePath: string) => {
+  importUsersFromExcel: async (_filePath: string) => {
     await ensureDb()
     try {
       let wb: XLSX.WorkBook
@@ -409,24 +487,16 @@ export const webApi = {
         return { success: false, error: "No Excel file selected." }
       }
 
-      const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
-      let inserted = 0, skipped = 0
-      for (const row of rows) {
-        const staffId = String(row["Staff ID"] ?? row["staff_id"] ?? "").trim()
-        const name = String(row["Name"] ?? row["name"] ?? "").trim()
-        if (!staffId || !name) { skipped++; continue }
-        const deptCode = String(row["Department"] ?? row["department"] ?? "").trim()
-        const dept = deptCode ? webDb.queryOne<any>("SELECT id FROM departments WHERE code=?", [deptCode]) : null
-        const exists = webDb.queryOne("SELECT id FROM users WHERE staff_id=?", [staffId])
-        if (!exists) {
+      return importStaffFromSheet(
+        wb.Sheets[wb.SheetNames[0]],
+        (code) => webDb.queryOne<any>("SELECT id FROM departments WHERE code=? COLLATE NOCASE OR name=? COLLATE NOCASE", [code, code]),
+        (staffId) => webDb.queryOne<any>("SELECT id FROM users WHERE staff_id=?", [staffId]),
+        (staffId, name, email, designation, deptId) =>
           webDb.run(
             "INSERT INTO users(staff_id,name,email,designation,department_id,role,is_active) VALUES(?,?,?,?,?,?,?)",
-            [staffId, name, row["Email"]??null, row["Designation"]??null, dept?.id??null, "staff", 1]
+            [staffId, name, email, designation, deptId, "staff", 1]
           )
-          inserted++
-        } else skipped++
-      }
-      return { success: true, inserted, skipped }
+      )
     } catch (e: any) {
       return { success: false, error: e.message }
     }
@@ -646,32 +716,6 @@ export const webApi = {
     return { success: true }
   },
 
-  // Deleting an entire batch (exam cycle) is a deliberate, explicit action distinct from
-  // deleteSession above: unlike removing one session from an in-progress workflow, this is
-  // meant to work even on a confirmed/published batch (the UI gates it behind a password
-  // re-confirmation instead). It removes the batch's rotation_history too, so any fairness
-  // effect that batch had on future allocations is fully undone along with it — the rotation
-  // engine only ever reads the *latest* remaining entry per staff member and the running
-  // MAX(global_order), neither of which requires the deleted step numbers to be contiguous.
-  deleteCycle: async (id: number) => {
-    await ensureDb()
-    const cycle = webDb.queryOne<any>("SELECT * FROM exam_cycles WHERE id=?", [id])
-    if (!cycle) return { success: false, error: "Allocation batch not found." }
-
-    return webDb.runTransaction(() => {
-      const sessions = webDb.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=?", [id])
-      for (const s of sessions) {
-        webDb.run("DELETE FROM rotation_history WHERE session_id=?", [s.id])
-        webDb.run("DELETE FROM allocations WHERE session_id=?", [s.id])
-      }
-      webDb.run("DELETE FROM exam_sessions WHERE cycle_id=?", [id])
-      webDb.run("DELETE FROM exam_cycles WHERE id=?", [id])
-      writeAuditLog(null, "CYCLE_DELETE",
-        `Allocation batch deleted: ${cycle.name} (${cycle.academic_year}) — ${sessions.length} session(s) removed`,
-        { id, name: cycle.name, sessionCount: sessions.length })
-      return { success: true }
-    })
-  },
 
   // Allocation
   generateAllocation: async (sessionId: number, userIds: number[], hallIds: number[]) => {

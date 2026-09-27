@@ -41,6 +41,7 @@ function StaffTab() {
   const [form, setForm] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [hardDeleteTarget, setHardDeleteTarget] = useState<any>(null)
+  const [importResult, setImportResult] = useState<any>(null)
 
   const load = async () => { setUsers(await api.getUsers({ role: "staff" })); setDepts(await api.getDepartments()) }
   useEffect(() => { load() }, [])
@@ -49,8 +50,8 @@ function StaffTab() {
     const path = await api.openFileDialog([{ name: "Excel Files", extensions: ["xlsx", "xls"] }])
     if (!path) return
     const r = await api.importUsersFromExcel(path)
-    if (r.success) { toast.success(`Imported ${r.inserted} staff, skipped ${r.skipped}`); load() }
-    else toast.error(r.error)
+    setImportResult(r)
+    if (r.success) load()
   }
 
   async function save() {
@@ -161,6 +162,51 @@ function StaffTab() {
           }
         }}
       />
+
+      {importResult && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col">
+            <h3 className="text-base font-semibold mb-1">
+              {importResult.success ? "Import Complete" : "Import Failed"}
+            </h3>
+
+            {!importResult.success ? (
+              <div className="text-sm mt-2">
+                <p className="text-red-600">{importResult.error}</p>
+                {importResult.missingColumns?.length > 0 && (
+                  <p className="mt-3 text-xs text-brand-textsec">
+                    Your Excel file's first row needs a column for each of: <b>Staff ID</b>, <b>Name</b>, and <b>Department</b>.
+                    Missing here: <b>{importResult.missingColumns.join(", ")}</b>.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm mt-2 overflow-y-auto">
+                <p className="text-green-600 font-medium">
+                  {importResult.inserted} staff member{importResult.inserted === 1 ? "" : "s"} imported successfully.
+                </p>
+                {importResult.issues?.length > 0 && (
+                  <>
+                    <p className="mt-3 text-brand-textsec">{importResult.issues.length} row(s) skipped — here's why:</p>
+                    <div className="mt-2 border rounded-lg divide-y">
+                      {importResult.issues.map((iss: any, i: number) => (
+                        <div key={i} className="px-3 py-2 text-xs flex items-start justify-between gap-3">
+                          <span className="font-medium text-brand-textmain whitespace-nowrap">Row {iss.row}</span>
+                          <span className="text-red-500 text-right">{iss.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end mt-5">
+              <button onClick={() => setImportResult(null)} className="btn-primary">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
