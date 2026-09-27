@@ -445,15 +445,17 @@ export const webApi = {
 
   saveHall: async (data: any) => {
     await ensureDb()
+    // Hall Name is optional in the UI; the column is NOT NULL, so fall back to the hall code.
+    const name = (data.name && String(data.name).trim()) || data.hall_code
     if (data.id) {
       webDb.run("UPDATE halls SET hall_code=?,name=?,capacity=?,block=?,is_active=? WHERE id=?",
-        [data.hall_code, data.name, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
+        [data.hall_code, name, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
       writeAuditLog(null, "HALL_STATUS_CHANGE", `Hall ${data.hall_code} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = webDb.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
     const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?)",
-      [data.hall_code, data.name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
+      [data.hall_code, name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
     writeAuditLog(null, "CREATE_HALL", `Hall created: ${data.hall_code}`, { id: lastInsertRowid, hall_code: data.hall_code })
     return webDb.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   },

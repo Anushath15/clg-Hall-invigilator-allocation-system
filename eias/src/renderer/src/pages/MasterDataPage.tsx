@@ -81,25 +81,27 @@ function StaffTab() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Staff" : "Add Staff"}</h3>
-            <div className="space-y-3">
-              <div><label className="label">Staff ID *</label><input className="input-field" value={form.staff_id ?? ""} onChange={e => setForm({ ...form, staff_id: e.target.value })} /></div>
-              <div><label className="label">Full Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-              <div><label className="label">Designation</label><input className="input-field" value={form.designation ?? ""} onChange={e => setForm({ ...form, designation: e.target.value })} /></div>
-              <div><label className="label">Email</label><input className="input-field" type="email" value={form.email ?? ""} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-              <div>
-                <label className="label">Department</label>
-                <select className="input-field" value={form.department_id ?? ""} onChange={e => setForm({ ...form, department_id: Number(e.target.value) || null })}>
-                  <option value="">— Select —</option>
-                  {depts.map((d: any) => <option key={d.id} value={d.id}>{d.name} ({d.code})</option>)}
-                </select>
+            <form onSubmit={e => { e.preventDefault(); save() }}>
+              <div className="space-y-3">
+                <div><label className="label">Staff ID *</label><input className="input-field" value={form.staff_id ?? ""} onChange={e => setForm({ ...form, staff_id: e.target.value })} /></div>
+                <div><label className="label">Full Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                <div><label className="label">Designation</label><input className="input-field" value={form.designation ?? ""} onChange={e => setForm({ ...form, designation: e.target.value })} /></div>
+                <div><label className="label">Email</label><input className="input-field" type="email" value={form.email ?? ""} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+                <div>
+                  <label className="label">Department</label>
+                  <select className="input-field" value={form.department_id ?? ""} onChange={e => setForm({ ...form, department_id: Number(e.target.value) || null })}>
+                    <option value="">— Select —</option>
+                    {depts.map((d: any) => <option key={d.id} value={d.id}>{d.name} ({d.code})</option>)}
+                  </select>
+                </div>
+                {!form.id && <div><label className="label">Password</label><input className="input-field" type="password" value={form.password ?? ""} onChange={e => setForm({ ...form, password: e.target.value })} /></div>}
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
               </div>
-              {!form.id && <div><label className="label">Password</label><input className="input-field" type="password" value={form.password ?? ""} onChange={e => setForm({ ...form, password: e.target.value })} /></div>}
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => setForm(null)} className="btn-secondary">Cancel</button>
-              <button onClick={save} disabled={loading} className="btn-primary">{loading ? "Saving..." : "Save"}</button>
-            </div>
+              <div className="flex gap-2 mt-5 justify-end">
+                <button type="button" onClick={() => setForm(null)} className="btn-secondary">Cancel</button>
+                <button type="submit" disabled={loading} className="btn-primary">{loading ? "Saving..." : "Save"}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -173,7 +175,7 @@ function HallsTab() {
   useEffect(() => { load() }, [])
 
   async function save() {
-    if (!form?.hall_code || !form?.name) return toast.error("Hall Code and Name are required.")
+    if (!form?.hall_code) return toast.error("Hall Code is required.")
     setLoading(true)
     try { await api.saveHall(form); toast.success("Saved!"); setForm(null); load() } finally { setLoading(false) }
   }
@@ -194,17 +196,19 @@ function HallsTab() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Hall" : "Add Hall"}</h3>
-            <div className="space-y-3">
-              <div><label className="label">Hall Code *</label><input className="input-field" value={form.hall_code ?? ""} onChange={e => setForm({ ...form, hall_code: e.target.value })} placeholder="e.g. H001" /></div>
-              <div><label className="label">Hall Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. New Block Room 1" /></div>
-              <div><label className="label">Capacity</label><input className="input-field" type="number" value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>
-              <div><label className="label">Block / Building</label><input className="input-field" value={form.block ?? ""} onChange={e => setForm({ ...form, block: e.target.value })} /></div>
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => setForm(null)} className="btn-secondary">Cancel</button>
-              <button onClick={save} disabled={loading} className="btn-primary">{loading ? "Saving..." : "Save"}</button>
-            </div>
+            <form onSubmit={e => { e.preventDefault(); save() }}>
+              <div className="space-y-3">
+                <div><label className="label">Hall Code *</label><input className="input-field" value={form.hall_code ?? ""} onChange={e => setForm({ ...form, hall_code: e.target.value })} placeholder="e.g. H001" /></div>
+                <div><label className="label">Hall Name</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. New Block Room 1" /></div>
+                <div><label className="label">Capacity</label><input className="input-field" type="number" value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>
+                <div><label className="label">Block / Building</label><input className="input-field" value={form.block ?? ""} onChange={e => setForm({ ...form, block: e.target.value })} /></div>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
+              </div>
+              <div className="flex gap-2 mt-5 justify-end">
+                <button type="button" onClick={() => setForm(null)} className="btn-secondary">Cancel</button>
+                <button type="submit" disabled={loading} className="btn-primary">{loading ? "Saving..." : "Save"}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -270,14 +274,16 @@ function DepartmentsTab() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Department" : "Add Department"}</h3>
-            <div className="space-y-3">
-              <div><label className="label">Code *</label><input className="input-field" value={form.code ?? ""} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="e.g. CSE" /></div>
-              <div><label className="label">Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Computer Science & Engineering" /></div>
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => setForm(null)} className="btn-secondary">Cancel</button>
-              <button onClick={save} disabled={loading} className="btn-primary">{loading ? "Saving..." : "Save"}</button>
-            </div>
+            <form onSubmit={e => { e.preventDefault(); save() }}>
+              <div className="space-y-3">
+                <div><label className="label">Code *</label><input className="input-field" value={form.code ?? ""} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="e.g. CSE" /></div>
+                <div><label className="label">Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Computer Science & Engineering" /></div>
+              </div>
+              <div className="flex gap-2 mt-5 justify-end">
+                <button type="button" onClick={() => setForm(null)} className="btn-secondary">Cancel</button>
+                <button type="submit" disabled={loading} className="btn-primary">{loading ? "Saving..." : "Save"}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

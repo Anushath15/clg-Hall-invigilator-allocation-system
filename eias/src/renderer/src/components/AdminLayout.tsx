@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
   BarChart3, Settings, LogOut, GraduationCap, History
@@ -15,14 +15,16 @@ const navItems = [
 ]
 
 const masterItems = [
-  { to: "/master?tab=staff", icon: Users, label: "Staff / Invigilators" },
-  { to: "/master?tab=halls", icon: Building2, label: "Halls" },
-  { to: "/master?tab=departments", icon: ClipboardList, label: "Departments" },
+  { to: "/master?tab=staff", tab: "staff", icon: Users, label: "Staff / Invigilators" },
+  { to: "/master?tab=halls", tab: "halls", icon: Building2, label: "Halls" },
+  { to: "/master?tab=departments", tab: "departments", icon: ClipboardList, label: "Departments" },
 ]
 
 export default function AdminLayout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
+  const activeMasterTab = new URLSearchParams(location.search).get("tab") ?? "staff"
 
   async function handleLogout() {
     await api.logout()
@@ -64,12 +66,15 @@ export default function AdminLayout() {
           <div>
             <p className="text-xs font-semibold text-gray-400 mb-3 px-2 tracking-wider">MASTER DATA</p>
             <nav className="space-y-1">
-              {masterItems.map(({ to, icon: Icon, label }) => (
-                <NavLink key={to} to={to}
-                  className={({ isActive }) => isActive ? "sidebar-link-active" : "sidebar-link"}>
-                  <Icon className="w-5 h-5 flex-shrink-0" /><span>{label}</span>
-                </NavLink>
-              ))}
+              {masterItems.map(({ to, tab, icon: Icon, label }) => {
+                const isActive = location.pathname === "/master" && activeMasterTab === tab
+                return (
+                  <NavLink key={to} to={to}
+                    className={isActive ? "sidebar-link-active" : "sidebar-link"}>
+                    <Icon className="w-5 h-5 flex-shrink-0" /><span>{label}</span>
+                  </NavLink>
+                )
+              })}
             </nav>
           </div>
           <div>

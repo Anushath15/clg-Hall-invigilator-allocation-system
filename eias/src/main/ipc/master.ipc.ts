@@ -82,14 +82,16 @@ export function registerMasterHandlers() {
   // behavior — and this array's order is what the rotation engine indexes into.
   ipcMain.handle("master:getHalls", () => db.query("SELECT * FROM halls ORDER BY sort_order, id"))
   ipcMain.handle("master:saveHall", async (_, data) => {
+    // Hall Name is optional in the UI; the column is NOT NULL, so fall back to the hall code.
+    const name = (data.name && String(data.name).trim()) || data.hall_code
     if (data.id) {
       db.run("UPDATE halls SET hall_code=?,name=?,capacity=?,block=?,is_active=? WHERE id=?",
-        [data.hall_code, data.name, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
+        [data.hall_code, name, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
       return db.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = db.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
     const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?)",
-      [data.hall_code, data.name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
+      [data.hall_code, name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
     return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("master:deleteHall", async (_, id) => {

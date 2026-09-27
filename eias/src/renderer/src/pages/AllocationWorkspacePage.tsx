@@ -429,7 +429,7 @@ export default function AllocationWorkspacePage() {
                             <span className={cn("inline-flex items-center gap-2 font-bold px-3 py-1 rounded-lg text-xs",
                               a.is_manually_edited ? "bg-amber-100 text-amber-700" : "bg-brand-verylight text-brand-primary")}>
                               {a.hall_code}
-                              {a.is_manually_edited && <span className="font-normal text-amber-500">(edited)</span>}
+                              {!!a.is_manually_edited && <span className="font-normal text-amber-500">(edited)</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3">
