@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
-  BarChart3, Settings, LogOut, GraduationCap, History
+  BarChart3, Settings, LogOut, GraduationCap, History, ArrowLeft
 } from "lucide-react"
 import { useAuthStore } from "../store/auth.store"
 import { api } from "../lib/api"
@@ -108,6 +108,17 @@ export default function AdminLayout() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto">
+        {location.pathname !== "/dashboard" && (
+          <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm px-8 pt-5">
+            <button
+              onClick={() => navigate(-1)}
+              title="Go back"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-textsec hover:text-brand-primary transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

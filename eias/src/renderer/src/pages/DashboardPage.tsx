@@ -10,9 +10,13 @@ interface Stats {
   upcomingSessions: number; confirmedSessions: number; pendingAllocations: number
 }
 
-function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: string; value: number; color: string; sub?: string }) {
+function StatCard({ icon: Icon, label, value, color, sub, onClick }: { icon: any; label: string; value: number; color: string; sub?: string; onClick?: () => void }) {
+  const Tag = onClick ? "button" : "div"
   return (
-    <div className="card flex items-center gap-4 hover:shadow-md transition-shadow">
+    <Tag
+      onClick={onClick}
+      className={`card flex items-center gap-4 hover:shadow-md transition-shadow w-full ${onClick ? "text-left cursor-pointer hover:border-brand-primary" : ""}`}
+    >
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
         <Icon className="w-6 h-6" />
       </div>
@@ -21,7 +25,7 @@ function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: 
         <p className="text-sm text-brand-textsec">{label}</p>
         {sub && <p className="text-xs text-brand-textsec mt-0.5">{sub}</p>}
       </div>
-    </div>
+    </Tag>
   )
 }
 
@@ -81,9 +85,9 @@ export default function DashboardPage() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-5 mb-8">
-        <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" />
-        <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" />
-        <StatCard icon={Calendar}     label="Allocation Batches"    value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" />
+        <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" onClick={() => navigate("/master?tab=staff")} />
+        <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" onClick={() => navigate("/master?tab=halls")} />
+        <StatCard icon={Calendar}     label="Allocation Batches"    value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" onClick={() => navigate("/cycles")} />
         <StatCard icon={Clock}        label="Upcoming Sessions"     value={stats?.upcomingSessions ?? 0}   color="bg-yellow-50 text-yellow-600" sub="Pending allocation" />
         <StatCard icon={CheckCircle}  label="Confirmed Sessions"    value={stats?.confirmedSessions ?? 0}  color="bg-teal-50 text-teal-600" />
         <StatCard icon={AlertCircle}  label="Pending Allocations"   value={stats?.pendingAllocations ?? 0} color="bg-red-50 text-red-500" />
@@ -156,21 +160,6 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Quick actions */}
-      <div className="mt-6 grid grid-cols-4 gap-3">
-        {[
-          { label: "Add Staff", icon: Users, to: "/master?tab=staff", color: "text-blue-600 bg-blue-50 hover:bg-blue-100" },
-          { label: "Add Hall", icon: Building2, to: "/master?tab=halls", color: "text-purple-600 bg-purple-50 hover:bg-purple-100" },
-          { label: "View History", icon: Clock, to: "/history", color: "text-orange-600 bg-orange-50 hover:bg-orange-100" },
-          { label: "Reports", icon: CheckCircle, to: "/reports", color: "text-green-600 bg-green-50 hover:bg-green-100" }
-        ].map(({ label, icon: Icon, to, color }) => (
-          <button key={label} onClick={() => navigate(to)}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-colors ${color}`}>
-            <Icon className="w-4 h-4" /> {label}
-          </button>
-        ))}
       </div>
     </div>
   )

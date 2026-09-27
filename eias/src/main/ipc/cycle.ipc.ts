@@ -1,6 +1,6 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
-import { deleteSession } from "../services/allocation.service"
+import { deleteSession, deleteCycle } from "../services/allocation.service"
 
 export function registerCycleHandlers() {
   ipcMain.handle("cycle:getCycles", () => db.query("SELECT * FROM exam_cycles ORDER BY created_at DESC"))
@@ -91,4 +91,5 @@ export function registerCycleHandlers() {
     return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("cycle:deleteSession", async (_, id) => deleteSession(id))
+  ipcMain.handle("cycle:deleteCycle", async (_, id) => deleteCycle(id))
 }
