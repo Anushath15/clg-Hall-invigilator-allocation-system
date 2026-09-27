@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Calendar, Clock, MapPin, Building2, Printer, ChevronRight } from "lucide-react"
+import { Calendar, Clock, MapPin, Building2, Printer } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import { formatDate, formatSession } from "../lib/utils"

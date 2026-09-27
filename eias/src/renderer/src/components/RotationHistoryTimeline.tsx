@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from "react"
 import { api } from "../lib/api"
-import { formatDate, formatSession, cn } from "../lib/utils"
+import { formatDate, cn } from "../lib/utils"
 import { History } from "lucide-react"
 
 interface Props { userId: number; userName: string; highlightHallId?: number }

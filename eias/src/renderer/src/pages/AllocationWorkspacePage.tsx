@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ChevronLeft, Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Clock, Calendar, Trash2 } from "lucide-react"
+import { ChevronLeft, Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn } from "../lib/utils"
 import { exportAllocationPDF } from "../lib/export-allocation-pdf"

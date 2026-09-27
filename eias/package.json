@@ -12,6 +12,8 @@
     "build:web": "node scripts/build-web.mjs",
     "package": "npm run build && electron-builder",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "icons": "electron scripts/build-icons.cjs",
     "deploy:firebase": "npm run build:web && firebase deploy --only hosting"
   },
   "dependencies": {

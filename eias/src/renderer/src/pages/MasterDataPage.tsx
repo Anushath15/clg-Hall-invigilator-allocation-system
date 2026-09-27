@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Plus, Pencil, Trash2, Upload, Download, CheckCircle, XCircle } from "lucide-react"
+import { Plus, Pencil, Trash2, Upload, CheckCircle, XCircle } from "lucide-react"
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 import { IS_DESKTOP } from "../lib/platform"
 import { api } from "../lib/api"

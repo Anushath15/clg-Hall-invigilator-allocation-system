@@ -192,15 +192,6 @@ async function computeNextHall(
   return hallIds[0]
 }
 
-function isUsedInCurrentCycle(userId: number, hallId: number, cycleLength: number): boolean {
-  // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
-  const recentRows = db.query<any>(
-    "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, cycleLength]
-  )
-  return recentRows.some(r => r.hall_id === hallId)
-}
-
 export async function commitToHistory(
   sessionId: number,
   rotationStep: number,

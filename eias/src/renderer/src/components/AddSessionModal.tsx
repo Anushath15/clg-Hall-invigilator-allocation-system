@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { X, Calendar, Clock, Plus, Zap, AlertTriangle } from "lucide-react"
+import { X, Clock, Plus, Zap, AlertTriangle } from "lucide-react"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { formatFullDate, formatTime12h, cn } from "../lib/utils"

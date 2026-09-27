@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog } from "electron"
+import { app, BrowserWindow, shell, dialog } from "electron"
 import { join } from "path"
 // electron-toolkit inlined
 import { initDatabase } from "./db/database"

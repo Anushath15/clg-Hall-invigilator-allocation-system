@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { GraduationCap, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
+import HiasLogo from "../components/HiasLogo"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
@@ -39,9 +40,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* College branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-primary mb-4 shadow-lg">
-            <GraduationCap className="w-9 h-9 text-white" />
-          </div>
+          <HiasLogo className="w-20 h-20 mx-auto mb-4 drop-shadow-lg" />
           <h1 className="text-2xl font-bold text-white tracking-tight">HIAS</h1>
           <p className="text-brand-light text-sm mt-1 font-medium">Hall Invigilator Allocation System</p>
           <p className="text-gray-400 text-xs mt-1">St. Xavier&apos;s Catholic College of Engineering (Autonomous)</p>

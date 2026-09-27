@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Plus, ChevronRight, Calendar, Loader2, Trash2 } from "lucide-react"
+import { Plus, ChevronRight, Calendar, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, getStatusColor } from "../lib/utils"
 import toast from "react-hot-toast"

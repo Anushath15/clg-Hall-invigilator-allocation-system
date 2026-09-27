@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest"
 import { initDatabase, db } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
-import { validateAllocation, validateSingleEdit, type ValidationEntry } from "./validation.engine"
+import { validateAllocation, type ValidationEntry } from "./validation.engine"
 import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, hardDeleteUser, deleteSession, restartRotation, getNotifications, getUnreadCount } from "./allocation.service"
 
 // ??? Pure rotation logic (no DB needed) ??????????????????????????????????????

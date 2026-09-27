@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { X, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, AlertCircle, Settings, Sliders, Trash2 } from "lucide-react"
+import { X, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, AlertCircle, Sliders, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { addDays, format } from "date-fns"
@@ -33,7 +33,6 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [sessionConfig, setSessionConfig] = useState<Record<string, DateSessionConfig>>({})
   const [loading, setLoading] = useState(false)
-  const [settings, setSettings] = useState<Record<string, string> | null>(null)
 
   // Default global timings
   const [fnReportDefault, setFnReportDefault] = useState("09:30")
@@ -50,7 +49,6 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   // Load college settings for default exam timings
   useEffect(() => {
     api.getSettings().then(s => {
-      setSettings(s)
       if (s?.["session.fn_reporting_time"]) setFnReportDefault(s["session.fn_reporting_time"])
       if (s?.["session.fn_start_time"]) setFnStartDefault(s["session.fn_start_time"])
       if (s?.["session.fn_end_time"]) setFnEndDefault(s["session.fn_end_time"])

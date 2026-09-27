@@ -2,8 +2,9 @@ import { useEffect, useState } from "react"
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
-  BarChart3, Settings, LogOut, GraduationCap, History, ArrowLeft
+  BarChart3, Settings, LogOut, History, ArrowLeft
 } from "lucide-react"
+import HiasLogo from "./HiasLogo"
 import { useAuthStore } from "../store/auth.store"
 import { api } from "../lib/api"
 import { IS_DESKTOP } from "../lib/platform"
@@ -53,9 +54,7 @@ export default function AdminLayout() {
         {/* Logo */}
         <div className="h-20 flex items-center px-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-brand-primary flex items-center justify-center flex-shrink-0">
-              <GraduationCap className="w-5 h-5 text-white" />
-            </div>
+            <HiasLogo className="w-10 h-10" />
             <div className="min-w-0">
               <h1 className="text-sm font-bold leading-tight tracking-wide">HIAS</h1>
               {collegeShortName && (
