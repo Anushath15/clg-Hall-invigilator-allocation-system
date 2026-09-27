@@ -32,6 +32,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@fontsource/inter": "^5.3.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.5",
@@ -62,7 +63,8 @@
       "target": "nsis",
       "icon": "resources/icon.ico"
     },
-    "icon": "resources/icon.png", "nsis": {
+    "icon": "resources/icon.png",
+    "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
