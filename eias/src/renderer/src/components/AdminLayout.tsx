@@ -102,24 +102,24 @@ export default function AdminLayout() {
           </div>
         </div>
 
-        {/* User footer */}
-        <div className="px-4 py-4 border-t border-white/10">
-          <div className={`flex items-center gap-3 px-2 ${IS_DESKTOP ? "" : "mb-3"}`}>
-            <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {user?.name?.charAt(0) ?? "A"}
+        {/* User footer: web build only (the offline desktop app has no accounts or logout) */}
+        {!IS_DESKTOP && (
+          <div className="px-4 py-4 border-t border-white/10">
+            <div className="flex items-center gap-3 px-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {user?.name?.charAt(0) ?? "A"}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{user?.name}</p>
+                <p className="text-xs text-gray-400 truncate">{user?.staff_id} · Admin</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-gray-400 truncate">{user?.staff_id} · Admin</p>
-            </div>
-          </div>
-          {!IS_DESKTOP && (
             <button onClick={handleLogout}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-gray-300 hover:bg-red-500/20 hover:text-red-300 transition-colors text-sm">
               <LogOut className="w-4 h-4" /><span>Logout</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
 
       {/* MAIN CONTENT */}

@@ -1,4 +1,4 @@
-# HIAS – Hall Invigilator Allocation System
+# HIAS â€“ Hall Invigilator Allocation System
 
 <img src="eias/resources/icon.png" alt="HIAS logo" width="96" align="right">
 
@@ -13,14 +13,14 @@ An offline Windows desktop application for St. Xavier's Catholic College of Engi
 - **Master data:** departments, halls and staff, with bulk staff import from Excel and row-by-row error reporting.
 - **Allocation batches:** a wizard turns calendar dates into FN/AN sessions with timings; Sundays and public holidays are flagged.
 - **One-click allocation:** pick the staff and halls for a session; the rotation engine assigns everyone a hall.
-- **Validation (R1–R7):** no early hall repeats, no double-booked halls or staff, active staff and halls only, staff count equals hall count, rotation order.
+- **Validation (R1â€“R7):** no early hall repeats, no double-booked halls or staff, active staff and halls only, staff count equals hall count, rotation order.
 - **Controlled edits:** manual changes offer only rule-safe halls and are recorded as "Admin Edited".
 - **Reports:** session allocation sheet, staff-wise duties, date-wise hall sheet, complete timetable grid and rotation audit, all exportable to PDF with the college letterhead.
 - **Offline and self-contained:** no server, no internet, no login; one-click backup and restore.
 
 ## Tech stack
 
-Electron 32 · electron-vite (Vite 5) · TypeScript 5 (strict) · React 18 · React Router 6 · Tailwind CSS 3 · Zustand · SQLite via sql.js (WebAssembly) · jsPDF + jspdf-autotable · SheetJS xlsx · Vitest · electron-builder (NSIS installer)
+Electron 32 Â· electron-vite (Vite 5) Â· TypeScript 5 (strict) Â· React 18 Â· React Router 6 Â· Tailwind CSS 3 Â· Zustand Â· SQLite via sql.js (WebAssembly) Â· jsPDF + jspdf-autotable Â· SheetJS xlsx Â· Vitest Â· electron-builder (NSIS installer)
 
 ## Project layout
 
@@ -29,7 +29,7 @@ README.md
 docs/                        User guide and project report (HTML sources + PDFs, screenshots)
 start-hias-dev.bat           Double-click launcher for development mode
 eias/                        The application (folder name kept for compatibility)
-  resources/icon.svg         Logo source; icon.png / icon.ico are generated from it
+  resources/logo-source.webp Logo artwork; icon.png / icon.ico are generated from it
   scripts/                   build-icons.cjs, build-docs.cjs, build-web.mjs
   seed.js                    Fills a development database with demo data
   src/main/                  Electron main process
@@ -70,7 +70,7 @@ npm run dev          # run the desktop app with hot reload (or double-click star
 npm test             # 60 Vitest unit/integration tests
 npm run typecheck    # TypeScript, main + renderer
 npm run package      # build the Windows installer into eias/release/
-npm run icons        # regenerate icon.png / icon.ico from resources/icon.svg
+npm run icons        # regenerate icon.png / icon.ico from resources/logo-source.webp
 npm run docs         # re-render docs/*.html to PDF
 ```
 
@@ -85,7 +85,7 @@ Development mode keeps its database at `eias/eias.db`; the installed app uses `%
 
 ## Team
 
-Developed by Anushath and Akhil Koska.
+Developed by Anushath S, Akhil Koska A and Harish S.
 
 ## License
 
