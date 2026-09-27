@@ -289,13 +289,6 @@ function runMigrations(): void {
         created_at TEXT DEFAULT (datetime('now'))
       )`)
     },
-    "003_clear_all_cycles": () => {
-      try { run("DELETE FROM allocations") } catch {}
-      try { run("DELETE FROM rotation_history") } catch {}
-      try { run("DELETE FROM notifications") } catch {}
-      try { run("DELETE FROM exam_sessions") } catch {}
-      try { run("DELETE FROM exam_cycles") } catch {}
-    },
     "004_notifications": () => {
       run(`CREATE TABLE IF NOT EXISTS notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
