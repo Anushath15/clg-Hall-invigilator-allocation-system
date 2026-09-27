@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
@@ -26,6 +27,17 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const activeMasterTab = new URLSearchParams(location.search).get("tab") ?? "staff"
+  const [collegeShortName, setCollegeShortName] = useState("")
+
+  // Sidebar subtitle = Settings → College Profile → Short Name; refreshed when saved.
+  useEffect(() => {
+    const load = () => api.getSettings()
+      .then((s: any) => setCollegeShortName(s?.["college.short_name"] ?? ""))
+      .catch(() => {})
+    load()
+    window.addEventListener("hias:settings-changed", load)
+    return () => window.removeEventListener("hias:settings-changed", load)
+  }, [])
 
   async function handleLogout() {
     await api.logout()
@@ -45,8 +57,10 @@ export default function AdminLayout() {
               <GraduationCap className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold leading-tight tracking-wide">EIAS</h1>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider truncate">SXCCE Nagercoil</p>
+              <h1 className="text-sm font-bold leading-tight tracking-wide">HIAS</h1>
+              {collegeShortName && (
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider truncate">{collegeShortName}</p>
+              )}
             </div>
           </div>
         </div>

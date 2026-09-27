@@ -1,4 +1,4 @@
-# Exam Invigilator Allocation System (EIAS)
+# Hall Invigilator Allocation System (HIAS)
 
 A tool for St. Xavier's Catholic College of Engineering (SXCCE), Nagercoil, that generates fair, rotating exam-hall invigilator assignments across a series of exam sessions, and tracks that history so no invigilator gets an unfair repeat before everyone else has had a turn.
 
@@ -8,7 +8,7 @@ A tool for St. Xavier's Catholic College of Engineering (SXCCE), Nagercoil, that
 
 ## What this actually does
 
-Given a pool of exam halls and a pool of active staff for an exam cycle, EIAS assigns each staff member to a hall for every exam session, then rotates who gets which hall session-to-session so the same person doesn't keep landing in the same hall (or repeat a hall before a full cycle has passed). It validates each generated allocation against a set of rules (R1–R7: no repeat within a cycle, no two staff in the same hall in the same session, etc.), lets an admin manually edit individual assignments before confirming, and keeps a running history (`rotation_history`) used to compute the next rotation. Once a session's allocation is confirmed, staff are notified and can view their assigned hall; admins can generate reports (PDF/Excel) and browse rotation history.
+Given a pool of exam halls and a pool of active staff for an exam cycle, HIAS assigns each staff member to a hall for every exam session, then rotates who gets which hall session-to-session so the same person doesn't keep landing in the same hall (or repeat a hall before a full cycle has passed). It validates each generated allocation against a set of rules (R1–R7: no repeat within a cycle, no two staff in the same hall in the same session, etc.), lets an admin manually edit individual assignments before confirming, and keeps a running history (`rotation_history`) used to compute the next rotation. Once a session's allocation is confirmed, staff are notified and can view their assigned hall; admins can generate reports (PDF/Excel) and browse rotation history.
 
 ## Tech stack
 
@@ -81,7 +81,7 @@ The web build is deployed to Firebase Hosting (`firebase.json`: publishes `out/r
 
 ## What I built and why
 
-This started as a manual, error-prone process: whoever organizes invigilation duty for an exam cycle at SXCCE had to keep track by hand of who'd been assigned to which hall, to avoid unfairly repeating someone while others hadn't had a turn yet. EIAS turns that into: define your halls and staff pool once, generate an allocation for each session with one click, review/edit it if needed, confirm it, and the system remembers the rotation state so the next session's allocation is generated fairly and automatically — with a validation layer that catches the mistakes a human reviewer would otherwise have to check for by hand (double-bookings, repeats, pool mismatches). It ships as both a web app (quick to demo, no install) and a desktop app (the more realistic option for actual day-to-day use by one admin), sharing one codebase and UI.
+This started as a manual, error-prone process: whoever organizes invigilation duty for an exam cycle at SXCCE had to keep track by hand of who'd been assigned to which hall, to avoid unfairly repeating someone while others hadn't had a turn yet. HIAS turns that into: define your halls and staff pool once, generate an allocation for each session with one click, review/edit it if needed, confirm it, and the system remembers the rotation state so the next session's allocation is generated fairly and automatically — with a validation layer that catches the mistakes a human reviewer would otherwise have to check for by hand (double-bookings, repeats, pool mismatches). It ships as both a web app (quick to demo, no install) and a desktop app (the more realistic option for actual day-to-day use by one admin), sharing one codebase and UI.
 
 ## License
 

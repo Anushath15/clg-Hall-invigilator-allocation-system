@@ -298,6 +298,6 @@ export function writeAuditLog(
       [userId, action, description, payload ? JSON.stringify(payload) : null]
     )
   } catch (e) {
-    console.warn("[EIAS Audit Log] Failed to write audit log:", e)
+    console.warn("[HIAS Audit Log] Failed to write audit log:", e)
   }
 }

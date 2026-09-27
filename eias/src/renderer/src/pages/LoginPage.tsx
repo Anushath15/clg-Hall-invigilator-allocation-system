@@ -42,8 +42,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-primary mb-4 shadow-lg">
             <GraduationCap className="w-9 h-9 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">EIAS</h1>
-          <p className="text-brand-light text-sm mt-1 font-medium">Exam Invigilator Allocation System</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">HIAS</h1>
+          <p className="text-brand-light text-sm mt-1 font-medium">Hall Invigilator Allocation System</p>
           <p className="text-gray-400 text-xs mt-1">St. Xavier&apos;s Catholic College of Engineering (Autonomous)</p>
           <p className="text-gray-500 text-xs">Nagercoil</p>
         </div>
@@ -80,7 +80,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-gray-500 text-xs mt-6">
-          © {new Date().getFullYear()} SXCCE · Exam Invigilator Allocation System v1.0
+          © {new Date().getFullYear()} SXCCE · Hall Invigilator Allocation System v1.0
         </p>
       </div>
     </div>

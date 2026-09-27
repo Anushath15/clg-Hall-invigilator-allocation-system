@@ -109,7 +109,7 @@ export default function ReportsPage() {
         styles: { fontSize: 8 }, headStyles: { fillColor: [239, 68, 68] }
       })
     }
-    doc.save(`EIAS-${active}-report.pdf`)
+    doc.save(`HIAS-${active}-report.pdf`)
   }
 
   const showCycleFilter = ["datewise","timetable","audit"].includes(active)

@@ -19,7 +19,7 @@ export default function StaffLayout() {
             <GraduationCap className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold">Exam Invigilator Allocation System</h1>
+            <h1 className="text-sm font-bold">Hall Invigilator Allocation System</h1>
             <p className="text-xs text-gray-400">St. Xavier&apos;s Catholic College of Engineering, Nagercoil</p>
           </div>
         </div>

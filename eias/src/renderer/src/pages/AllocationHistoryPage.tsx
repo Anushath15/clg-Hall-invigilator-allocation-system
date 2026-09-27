@@ -53,7 +53,7 @@ export default function AllocationHistoryPage() {
       styles: { fontSize: 8 },
       headStyles: { fillColor: [18, 59, 42] }
     })
-    doc.save("EIAS-allocation-history.pdf")
+    doc.save("HIAS-allocation-history.pdf")
   }
 
   return (

@@ -33,6 +33,8 @@ export default function SettingsPage() {
       for (const [k, v] of Object.entries(changed)) await api.saveSetting(k, v)
       setSettings(s => ({ ...s, ...changed }))
       setChanged({})
+      // Lets the sidebar show the new college short name without a restart.
+      window.dispatchEvent(new Event("hias:settings-changed"))
       toast.success("Settings saved!")
     } finally { setSaving(false) }
   }
@@ -61,7 +63,7 @@ export default function SettingsPage() {
   }
 
   async function backup() {
-    const dest = await api.openSaveDialog([{ name: "EIAS Backup", extensions: ["db"] }], "eias-backup.db")
+    const dest = await api.openSaveDialog([{ name: "HIAS Backup", extensions: ["db"] }], "hias-backup.db")
     if (!dest) return
     const r = await api.backupDatabase(dest)
     if (r.success) toast.success("Database backed up successfully!")
@@ -70,7 +72,7 @@ export default function SettingsPage() {
 
   async function restore() {
     if (!confirm("Restore will replace all current data with the backup. A safety copy will be saved. Continue?")) return
-    const src = await api.openFileDialog([{ name: "EIAS Backup", extensions: ["db"] }])
+    const src = await api.openFileDialog([{ name: "HIAS Backup", extensions: ["db"] }])
     if (!src) return
     const r = await api.restoreDatabase(src)
     if (r.success) {
@@ -212,7 +214,7 @@ export default function SettingsPage() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-brand-textmain">Backup Database</h3>
                     <p className="text-sm text-brand-textsec mt-1">
-                      Save a copy of the entire EIAS database (all staff, halls, cycles, allocations, history) to a file. Store it safely on an external drive or network location.
+                      Save a copy of the entire HIAS database (all staff, halls, cycles, allocations, history) to a file. Store it safely on an external drive or network location.
                     </p>
                     <button onClick={backup} className="btn-primary mt-3 flex items-center gap-2">
                       <Download className="w-4 h-4" /> Create Backup?

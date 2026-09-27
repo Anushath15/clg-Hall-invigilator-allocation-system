@@ -1,5 +1,5 @@
 /**
- * EIAS Vitest Test Suite
+ * HIAS Vitest Test Suite
  * Tests round-robin engine, validation rules R1-R7, and lifecycle.
  * Run with: npm run test
  */

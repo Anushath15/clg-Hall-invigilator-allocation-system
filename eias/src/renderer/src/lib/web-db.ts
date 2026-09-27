@@ -53,7 +53,7 @@ async function saveToIndexedDB(buffer: Uint8Array): Promise<void> {
       tx.onerror = () => reject(tx.error)
     })
   } catch (e) {
-    console.error("[EIAS Web DB] Failed to persist to IndexedDB", e)
+    console.error("[HIAS Web DB] Failed to persist to IndexedDB", e)
   }
 }
 
@@ -76,12 +76,12 @@ export async function initWebDatabase(): Promise<void> {
     const savedBuffer = await loadFromIndexedDB()
     if (savedBuffer && savedBuffer.length > 0) {
       _db = new SQL.Database(savedBuffer)
-      console.log("[EIAS Web DB] Loaded existing database from IndexedDB")
+      console.log("[HIAS Web DB] Loaded existing database from IndexedDB")
     } else {
       // 2. First load: initialize empty schema. No pre-baked file is fetched.
       // ensureDefaultAdmin() below will create the admin account on first run.
       _db = new SQL.Database()
-      console.log("[EIAS Web DB] Initialized fresh empty database")
+      console.log("[HIAS Web DB] Initialized fresh empty database")
     }
 
     runMigrations()
@@ -146,7 +146,7 @@ export async function runTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
     try {
       _db.run("ROLLBACK")
     } catch (rbErr) {
-      console.error("[EIAS Web DB] Rollback failed:", rbErr)
+      console.error("[HIAS Web DB] Rollback failed:", rbErr)
     }
     _inTransaction = false
     throw err

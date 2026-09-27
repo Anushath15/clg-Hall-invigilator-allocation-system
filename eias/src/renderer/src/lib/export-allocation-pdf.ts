@@ -90,5 +90,5 @@ export function exportAllocationPDF({ cycle, session, allocation, settings = {} 
   doc.text(`Total invigilators: ${allocation.length}`, 14, finalY + 8)
   doc.setTextColor(0)
 
-  doc.save(`EIAS-Allocation-${session.exam_date ?? "session"}-${session.session_type}.pdf`)
+  doc.save(`HIAS-Allocation-${session.exam_date ?? "session"}-${session.session_type}.pdf`)
 }

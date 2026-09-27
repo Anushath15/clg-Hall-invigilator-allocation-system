@@ -875,7 +875,7 @@ export const webApi = {
       }
     } catch (e) {
       // Notification failure must never block publish
-      console.warn("[EIAS] Failed to create notifications:", e)
+      console.warn("[HIAS] Failed to create notifications:", e)
     }
 
     return { success: true }
@@ -1095,7 +1095,7 @@ export const webApi = {
   },
 
   openSaveDialog: async (_filters?: any[], defaultName?: string): Promise<string | null> => {
-    return defaultName ?? "eias-backup.db"
+    return defaultName ?? "hias-backup.db"
   },
 
   backupDatabase: async (destPath: string) => {
@@ -1106,7 +1106,7 @@ export const webApi = {
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = destPath || "eias-backup.db"
+      a.download = destPath || "hias-backup.db"
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

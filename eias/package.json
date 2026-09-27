@@ -1,7 +1,7 @@
 {
   "name": "eias",
   "version": "1.0.0",
-  "description": "Exam Invigilator Allocation System - SXCCE Nagercoil",
+  "description": "Hall Invigilator Allocation System - SXCCE Nagercoil",
   "main": "out/main/index.js",
   "author": "SXCCE",
   "license": "MIT",
@@ -51,7 +51,7 @@
   },
   "build": {
     "appId": "in.edu.sxcce.eias",
-    "productName": "Exam Invigilator Allocation System",
+    "productName": "Hall Invigilator Allocation System",
     "directories": {
       "output": "release"
     },
@@ -68,7 +68,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "EIAS"
+      "shortcutName": "HIAS"
     }
   }
 }

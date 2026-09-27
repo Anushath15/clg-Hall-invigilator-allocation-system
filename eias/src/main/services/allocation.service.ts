@@ -125,7 +125,7 @@ export function publishAllocation(sessionId: number) {
       )
     }
   } catch (e) {
-    console.warn("[EIAS] Failed to create notifications in desktop:", e)
+    console.warn("[HIAS] Failed to create notifications in desktop:", e)
   }
 
   return { success: true }

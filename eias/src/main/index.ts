@@ -9,6 +9,10 @@ import { registerMasterHandlers } from "./ipc/master.ipc"
 import { registerReportHandlers } from "./ipc/report.ipc"
 import { registerCycleHandlers } from "./ipc/cycle.ipc"
 
+// Keep the data folder at %APPDATA%\eias regardless of the product name, so renaming
+// the app (EIAS -> HIAS) never "loses" the existing eias.db on installed machines.
+app.setPath("userData", join(app.getPath("appData"), "eias"))
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
@@ -20,7 +24,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     icon: join(__dirname, '../../resources/icon.png'),
-    title: "Exam Invigilator Allocation System — SXCCE",
+    title: "HIAS – Hall Invigilator Allocation System",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -78,10 +82,10 @@ app.whenReady().then(async () => {
     createWindow()
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   } catch (err) {
-    console.error("[EIAS Main Startup Error]:", err)
+    console.error("[HIAS Main Startup Error]:", err)
     // In the packaged app there is no console, so a failed start would otherwise
     // leave the user with no window and no explanation.
-    dialog.showErrorBox("EIAS failed to start", String((err as Error)?.stack ?? err))
+    dialog.showErrorBox("HIAS failed to start", String((err as Error)?.stack ?? err))
     app.quit()
   }
 })

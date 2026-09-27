@@ -22,7 +22,7 @@ const apiBridge = new Proxy({}, {
     }
     return async () => {
       const msg = `API method "${prop}" is not implemented.`
-      console.error(`[EIAS] ${msg}`)
+      console.error(`[HIAS] ${msg}`)
       throw new Error(msg)
     }
   }

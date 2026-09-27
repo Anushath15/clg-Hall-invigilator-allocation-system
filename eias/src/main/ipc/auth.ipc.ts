@@ -23,7 +23,7 @@ export function registerAuthHandlers() {
 
   ipcMain.handle("dialog:saveFile", async (_, filters, defaultName) => {
     const result = await dialog.showSaveDialog({
-      defaultPath: defaultName ?? "eias-backup.db",
+      defaultPath: defaultName ?? "hias-backup.db",
       filters: filters ?? [{ name: "Database", extensions: ["db"] }]
     })
     return result.canceled ? null : result.filePath
