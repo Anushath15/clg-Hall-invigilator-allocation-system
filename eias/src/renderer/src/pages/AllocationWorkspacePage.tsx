@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ChevronLeft, Zap, CheckCircle, Globe, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Clock, Calendar, Trash2 } from "lucide-react"
+import { ChevronLeft, Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Clock, Calendar, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn } from "../lib/utils"
+import { exportAllocationPDF } from "../lib/export-allocation-pdf"
 import toast from "react-hot-toast"
 import AllocationMatrixView from "../components/AllocationMatrixView"
 import RotationHistoryTimeline from "../components/RotationHistoryTimeline"
@@ -28,6 +29,7 @@ export default function AllocationWorkspacePage() {
   const [allHallsMap, setAllHallsMap] = useState<Record<number, any>>({})
   const [editScheduleSession, setEditScheduleSession] = useState<any | null>(null)
   const [showAddSessionModal, setShowAddSessionModal] = useState(false)
+  const [settings, setSettings] = useState<Record<string, string>>({})
 
   // Detect duplicate sessions (sessions with same date and session_type)
   const duplicateSessionKeys = useMemo(() => {
@@ -104,6 +106,8 @@ export default function AllocationWorkspacePage() {
 
   useEffect(() => { loadCycle() }, [loadCycle])
   useEffect(() => { if (activeSession) loadAllocation() }, [activeSession])
+  // Read-only: only supplies the college name/short name printed on the exported PDF.
+  useEffect(() => { api.getSettings().then((s: any) => setSettings(s ?? {})) }, [])
 
   async function loadAllocation() {
     setValidation(null)
@@ -178,10 +182,13 @@ export default function AllocationWorkspacePage() {
     } finally { setLoading(false) }
   }
 
-  async function handlePublish() {
-    const r = await api.publishAllocation(activeSession.id)
-    if (r.success) { toast.success("Published! Staff can view their duty."); loadCycle(); loadAllocation() }
-    else toast.error(r.error)
+  function handleExportPDF() {
+    if (!activeSession || allocation.length === 0) {
+      toast.error("Nothing to export for this session.")
+      return
+    }
+    exportAllocationPDF({ cycle, session: activeSession, allocation, settings })
+    toast.success("PDF exported!")
   }
 
   const effectiveStatus = (activeSession?.status === "pending" && allocation.length > 0)
@@ -222,8 +229,8 @@ export default function AllocationWorkspacePage() {
       </div>
     ),
     confirmed: (
-      <button onClick={handlePublish} className="btn-primary flex items-center gap-2">
-        <Globe className="w-4 h-4" /> Publish to Staff
+      <button onClick={handleExportPDF} className="btn-primary flex items-center gap-2">
+        <Download className="w-4 h-4" /> Export PDF
       </button>
     ),
     published: (
