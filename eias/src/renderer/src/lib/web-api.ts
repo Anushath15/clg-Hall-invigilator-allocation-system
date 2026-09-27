@@ -922,7 +922,8 @@ export const webApi = {
       }
     }
     const users = Array.from(userMap.values())
-    return { cycle, sessions, allocations, users }
+    const halls = webDb.query<any>("SELECT * FROM halls WHERE is_active = 1 ORDER BY sort_order, id")
+    return { cycle, sessions, allocations, users, halls }
   },
 
   getAuditReport: async (cycleId: number) => {

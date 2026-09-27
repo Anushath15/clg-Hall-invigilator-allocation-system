@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { api } from "../lib/api"
 import { formatDate, cn } from "../lib/utils"
 import { Loader2 } from "lucide-react"
@@ -8,17 +8,25 @@ interface Props { cycleId: number }
 export default function AllocationMatrixView({ cycleId }: Props) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.getCompleteTimetable(cycleId)
       .then(setData)
+      .catch((err: any) => setError(err?.message || "Failed to load allocation matrix"))
       .finally(() => setLoading(false))
   }, [cycleId])
 
   if (loading) return (
     <div className="flex items-center justify-center py-16 text-brand-textsec">
       <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading matrix...
+    </div>
+  )
+  if (error) return (
+    <div className="text-center py-12 text-red-600 text-sm">
+      {error}
     </div>
   )
   if (!data || !data.sessions?.length) return (
