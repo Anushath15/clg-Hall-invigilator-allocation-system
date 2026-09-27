@@ -14,6 +14,7 @@ const api = {
   getUsers:        (filters?: any) => ipcRenderer.invoke("master:getUsers", filters),
   saveUser:        (data: any) => ipcRenderer.invoke("master:saveUser", data),
   deleteUser:      (id: number) => ipcRenderer.invoke("master:deleteUser", id),
+  hardDeleteUser:  (id: number) => ipcRenderer.invoke("master:hardDeleteUser", id),
   importUsersFromExcel: (filePath: string) => ipcRenderer.invoke("master:importUsersFromExcel", filePath),
   // Halls
   getHalls:        () => ipcRenderer.invoke("master:getHalls"),

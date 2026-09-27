@@ -2,6 +2,7 @@ import { ipcMain } from "electron"
 import { db } from "../db/database"
 import * as XLSX from "xlsx"
 import bcrypt from "bcryptjs"
+import { hardDeleteUser } from "../services/allocation.service"
 
 export function registerMasterHandlers() {
   // DEPARTMENTS
@@ -50,6 +51,7 @@ export function registerMasterHandlers() {
   ipcMain.handle("master:deleteUser", async (_, id) => {
     db.run("UPDATE users SET is_active=0 WHERE id=?", [id]); return { success: true }
   })
+  ipcMain.handle("master:hardDeleteUser", async (_, id) => hardDeleteUser(id))
   ipcMain.handle("master:importUsersFromExcel", async (_, filePath) => {
     try {
       const wb = XLSX.readFile(filePath)

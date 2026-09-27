@@ -1,6 +1,7 @@
-﻿import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Plus, Pencil, Trash2, Upload, Download, CheckCircle, XCircle } from "lucide-react"
+import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { cn } from "../lib/utils"
@@ -39,6 +40,7 @@ function StaffTab() {
   const [depts, setDepts] = useState<any[]>([])
   const [form, setForm] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<any>(null)
 
   const load = async () => { setUsers(await api.getUsers({ role: "staff" })); setDepts(await api.getDepartments()) }
   useEffect(() => { load() }, [])
@@ -120,7 +122,18 @@ function StaffTab() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => setForm(u)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => remove(u.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
+                  {u.is_active ? (
+                    <button onClick={() => remove(u.id)} title="Deactivate" className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
+                  ) : (
+                    <button
+                      onClick={() => setHardDeleteTarget(u)}
+                      title="Delete Permanently"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Permanently</span>
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -128,6 +141,24 @@ function StaffTab() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmWithPasswordModal
+        isOpen={!!hardDeleteTarget}
+        title="Delete Staff Member Permanently"
+        message={`Are you sure you want to permanently delete ${hardDeleteTarget?.name} (${hardDeleteTarget?.staff_id})? This cannot be undone.`}
+        confirmButtonText="Delete Permanently"
+        onClose={() => setHardDeleteTarget(null)}
+        onConfirmed={async () => {
+          if (!hardDeleteTarget) return
+          const res = await api.hardDeleteUser(hardDeleteTarget.id)
+          if (res?.success) {
+            toast.success("Staff member deleted permanently")
+            load()
+          } else {
+            toast.error(res?.error || "Cannot permanently delete staff member")
+          }
+        }}
+      />
     </div>
   )
 }

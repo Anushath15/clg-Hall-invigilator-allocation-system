@@ -301,6 +301,13 @@ export const webApi = {
 
   logout: async () => ({ success: true }),
 
+  verifyPassword: async (staffId: string, password: string): Promise<boolean> => {
+    await ensureDb()
+    const user = webDb.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
+    if (!user || !user.is_active || !user.password_hash) return false
+    return await bcrypt.compare(password, user.password_hash)
+  },
+
   changePassword: async (userId: number, oldPw: string, newPw: string) => {
     await ensureDb()
     const user = webDb.queryOne<any>("SELECT * FROM users WHERE id = ?", [userId])
@@ -312,13 +319,6 @@ export const webApi = {
     const hash = await bcrypt.hash(newPw, 12)
     webDb.run("UPDATE users SET password_hash = ? WHERE id = ?", [hash, userId])
     return { success: true }
-  },
-
-  verifyPassword: async (staffId: string, password: string) => {
-    await ensureDb()
-    const user = webDb.queryOne<any>("SELECT * FROM users WHERE staff_id = ? AND is_active = 1", [staffId])
-    if (!user || !user.password_hash) return false
-    return bcrypt.compare(password, user.password_hash)
   },
 
   // Departments
@@ -382,6 +382,19 @@ export const webApi = {
     await ensureDb()
     webDb.run("UPDATE users SET is_active=0 WHERE id=?", [id])
     writeAuditLog(null, "STAFF_STATUS_CHANGE", `Staff ID ${id} deactivated`, { id, is_active: 0 })
+    return { success: true }
+  },
+
+  hardDeleteUser: async (id: number) => {
+    await ensureDb()
+    const inHistory = webDb.queryOne<any>("SELECT id FROM rotation_history WHERE user_id = ? LIMIT 1", [id])
+    const inAllocations = webDb.queryOne<any>("SELECT id FROM allocations WHERE user_id = ? LIMIT 1", [id])
+    if (inHistory || inAllocations) {
+      return { success: false, error: "Cannot permanently delete: this staff member has allocation history." }
+    }
+    const user = webDb.queryOne<any>("SELECT staff_id, name FROM users WHERE id = ?", [id])
+    webDb.run("DELETE FROM users WHERE id = ?", [id])
+    writeAuditLog(null, "STAFF_HARD_DELETE", `Staff permanently deleted: ${user?.staff_id ?? id} - ${user?.name ?? ""}`, { id, staff_id: user?.staff_id })
     return { success: true }
   },
 
