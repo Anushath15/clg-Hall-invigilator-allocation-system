@@ -31,6 +31,12 @@ export async function login(staffId: string, password: string): Promise<LoginRes
   return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
 }
 
+export async function verifyPassword(staffId: string, password: string): Promise<boolean> {
+  const user = db.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
+  if (!user || !user.is_active || !user.password_hash) return false
+  return await bcrypt.compare(password, user.password_hash)
+}
+
 export async function changePassword(userId: number, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
   const user = db.queryOne<any>("SELECT * FROM users WHERE id = ?", [userId])
   if (!user) return { success: false, error: "User not found." }

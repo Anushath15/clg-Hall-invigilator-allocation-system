@@ -314,6 +314,13 @@ export const webApi = {
     return { success: true }
   },
 
+  verifyPassword: async (staffId: string, password: string) => {
+    await ensureDb()
+    const user = webDb.queryOne<any>("SELECT * FROM users WHERE staff_id = ? AND is_active = 1", [staffId])
+    if (!user || !user.password_hash) return false
+    return bcrypt.compare(password, user.password_hash)
+  },
+
   // Departments
   getDepartments: async () => {
     await ensureDb()

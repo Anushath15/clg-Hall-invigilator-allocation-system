@@ -32,6 +32,7 @@ export const api = apiBridge as {
   // Auth
   login: (staffId: string, password: string) => Promise<any>
   logout: () => Promise<any>
+  verifyPassword: (staffId: string, password: string) => Promise<boolean>
   changePassword: (userId: number, oldPw: string, newPw: string) => Promise<any>
   // Departments
   getDepartments: () => Promise<any[]>
