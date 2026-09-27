@@ -22,7 +22,7 @@ export interface AllocationExportArgs {
   cycle: { name?: string; academic_year?: string } | null
   session: {
     exam_date: string
-    session_type: string
+    session_type: "FN" | "AN"
     reporting_time?: string | null
     exam_start?: string | null
     exam_end?: string | null
