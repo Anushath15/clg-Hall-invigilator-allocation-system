@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from "electron"
+import { app, BrowserWindow, shell, ipcMain, dialog } from "electron"
 import { join } from "path"
 // electron-toolkit inlined
 import { initDatabase } from "./db/database"
@@ -79,6 +79,10 @@ app.whenReady().then(async () => {
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   } catch (err) {
     console.error("[EIAS Main Startup Error]:", err)
+    // In the packaged app there is no console, so a failed start would otherwise
+    // leave the user with no window and no explanation.
+    dialog.showErrorBox("EIAS failed to start", String((err as Error)?.stack ?? err))
+    app.quit()
   }
 })
 

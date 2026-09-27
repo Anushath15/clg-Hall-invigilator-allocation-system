@@ -55,10 +55,12 @@
       "output": "release"
     },
     "files": [
-      "out/**/*"
+      "out/**/*",
+      "resources/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "resources/icon.ico"
     },
     "icon": "resources/icon.png", "nsis": {
       "oneClick": false,

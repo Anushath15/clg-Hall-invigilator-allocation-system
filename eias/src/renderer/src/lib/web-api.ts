@@ -1032,7 +1032,7 @@ export const webApi = {
     try {
       await ensureDb()
       const data = webDb.exportDatabaseBlob()
-      const blob = new Blob([data], { type: "application/x-sqlite3" })
+      const blob = new Blob([data as Uint8Array<ArrayBuffer>], { type: "application/x-sqlite3" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url

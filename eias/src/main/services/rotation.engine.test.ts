@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest"
 import { initDatabase, db } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
-import { validateAllocation, validateSingleEdit } from "./validation.engine"
+import { validateAllocation, validateSingleEdit, type ValidationEntry } from "./validation.engine"
 import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, hardDeleteUser, deleteSession, restartRotation, getNotifications, getUnreadCount } from "./allocation.service"
 
 // ??? Pure rotation logic (no DB needed) ??????????????????????????????????????
@@ -504,7 +504,7 @@ it("T7 ? Edited hall becomes future baseline", async () => {
     expect(staff2?.hallId).toBe(2)
 
     // Validate Session 3: must have ZERO validation errors (R1 was previously blocking full-cycle restart)
-    const valResult = validateAllocation(3, s3Draft.entries, hallIds, userIds)
+    const valResult = validateAllocation(3, s3Draft.entries as ValidationEntry[], hallIds, userIds)
     expect(valResult.isValid).toBe(true)
     expect(valResult.blockingErrors).toHaveLength(0)
     expect(valResult.warnings).toHaveLength(0)
@@ -601,7 +601,7 @@ it("T7 ? Edited hall becomes future baseline", async () => {
       const notifs = getNotifications(staff.id)
       const restartNotif = notifs.find((n: any) => n.title === "Rotation Restarted")
       expect(restartNotif).toBeDefined()
-      expect(restartNotif.message).toBe(
+      expect(restartNotif!.message).toBe(
         "Your entire hall rotation history has been restarted by the admin. Your next assigned hall will begin again from the first hall in the rotation."
       )
       expect(getUnreadCount(staff.id)).toBeGreaterThan(0)
