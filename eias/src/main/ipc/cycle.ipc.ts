@@ -1,6 +1,6 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
-import { deleteSession, deleteCycle } from "../services/allocation.service"
+import { deleteSession, deleteCycle, refreshCycleStatus } from "../services/allocation.service"
 
 export function registerCycleHandlers() {
   ipcMain.handle("cycle:getCycles", () => db.query("SELECT * FROM exam_cycles ORDER BY created_at DESC"))
@@ -88,6 +88,7 @@ export function registerCycleHandlers() {
       "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
       [cycleId, data.exam_date, data.session_type, step, data.reporting_time??null, data.exam_start??null, data.exam_end??null, "pending"]
     )
+    refreshCycleStatus(cycleId) // a new pending session reopens a confirmed batch
     return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("cycle:deleteSession", async (_, id) => deleteSession(id))

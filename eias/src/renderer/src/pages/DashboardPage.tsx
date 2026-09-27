@@ -88,7 +88,7 @@ export default function DashboardPage() {
         <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" onClick={() => navigate("/master?tab=staff")} />
         <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" onClick={() => navigate("/master?tab=halls")} />
         <StatCard icon={Calendar}     label="Allocation Batches"    value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" onClick={() => navigate("/cycles")} />
-        <StatCard icon={Clock}        label="Upcoming Sessions"     value={stats?.upcomingSessions ?? 0}   color="bg-yellow-50 text-yellow-600" sub="Pending allocation" />
+        <StatCard icon={Clock}        label="Upcoming Sessions"     value={stats?.upcomingSessions ?? 0}   color="bg-yellow-50 text-yellow-600" sub="From today onwards" />
         <StatCard icon={CheckCircle}  label="Confirmed Sessions"    value={stats?.confirmedSessions ?? 0}  color="bg-teal-50 text-teal-600" />
         <StatCard icon={AlertCircle}  label="Pending Allocations"   value={stats?.pendingAllocations ?? 0} color="bg-red-50 text-red-500" />
       </div>

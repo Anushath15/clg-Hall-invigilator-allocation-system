@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ChevronLeft, Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2 } from "lucide-react"
+import { Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn } from "../lib/utils"
 import { exportAllocationPDF } from "../lib/export-allocation-pdf"
@@ -244,9 +244,6 @@ export default function AllocationWorkspacePage() {
     <div className="p-8">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate("/cycles")} className="p-2 rounded-lg hover:bg-gray-100 text-brand-textsec">
-          <ChevronLeft className="w-5 h-5" />
-        </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-brand-textmain">{cycle?.name ?? "Loading..."}</h1>
           <p className="text-brand-textsec text-sm">{cycle?.academic_year} · Allocation Workspace</p>
@@ -363,7 +360,7 @@ export default function AllocationWorkspacePage() {
                   </div>
                   <div>
                     <span className="text-brand-textsec">Report: </span>
-                    <span className="font-semibold text-brand-textmain">{formatTime12h(activeSession.reporting_time)} ({activeSession.reporting_time})</span>
+                    <span className="font-semibold text-brand-textmain">{formatTime12h(activeSession.reporting_time)}</span>
                   </div>
                   <div>
                     <span className="text-brand-textsec">Exam: </span>

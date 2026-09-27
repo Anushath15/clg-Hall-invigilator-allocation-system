@@ -79,11 +79,30 @@ export async function confirmAllocation(sessionId: number) {
       )
       db.run("UPDATE exam_sessions SET status='confirmed', updated_at=datetime('now') WHERE id=?", [sessionId])
     })
+    refreshCycleStatus(session.cycle_id)
     writeAuditLog(null, "CONFIRM_ALLOCATION", `Session ${sessionId} confirmed`, { sessionId, count: entries.length })
     return { success: true, validation }
   } catch (err: any) {
     return { success: false, error: err?.message || "Confirmation failed during transaction." }
   }
+}
+
+// A batch's status follows its sessions: "confirmed" once every session is confirmed,
+// "published" once every session is published, otherwise "draft". (Publishing is no
+// longer offered in the offline app, so batches normally end at "confirmed".)
+export function refreshCycleStatus(cycleId: number) {
+  const counts = db.queryOne<any>(
+    `SELECT COUNT(*) as total,
+            SUM(CASE WHEN status IN ('confirmed','published') THEN 1 ELSE 0 END) as confirmed,
+            SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) as published
+     FROM exam_sessions WHERE cycle_id=?`,
+    [cycleId]
+  )
+  const total = counts?.total ?? 0
+  const status = total > 0 && counts.published === total ? "published"
+    : total > 0 && counts.confirmed === total ? "confirmed"
+    : "draft"
+  db.run("UPDATE exam_cycles SET status=?, updated_at=datetime('now') WHERE id=?", [status, cycleId])
 }
 
 export function publishAllocation(sessionId: number) {
@@ -178,7 +197,7 @@ export function getStaffDutyHistory(userId: number) {
      JOIN exam_sessions es ON a.session_id = es.id
      JOIN halls h ON a.hall_id = h.id
      JOIN exam_cycles ec ON es.cycle_id = ec.id
-     WHERE a.user_id = ? AND es.status = 'published'
+     WHERE a.user_id = ? AND es.status IN ('confirmed','published')
      ORDER BY es.exam_date DESC, es.session_type ASC`,
     [userId]
   )
@@ -245,6 +264,7 @@ export function deleteSession(id: number) {
   remaining.forEach((s, idx) => {
     db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
   })
+  refreshCycleStatus(session.cycle_id)
   return { success: true }
 }
 

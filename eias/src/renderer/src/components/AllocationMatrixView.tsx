@@ -72,7 +72,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
             <tr key={u.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
               <td className="sticky left-0 z-10 px-3 py-1.5 border-r border-brand-border bg-inherit">
                 <div className="font-medium text-brand-textmain truncate max-w-[170px]">{u.name}</div>
-                <div className="text-[10px] text-brand-textsec">{u.staff_id} · {u.deptName ?? "—"}</div>
+                <div className="text-[10px] text-brand-textsec">{u.staff_id} · {u.deptCode ?? u.deptName ?? "—"}</div>
               </td>
               {confirmedSessions.map((s: any) => {
                 const hallCode = lookup[`${u.id}_${s.id}`]

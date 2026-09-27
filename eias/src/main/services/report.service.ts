@@ -1,7 +1,7 @@
 ﻿import { db } from "../db/database"
 
 export function getStaffWiseReport(userId?: number, fromYear?: string, toYear?: string) {
-  let sql = `SELECT u.staff_id, u.name as staffName, d.name as deptName,
+  let sql = `SELECT u.staff_id, u.name as staffName, d.name as deptName, d.code as deptCode,
     es.exam_date, es.session_type, ec.academic_year,
     h.hall_code, h.name as hallName,
     es.reporting_time, es.exam_start, es.exam_end,
@@ -12,7 +12,7 @@ export function getStaffWiseReport(userId?: number, fromYear?: string, toYear?: 
   JOIN exam_sessions es ON a.session_id = es.id
   JOIN exam_cycles ec ON es.cycle_id = ec.id
   LEFT JOIN departments d ON u.department_id = d.id
-  WHERE es.status = 'published'`
+  WHERE es.status IN ('confirmed','published')`
   const params: any[] = []
   if (userId) { sql += ` AND a.user_id = ?`; params.push(userId) }
   if (fromYear) { sql += ` AND ec.academic_year >= ?`; params.push(fromYear) }
@@ -39,12 +39,18 @@ export function getDateWiseReport(sessionId: number) {
 }
 
 export function getCompleteTimetable(cycleId: number) {
-  const sessions = db.query("SELECT * FROM exam_sessions WHERE cycle_id = ? AND status != 'pending' ORDER BY exam_date, session_type", [cycleId])
+  // Chronological: by date, then Forenoon before Afternoon (plain ORDER BY session_type
+  // would put "AN" first).
+  const sessions = db.query(
+    "SELECT * FROM exam_sessions WHERE cycle_id = ? AND status != 'pending' ORDER BY exam_date, CASE session_type WHEN 'FN' THEN 0 ELSE 1 END",
+    [cycleId]
+  )
   const allocations = db.query(
     "SELECT a.user_id, a.hall_id, a.session_id, a.is_manually_edited FROM allocations a JOIN exam_sessions es ON a.session_id = es.id WHERE es.cycle_id = ?", [cycleId]
   )
+  // Invigilators only (not the admin account).
   const users = db.query(
-    "SELECT u.id, u.staff_id, u.name, d.name as deptName FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.is_active = 1 ORDER BY d.code, u.name"
+    "SELECT u.id, u.staff_id, u.name, d.name as deptName, d.code as deptCode FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.is_active = 1 AND u.role = 'staff' ORDER BY d.code, u.name"
   )
   const halls = db.query("SELECT * FROM halls WHERE is_active = 1 ORDER BY sort_order, id")
   return { sessions, allocations, users, halls }

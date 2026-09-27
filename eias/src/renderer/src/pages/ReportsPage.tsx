@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import { FileText, Download, BarChart3, Users, Calendar, AlertCircle, Grid } from "lucide-react"
 import { api } from "../lib/api"
-import { formatDate } from "../lib/utils"
+import { formatDate, formatDateWithDay, formatSession, formatTime12h } from "../lib/utils"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
+import toast from "react-hot-toast"
 
 const REPORTS = [
   { id: "staffwise", label: "Staff-Wise Duty Report", icon: Users, desc: "All sessions per staff member" },
@@ -11,6 +12,11 @@ const REPORTS = [
   { id: "timetable", label: "Complete Timetable Grid", icon: Grid, desc: "Full Staff × Session matrix" },
   { id: "audit", label: "Rotation Audit Report", icon: AlertCircle, desc: "Auto vs admin-edited assignments" }
 ]
+
+// Report cells: short department code (fits the PDF columns) and 12-hour times.
+const dept = (r: any) => r.deptCode ?? r.deptName ?? "—"
+const time = (t?: string | null) => (t ? formatTime12h(t) : "—")
+const examTime = (r: any) => (r.exam_start && r.exam_end ? `${formatTime12h(r.exam_start)}–${formatTime12h(r.exam_end)}` : "—")
 
 export default function ReportsPage() {
   const [active, setActive] = useState("staffwise")
@@ -43,7 +49,7 @@ export default function ReportsPage() {
       else if (active === "datewise" && selectedSession) setData(await api.getDateWiseReport(selectedSession))
       else if (active === "timetable" && selectedCycle) setData(await api.getCompleteTimetable(selectedCycle))
       else if (active === "audit" && selectedCycle) setData(await api.getAuditReport(selectedCycle))
-      else { alert("Please select required filters."); return }
+      else { toast.error(active === "datewise" ? "Please select a batch and a session." : "Please select a batch."); return }
     } finally { setLoading(false) }
   }
 
@@ -61,7 +67,12 @@ export default function ReportsPage() {
       timetable: "Complete Invigilation Timetable",
       audit: "Rotation Audit Report"
     }
-    doc.text(titles[active], doc.internal.pageSize.width / 2, 21, { align: "center" })
+    // The date-wise sheet is posted per session, so its title must say which one.
+    const first = active === "datewise" && Array.isArray(data) ? data[0] : null
+    const title = first
+      ? `${titles[active]} — ${formatDateWithDay(first.exam_date)} (${formatSession(first.session_type)})`
+      : titles[active]
+    doc.text(title, doc.internal.pageSize.width / 2, 21, { align: "center" })
     doc.setFontSize(8); doc.setTextColor(120)
     doc.text(`Generated: ${new Date().toLocaleString()} · ${shortName}`, 14, 28)
     doc.setTextColor(0)
@@ -70,14 +81,14 @@ export default function ReportsPage() {
       autoTable(doc, {
         startY: 33,
         head: [["Staff ID","Name","Dept","Date","Session","Hall","Report Time","Exam","Batch"]],
-        body: data.map((r: any) => [r.staff_id, r.staffName, r.deptName ?? "—", formatDate(r.exam_date), r.session_type, r.hall_code, r.reporting_time, `${r.exam_start}–${r.exam_end}`, r.cycleName]),
+        body: data.map((r: any) => [r.staff_id, r.staffName, dept(r), formatDate(r.exam_date), r.session_type, r.hall_code, time(r.reporting_time), examTime(r), r.cycleName]),
         styles: { fontSize: 8 }, headStyles: { fillColor: [22, 163, 74] }
       })
     } else if (active === "datewise" && Array.isArray(data)) {
       autoTable(doc, {
         startY: 33,
         head: [["Hall","Hall Name","Capacity","Staff ID","Name","Dept","Designation","Report Time","Exam"]],
-        body: data.map((r: any) => [r.hall_code, r.hallName, r.capacity, r.staff_id, r.staffName, r.deptName ?? "—", r.designation ?? "—", r.reporting_time, `${r.exam_start}–${r.exam_end}`]),
+        body: data.map((r: any) => [r.hall_code, r.hallName, r.capacity, r.staff_id, r.staffName, dept(r), r.designation ?? "—", time(r.reporting_time), examTime(r)]),
         styles: { fontSize: 8 }, headStyles: { fillColor: [22, 163, 74] }
       })
     } else if (active === "timetable" && data?.sessions && data?.users) {
@@ -90,7 +101,7 @@ export default function ReportsPage() {
       }
       const headers = ["Staff ID","Name","Dept",...confirmedSessions.map((s: any) => `${formatDate(s.exam_date)}\n${s.session_type}`)]
       const rows = data.users.map((u: any) => [
-        u.staff_id, u.name, u.deptName ?? "—",
+        u.staff_id, u.name, dept(u),
         ...confirmedSessions.map((s: any) => lookup[`${u.id}_${s.id}`] ?? "—")
       ])
       autoTable(doc, {
@@ -129,7 +140,7 @@ export default function ReportsPage() {
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-brand-textmain mb-2">Reports</h1>
-      <p className="text-brand-textsec mb-6">Generate and export allocation reports with SXCCE letterhead</p>
+      <p className="text-brand-textsec mb-6">Generate and export allocation reports with your college letterhead</p>
 
       {/* Report type selector */}
       <div className="grid grid-cols-4 gap-3 mb-6">
@@ -246,8 +257,8 @@ export default function ReportsPage() {
             <tbody className="divide-y divide-brand-border">
               {rows.map((r: any, i: number) => (
                 <tr key={i} className={`hover:bg-gray-50 ${r.is_manually_edited ? "bg-amber-50" : ""}`}>
-                  {active === "staffwise" && [r.staff_id,r.staffName,r.deptName??'—',formatDate(r.exam_date),r.session_type,r.hall_code,r.reporting_time,`${r.exam_start}–${r.exam_end}`,r.cycleName].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
-                  {active === "datewise" && [r.hall_code,r.hallName,r.capacity,r.staff_id,r.staffName,r.deptName??'—',r.designation??'—',r.reporting_time,`${r.exam_start}–${r.exam_end}`].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
+                  {active === "staffwise" && [r.staff_id,r.staffName,dept(r),formatDate(r.exam_date),r.session_type,r.hall_code,time(r.reporting_time),examTime(r),r.cycleName].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
+                  {active === "datewise" && [r.hall_code,r.hallName,r.capacity,r.staff_id,r.staffName,dept(r),r.designation??'—',time(r.reporting_time),examTime(r)].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
                   {active === "audit" && [r.staff_id,r.staffName,r.deptCode??'—',formatDate(r.exam_date),r.session_type,<b className="text-brand-primary">{r.assignedHall}</b>,r.generatedHall??'—',r.is_manually_edited?<span className="text-amber-600 font-bold">YES</span>:"No",r.edit_reason??'—'].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
                 </tr>
               ))}

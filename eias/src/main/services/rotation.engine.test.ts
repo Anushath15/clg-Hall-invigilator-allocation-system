@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from "vitest"
 import { initDatabase, db } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, type ValidationEntry } from "./validation.engine"
-import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, hardDeleteUser, deleteSession, restartRotation, getNotifications, getUnreadCount } from "./allocation.service"
+import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, hardDeleteUser, deleteSession, restartRotation, getNotifications, getUnreadCount, refreshCycleStatus } from "./allocation.service"
 
 // ??? Pure rotation logic (no DB needed) ??????????????????????????????????????
 
@@ -606,5 +606,24 @@ it("T7 ? Edited hall becomes future baseline", async () => {
       )
       expect(getUnreadCount(staff.id)).toBeGreaterThan(0)
     }
+  })
+
+  it("T13 - Batch status follows its sessions: draft until every session is confirmed", async () => {
+    const cycleStatus = () => db.queryOne<any>("SELECT status FROM exam_cycles WHERE id=2")?.status
+
+    // Cycle 2 has sessions 6 and 7. Confirming only one keeps the batch in draft.
+    await getOrCreateAllocation(6, [1, 2], [1, 2])
+    expect((await confirmAllocation(6)).success).toBe(true)
+    expect(cycleStatus()).toBe("draft")
+
+    // Confirming the last session marks the whole batch confirmed.
+    await getOrCreateAllocation(7, [1, 2], [1, 2])
+    expect((await confirmAllocation(7)).success).toBe(true)
+    expect(cycleStatus()).toBe("confirmed")
+
+    // Adding a new pending session reopens the batch.
+    db.run("INSERT INTO exam_sessions(cycle_id, exam_date, session_type, rotation_step, status) VALUES(2, '2026-12-02', 'FN', 3, 'pending')")
+    refreshCycleStatus(2)
+    expect(cycleStatus()).toBe("draft")
   })
 })

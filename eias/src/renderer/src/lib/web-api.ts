@@ -560,9 +560,13 @@ export const webApi = {
     const hallsRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM halls WHERE is_active=1")
     const cyclesRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_cycles")
     const confirmedRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_sessions WHERE status IN ('confirmed','published')")
-    // Upcoming = sessions from today onwards that are not yet published
+    // Upcoming = sessions from today (local date) onwards, whatever their status
     const upcomingRow = webDb.queryOne<any>(
-      `SELECT COUNT(*) as total FROM exam_sessions WHERE exam_date >= date('now') AND status != 'published'`
+      `SELECT COUNT(*) as total FROM exam_sessions WHERE exam_date >= date('now','localtime')`
+    )
+    // Pending = sessions whose allocation is not yet confirmed
+    const pendingRow = webDb.queryOne<any>(
+      `SELECT COUNT(*) as total FROM exam_sessions WHERE status NOT IN ('confirmed','published')`
     )
     // Allocated halls = distinct halls that have at least one allocation in confirmed/published sessions
     const allocatedRow = webDb.queryOne<any>(
@@ -581,6 +585,7 @@ export const webApi = {
       totalCycles: cyclesRow?.total ?? 0,
       confirmedSessions: confirmedRow?.total ?? 0,
       upcomingSessions: upcomingRow?.total ?? 0,
+      pendingAllocations: pendingRow?.total ?? 0,
       allocatedHalls: allocatedRow?.total ?? 0,
       totalExamDays: examDaysRow?.total ?? 0
     }
@@ -978,7 +983,7 @@ export const webApi = {
   // Reports
   getStaffWiseReport: async (userId?: number, fromYear?: string, toYear?: string) => {
     await ensureDb()
-    let sql = `SELECT u.staff_id, u.name as staffName, d.name as deptName,
+    let sql = `SELECT u.staff_id, u.name as staffName, d.name as deptName, d.code as deptCode,
       es.exam_date, es.session_type, ec.academic_year,
       h.hall_code, h.name as hallName,
       es.reporting_time, es.exam_start, es.exam_end,
@@ -989,7 +994,7 @@ export const webApi = {
     JOIN exam_sessions es ON a.session_id = es.id
     JOIN exam_cycles ec ON es.cycle_id = ec.id
     LEFT JOIN departments d ON u.department_id = d.id
-    WHERE es.status = 'published'`
+    WHERE es.status IN ('confirmed','published')`
     const params: any[] = []
     if (userId) { sql += ` AND a.user_id = ?`; params.push(userId) }
     if (fromYear) { sql += ` AND ec.academic_year >= ?`; params.push(fromYear) }
@@ -1047,7 +1052,8 @@ export const webApi = {
           id: a.user_id,
           staff_id: a.staffId ?? a.staff_id,
           name: a.staffName,
-          deptName: a.deptCode ?? null
+          deptName: a.deptCode ?? null,
+          deptCode: a.deptCode ?? null
         })
       }
     }

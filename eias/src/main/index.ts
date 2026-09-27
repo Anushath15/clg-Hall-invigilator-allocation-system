@@ -11,7 +11,10 @@ import { registerCycleHandlers } from "./ipc/cycle.ipc"
 
 // Keep the data folder at %APPDATA%\eias regardless of the product name, so renaming
 // the app (EIAS -> HIAS) never "loses" the existing eias.db on installed machines.
-app.setPath("userData", join(app.getPath("appData"), "eias"))
+// An explicit --user-data-dir (used for testing against a throwaway folder) wins.
+if (!app.commandLine.hasSwitch("user-data-dir")) {
+  app.setPath("userData", join(app.getPath("appData"), "eias"))
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -55,6 +58,15 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: "deny" }
+  })
+
+  // Exported PDFs/Excel files arrive as downloads: always ask where to save them,
+  // starting in the user's Downloads folder with the report's file name.
+  mainWindow.webContents.session.on("will-download", (_event, item) => {
+    item.setSaveDialogOptions({
+      title: "Save report",
+      defaultPath: join(app.getPath("downloads"), item.getFilename())
+    })
   })
 
   if (process.env["ELECTRON_RENDERER_URL"]) {
