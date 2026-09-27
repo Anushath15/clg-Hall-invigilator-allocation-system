@@ -70,16 +70,6 @@ export default function LoginPage() {
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <div className="flex items-center justify-between text-xs text-gray-400 mt-1.5">
-                <span>Default admin: <strong className="text-gray-600">ADMIN001</strong> / <strong className="text-gray-600">admin123</strong></span>
-                <button
-                  type="button"
-                  onClick={() => { setStaffId("ADMIN001"); setPassword("admin123") }}
-                  className="text-brand-primary hover:text-brand-dark font-medium underline"
-                >
-                  Fill credentials
-                </button>
-              </div>
             </div>
             <button type="submit" disabled={loading}
               className={cn("btn-primary w-full justify-center flex items-center gap-2 py-2.5 mt-2")}>
