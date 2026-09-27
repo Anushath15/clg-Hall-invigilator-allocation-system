@@ -1,0 +1,61 @@
+/* Shared print styles for the HIAS documents (rendered to A4 PDF by eias/scripts/build-docs.cjs). */
+@page { size: A4; margin: 18mm 16mm 20mm; }
+:root {
+  --green: #16A34A; --green-dark: #123B2A; --green-light: #DCFCE7; --green-faint: #F0FDF4;
+  --amber: #F59E0B; --text: #1F2937; --muted: #6B7280; --border: #E5E7EB;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: "Segoe UI", Inter, Arial, sans-serif; color: var(--text); font-size: 10.5pt; line-height: 1.55; margin: 0; }
+
+.cover { height: 257mm; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; page-break-after: always; }
+.cover img { width: 120px; height: 120px; margin-bottom: 18px; }
+.cover .kicker { color: var(--green); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: 10pt; }
+.cover h1 { font-size: 30pt; margin: 6px 0 2px; color: var(--green-dark); border: 0; padding: 0; page-break-before: auto; }
+.cover .sub { font-size: 14pt; color: var(--text); margin-bottom: 26px; }
+.cover .college { font-size: 11.5pt; color: var(--muted); }
+.cover .meta { margin-top: 38px; font-size: 10pt; color: var(--muted); }
+.cover .meta b { color: var(--text); }
+
+h1 { font-size: 18pt; color: var(--green-dark); border-bottom: 3px solid var(--green); padding-bottom: 4px; margin: 26px 0 12px; page-break-after: avoid; }
+h1.first { margin-top: 0; }
+h1.newpage { page-break-before: always; margin-top: 0; }
+.toc { page-break-after: always; }
+h2 { font-size: 13pt; color: var(--green-dark); margin: 18px 0 6px; page-break-after: avoid; }
+h3 { font-size: 11pt; margin: 12px 0 4px; page-break-after: avoid; }
+p { margin: 0 0 8px; }
+ul, ol { margin: 0 0 8px; padding-left: 20px; }
+li { margin-bottom: 3px; }
+code { font-family: Consolas, monospace; background: #F3F4F6; padding: 1px 4px; border-radius: 3px; font-size: 9.5pt; }
+
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9.5pt; page-break-inside: avoid; }
+th { background: var(--green-dark); color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: #FAFAFA; }
+
+figure { margin: 8px 0 14px; page-break-inside: avoid; }
+figure img { width: 100%; border: 1px solid var(--border); border-radius: 6px; }
+figcaption { font-size: 9pt; color: var(--muted); text-align: center; margin-top: 4px; }
+
+.note, .warn, .tip { border-radius: 6px; padding: 8px 12px; margin: 8px 0 12px; font-size: 10pt; page-break-inside: avoid; }
+.note { background: var(--green-faint); border-left: 4px solid var(--green); }
+.tip  { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+.warn { background: #FFFBEB; border-left: 4px solid var(--amber); }
+
+.steps { counter-reset: step; list-style: none; padding-left: 0; }
+.steps > li { counter-increment: step; position: relative; padding-left: 34px; margin-bottom: 8px; }
+.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff; font-weight: 700; font-size: 9.5pt; display: flex; align-items: center; justify-content: center; }
+
+.toc { list-style: none; padding: 0; }
+.toc li { padding: 5px 0; border-bottom: 1px dotted var(--border); }
+.toc li span { color: var(--green); font-weight: 700; display: inline-block; width: 28px; }
+
+.flow { display: flex; gap: 6px; align-items: stretch; margin: 10px 0 14px; page-break-inside: avoid; }
+.flow div { flex: 1; background: var(--green-faint); border: 1px solid var(--green-light); border-radius: 6px; padding: 8px; font-size: 9pt; text-align: center; }
+.flow div b { display: block; color: var(--green-dark); font-size: 9.5pt; margin-bottom: 2px; }
+.flow .arrow { flex: 0 0 auto; background: none; border: 0; color: var(--green); font-size: 16pt; padding: 8px 0; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.card { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; page-break-inside: avoid; }
+.card b { color: var(--green-dark); }
+.small { font-size: 9pt; color: var(--muted); }

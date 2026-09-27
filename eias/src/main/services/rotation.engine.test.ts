@@ -608,7 +608,7 @@ it("T7 ? Edited hall becomes future baseline", async () => {
     }
   })
 
-  it("T13 - Batch status follows its sessions: draft until every session is confirmed", async () => {
+  it("T17 — Batch status follows its sessions: draft until every session is confirmed", async () => {
     const cycleStatus = () => db.queryOne<any>("SELECT status FROM exam_cycles WHERE id=2")?.status
 
     // Cycle 2 has sessions 6 and 7. Confirming only one keeps the batch in draft.

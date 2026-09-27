@@ -76,7 +76,7 @@ export default function SettingsPage() {
     if (!src) return
     const r = await api.restoreDatabase(src)
     if (r.success) {
-      toast.success("Database restored! Restart the app to apply changes.")
+      toast.success(IS_DESKTOP ? "Database restored! HIAS is restarting to load it..." : "Database restored! Reload the page to apply changes.")
     } else {
       toast.error("Restore failed: " + r.error)
     }

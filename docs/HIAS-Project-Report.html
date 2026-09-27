@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HIAS Project Report</title>
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+
+<section class="cover">
+  <img src="images/logo.png" alt="HIAS logo">
+  <div class="kicker">Project Report</div>
+  <h1>HIAS</h1>
+  <div class="sub">Hall Invigilator Allocation System</div>
+  <div class="college">St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil</div>
+  <div class="meta">
+    Developed by <b>Anushath</b> and <b>Akhil Koska</b><br>
+    Version 1.0.0 &nbsp;·&nbsp; Windows desktop application
+  </div>
+</section>
+
+<h1 class="first">Contents</h1>
+<ul class="toc">
+  <li><span>1</span>Abstract</li>
+  <li><span>2</span>Problem statement and objectives</li>
+  <li><span>3</span>Features</li>
+  <li><span>4</span>System architecture</li>
+  <li><span>5</span>Technology stack</li>
+  <li><span>6</span>Database design</li>
+  <li><span>7</span>Allocation algorithm and validation rules</li>
+  <li><span>8</span>Testing and quality</li>
+  <li><span>9</span>Screenshots</li>
+  <li><span>10</span>Limitations and future work</li>
+  <li><span>11</span>Conclusion</li>
+</ul>
+
+<h1>1. Abstract</h1>
+<p>Allocating invigilators to examination halls is a recurring, manual task in every college. Done by hand, it is slow and error-prone: the same person can be sent to the same hall repeatedly while others are not, a hall can be double-booked, and there is no record to check fairness against afterwards.</p>
+<p><b>HIAS (Hall Invigilator Allocation System)</b> is a Windows desktop application that automates this task. For every exam session it assigns each on-duty staff member to a hall using a <b>rotation algorithm</b> that remembers each person's previous halls, validates the result against seven rules, allows controlled manual edits with an audit trail, and produces printable PDF allocation sheets and reports. It runs completely offline with an embedded SQLite database, so it can be installed on any college computer without a server or internet connection.</p>
+
+<h1>2. Problem statement and objectives</h1>
+<h2>Problem</h2>
+<ul>
+  <li>Manual allocation for each session takes significant time for the examination cell.</li>
+  <li>Fair rotation is hard to guarantee by memory or spreadsheets: staff may repeat halls before others have had a turn.</li>
+  <li>Mistakes such as one hall assigned to two people, or one person to two halls, are easy to make and are found late.</li>
+  <li>There is no reliable history to answer "Who was in hall H104 on 3 November?" or to justify an allocation.</li>
+</ul>
+<h2>Objectives</h2>
+<ol>
+  <li>Generate a complete, fair hall allocation for a session in one click.</li>
+  <li>Rotate halls across sessions and exam series so nobody repeats a hall before completing the rotation.</li>
+  <li>Validate every allocation automatically before it is finalised.</li>
+  <li>Allow justified manual changes while keeping a record of what was changed and why.</li>
+  <li>Produce printable, college-branded reports.</li>
+  <li>Work offline on an ordinary Windows computer with simple installation and backup.</li>
+</ol>
+
+<h1>3. Features</h1>
+<div class="grid2">
+  <div class="card"><b>Master data</b><br>Departments, halls (code, name, capacity, block, active flag) and staff, including bulk import from Excel with row-by-row error reporting.</div>
+  <div class="card"><b>Allocation batches</b><br>A three-step wizard creates an exam series from calendar dates, flags Sundays and public holidays, and sets FN/AN sessions with timings.</div>
+  <div class="card"><b>One-click allocation</b><br>Choose the staff and halls for a session; the rotation engine assigns everyone a hall.</div>
+  <div class="card"><b>Rule validation</b><br>Seven rules (R1–R7) are checked before confirmation; violations are explained by name.</div>
+  <div class="card"><b>Controlled edits</b><br>Manual changes offer only rule-safe halls and are recorded as "Admin Edited" with an optional reason.</div>
+  <div class="card"><b>Reports and PDF</b><br>Session allocation sheet, staff-wise duties, date-wise hall sheet, complete timetable grid and rotation audit, all exportable to PDF with the college letterhead.</div>
+  <div class="card"><b>History and audit</b><br>Search past allocations by batch, session, staff or hall; key actions are written to an audit log.</div>
+  <div class="card"><b>Offline and safe</b><br>No internet or server needed; one-click backup and restore; destructive actions require typed confirmation.</div>
+</div>
+
+<h1>4. System architecture</h1>
+<p>HIAS is an <b>Electron</b> application with three layers. The user interface never touches the database directly; every operation goes through a narrow, typed IPC bridge to the main process, which owns the business logic and the database file.</p>
+<svg viewBox="0 0 700 250" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif" font-size="12">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#16A34A"/></marker></defs>
+  <rect x="10" y="20" width="200" height="200" rx="10" fill="#F0FDF4" stroke="#16A34A"/>
+  <text x="110" y="45" text-anchor="middle" font-weight="700" fill="#123B2A">Renderer (UI)</text>
+  <text x="110" y="70" text-anchor="middle">React 18 + Tailwind CSS</text>
+  <text x="110" y="92" text-anchor="middle">Pages: Dashboard, Batches,</text>
+  <text x="110" y="110" text-anchor="middle">Workspace, Reports, Settings</text>
+  <text x="110" y="140" text-anchor="middle">jsPDF: PDF export</text>
+  <text x="110" y="162" text-anchor="middle">Zustand: session state</text>
+  <text x="110" y="200" text-anchor="middle" fill="#6B7280" font-size="11">src/renderer</text>
+
+  <rect x="250" y="70" width="180" height="100" rx="10" fill="#FFFBEB" stroke="#F59E0B"/>
+  <text x="340" y="98" text-anchor="middle" font-weight="700" fill="#92400E">Preload bridge</text>
+  <text x="340" y="122" text-anchor="middle">window.api (contextBridge)</text>
+  <text x="340" y="142" text-anchor="middle">IPC invoke / handle</text>
+  <text x="340" y="162" text-anchor="middle" fill="#6B7280" font-size="11">src/preload</text>
+
+  <rect x="470" y="20" width="220" height="200" rx="10" fill="#F0FDF4" stroke="#16A34A"/>
+  <text x="580" y="45" text-anchor="middle" font-weight="700" fill="#123B2A">Main process</text>
+  <text x="580" y="70" text-anchor="middle">IPC handlers (ipc/*.ts)</text>
+  <text x="580" y="92" text-anchor="middle">Rotation engine</text>
+  <text x="580" y="110" text-anchor="middle">Validation engine (R1–R7)</text>
+  <text x="580" y="128" text-anchor="middle">Allocation / report services</text>
+  <rect x="505" y="145" width="150" height="40" rx="6" fill="#fff" stroke="#123B2A"/>
+  <text x="580" y="170" text-anchor="middle" font-weight="600">SQLite (sql.js) → eias.db</text>
+  <text x="580" y="208" text-anchor="middle" fill="#6B7280" font-size="11">src/main</text>
+
+  <line x1="210" y1="105" x2="248" y2="105" stroke="#16A34A" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="248" y1="135" x2="212" y2="135" stroke="#16A34A" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="430" y1="105" x2="468" y2="105" stroke="#16A34A" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="468" y1="135" x2="432" y2="135" stroke="#16A34A" stroke-width="2" marker-end="url(#a)"/>
+</svg>
+<ul>
+  <li><b>Security:</b> the UI runs with <code>contextIsolation</code> on and Node integration off; it can only call the functions the preload bridge exposes.</li>
+  <li><b>Data safety:</b> multi-step operations (confirming an allocation, deleting a batch) run inside database transactions, and the database file is written to disk after every committed change.</li>
+  <li><b>Offline:</b> fonts and all assets are bundled; the packaged app makes no network requests (verified during testing).</li>
+  <li><b>Web build:</b> the same UI can also be built as a browser application (<code>npm run build:web</code>) that stores data in the browser; the desktop application is the supported deployment.</li>
+</ul>
+
+<h1>5. Technology stack</h1>
+<table>
+  <tr><th style="width:30%">Area</th><th>Technology</th></tr>
+  <tr><td>Desktop shell</td><td>Electron 32, packaged as a Windows NSIS installer with electron-builder</td></tr>
+  <tr><td>Build tooling</td><td>electron-vite (Vite 5), TypeScript 5 (strict mode)</td></tr>
+  <tr><td>User interface</td><td>React 18, React Router 6, Tailwind CSS 3, Lucide icons, bundled Inter font</td></tr>
+  <tr><td>State</td><td>Zustand</td></tr>
+  <tr><td>Database</td><td>SQLite via sql.js (WebAssembly; no native compilation needed)</td></tr>
+  <tr><td>Reports</td><td>jsPDF and jspdf-autotable (PDF), SheetJS xlsx (Excel import)</td></tr>
+  <tr><td>Security</td><td>bcryptjs password hashing (web build), Electron context isolation</td></tr>
+  <tr><td>Testing</td><td>Vitest (unit and integration), scripted end-to-end run of the packaged app</td></tr>
+  <tr><td>Version control</td><td>Git and GitHub, collaborative development through pull requests</td></tr>
+</table>
+
+<h1>6. Database design</h1>
+<p>The database is a single SQLite file (<code>%APPDATA%\eias\eias.db</code>) with foreign keys and cascading deletes. Schema changes are applied through versioned migrations at start-up.</p>
+<table>
+  <tr><th style="width:24%">Table</th><th>Purpose</th><th style="width:34%">Key columns</th></tr>
+  <tr><td>departments</td><td>Academic departments</td><td>code (unique), name</td></tr>
+  <tr><td>users</td><td>Staff/invigilators and the administrator</td><td>staff_id (unique), name, department_id, role, is_active</td></tr>
+  <tr><td>halls</td><td>Examination halls</td><td>hall_code (unique), name, capacity, block, sort_order, is_active</td></tr>
+  <tr><td>exam_cycles</td><td>Allocation batches (exam series)</td><td>name, academic_year, status</td></tr>
+  <tr><td>exam_sessions</td><td>One FN/AN session on a date</td><td>cycle_id, exam_date, session_type, rotation_step, timings, status</td></tr>
+  <tr><td>allocations</td><td>Staff-to-hall assignments per session</td><td>session_id, user_id, hall_id, generated_hall_id, is_manually_edited, edit_reason; unique per (session, user) and (session, hall)</td></tr>
+  <tr><td>rotation_history</td><td>Confirmed assignments over time; the memory used by the rotation</td><td>user_id, session_id, hall_id, global_order</td></tr>
+  <tr><td>settings</td><td>College profile and default timings</td><td>key, value</td></tr>
+  <tr><td>audit_log</td><td>Record of key actions (edits, confirmations, rotation restarts, deletions)</td><td>action, description, payload, created_at</td></tr>
+  <tr><td>notifications</td><td>In-app notices for staff (web build)</td><td>user_id, title, message, is_read</td></tr>
+</table>
+
+<h1>7. Allocation algorithm and validation rules</h1>
+<h2>Rotation algorithm</h2>
+<ol>
+  <li>The halls selected for a session form an ordered <b>hall pool</b> (ordered by sort order, then id, so the order is always deterministic).</li>
+  <li>For each selected staff member, HIAS looks up their most recent confirmed hall in <code>rotation_history</code>.</li>
+  <li>A staff member with history moves to the next hall after their last one in the pool, wrapping around circularly; if that hall is already taken in this session, the next free hall is used.</li>
+  <li>A staff member with no history receives the first free hall.</li>
+  <li>The result is saved as a <b>draft</b>. Only when the administrator <b>confirms</b> it is it written to <code>rotation_history</code>, inside a transaction, which moves the rotation forward.</li>
+</ol>
+<p>Because the rotation history is global rather than per batch, fairness carries over from one exam series to the next. An administrator can reset it deliberately (Restart Rotation), for example at the start of an academic year.</p>
+<h2>Validation rules</h2>
+<table>
+  <tr><th style="width:9%">Rule</th><th>Check</th></tr>
+  <tr><td>R1</td><td>No repeated hall: a staff member may not return to a hall used within their last <i>n&nbsp;−&nbsp;1</i> confirmed sessions, where <i>n</i> is the pool size (so a full cycle may restart).</td></tr>
+  <tr><td>R2</td><td>A hall has at most one invigilator in a session.</td></tr>
+  <tr><td>R3</td><td>A staff member has at most one hall in a session.</td></tr>
+  <tr><td>R4</td><td>Rotation integrity: a session follows the last confirmed session in step order.</td></tr>
+  <tr><td>R5</td><td>Staff must be active.</td></tr>
+  <tr><td>R6</td><td>Halls must be active.</td></tr>
+  <tr><td>R7</td><td>The number of staff equals the number of halls.</td></tr>
+</table>
+<p>Manual edits are checked against the same rules as they are made, and the edit dialog only offers halls that keep the allocation valid.</p>
+
+<h1>8. Testing and quality</h1>
+<h2>Automated tests</h2>
+<p><b>60 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
+<ul>
+  <li>The rotation algorithm: first allocation, circular wrap-around, staff who join later, pools smaller than the total number of halls, ordering across batches.</li>
+  <li>Every validation rule, including a regression test for a full-cycle restart that an earlier version wrongly blocked.</li>
+  <li>The allocation lifecycle: generate, edit, confirm, delete draft sessions, permanent staff deletion, rotation restart, and batch status updates.</li>
+</ul>
+<p>TypeScript runs in strict mode and the whole code base type-checks without errors (<code>npm run typecheck</code>).</p>
+<h2>End-to-end verification</h2>
+<p>The packaged Windows application was driven automatically against a separate test data folder with sample data (3 departments, 6 halls, 8 staff, one batch of 4 sessions). The run checked:</p>
+<table>
+  <tr><th>Check</th><th style="width:24%">Result</th></tr>
+  <tr><td>Generate and confirm four sessions</td><td>Passed, 0 rule violations</td></tr>
+  <tr><td>Batch status moves from Draft to Confirmed</td><td>Passed</td></tr>
+  <tr><td>Excel import with two valid and two invalid rows</td><td>2 imported, 2 reported with reasons</td></tr>
+  <tr><td>Delete a batch; database backup</td><td>Passed</td></tr>
+  <tr><td>All screens load without errors</td><td>Passed</td></tr>
+  <tr><td>Session PDF and all four report PDFs</td><td>All valid PDFs, content checked</td></tr>
+  <tr><td>Network access while running</td><td>None (fully offline)</td></tr>
+</table>
+<p>This run found and fixed several defects before release, including empty staff-wise reports, a dashboard counter that was never calculated, batches that never left the Draft state, the order of sessions in the timetable, and a restore that could be undone by further use before a restart.</p>
+
+<h1>9. Screenshots</h1>
+<figure><img src="images/allocation.png" alt="Allocation workspace"><figcaption>Allocation workspace: a confirmed session with its generated hall assignments.</figcaption></figure>
+<figure><img src="images/report-timetable.png" alt="Timetable report"><figcaption>Complete timetable grid: every staff member against every session of a batch.</figcaption></figure>
+<figure><img src="images/dashboard.png" alt="Dashboard"><figcaption>Dashboard.</figcaption></figure>
+<p class="small">All names shown are sample data used for testing.</p>
+
+<h1>10. Limitations and future work</h1>
+<h2>Current limitations</h2>
+<ul>
+  <li><b>Single computer.</b> Data lives on the computer where HIAS is installed; several computers cannot share it live. Backup and restore move data between computers.</li>
+  <li><b>No user accounts in the desktop app.</b> Anyone who can open the app has full access, so it should be installed on a computer used only by the examination cell.</li>
+  <li><b>Unsigned installer.</b> Windows shows a SmartScreen warning on first install.</li>
+  <li><b>Hall order</b> is fixed by creation order; there is no screen to reorder halls.</li>
+</ul>
+<h2>Possible enhancements</h2>
+<ul>
+  <li>A shared network database so several computers can work on the same data.</li>
+  <li>Optional administrator password for the desktop app.</li>
+  <li>Excel export of reports, and SMS or e-mail duty notifications to staff.</li>
+  <li>Workload balancing so the number of duties per person evens out across a batch.</li>
+  <li>Hall reordering and seat-capacity-based allocation.</li>
+</ul>
+
+<h1>11. Conclusion</h1>
+<p>HIAS replaces a slow, manual and error-prone process with a reliable tool: an entire session is allocated in one click, fairness is enforced by a rotation that remembers every confirmed duty, mistakes are caught by automatic rule checks before anything is finalised, and every change is recorded. Delivered as an offline Windows application with printable reports, backup and a user guide, it is ready to be used by the examination cell.</p>
+
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HIAS User Guide</title>
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+
+<section class="cover">
+  <img src="images/logo.png" alt="HIAS logo">
+  <div class="kicker">User Guide</div>
+  <h1>HIAS</h1>
+  <div class="sub">Hall Invigilator Allocation System</div>
+  <div class="college">St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil</div>
+  <div class="meta">Version <b>1.0.0</b> &nbsp;·&nbsp; Windows desktop application &nbsp;·&nbsp; Works fully offline</div>
+</section>
+
+<h1 class="first">Contents</h1>
+<ul class="toc">
+  <li><span>1</span>What HIAS does</li>
+  <li><span>2</span>Installing HIAS</li>
+  <li><span>3</span>A tour of the screen</li>
+  <li><span>4</span>First-time setup: college, departments, halls and staff</li>
+  <li><span>5</span>Creating an allocation batch</li>
+  <li><span>6</span>Allocating invigilators to a session</li>
+  <li><span>7</span>Reports</li>
+  <li><span>8</span>Allocation history</li>
+  <li><span>9</span>Backup and restore (important)</li>
+  <li><span>10</span>Restarting the rotation</li>
+  <li><span>11</span>Troubleshooting and FAQ</li>
+</ul>
+
+<h1>1. What HIAS does</h1>
+<p>HIAS assigns invigilators (staff) to examination halls for every exam session, and rotates those assignments fairly. It remembers who has already been in which hall, so nobody is sent to the same hall again until they have had a turn in every other hall of the rotation.</p>
+<div class="flow">
+  <div><b>Set up once</b>Departments, halls and staff</div><div class="arrow">›</div>
+  <div><b>Create a batch</b>Exam dates and FN/AN sessions</div><div class="arrow">›</div>
+  <div><b>Generate</b>Pick staff and halls; HIAS rotates them</div><div class="arrow">›</div>
+  <div><b>Confirm</b>Rules are checked automatically</div><div class="arrow">›</div>
+  <div><b>Print</b>Export the allocation and reports as PDF</div>
+</div>
+<ul>
+  <li><b>Fully offline.</b> HIAS needs no internet connection and no server. Everything is stored on the computer it is installed on.</li>
+  <li><b>No login.</b> The app opens straight to the dashboard. Keep it on a computer that only authorised people use.</li>
+  <li><b>Automatic rule checks.</b> Before an allocation is confirmed, HIAS checks that no hall or person is double-booked, nobody repeats a hall too early, and inactive staff or halls are not used.</li>
+</ul>
+
+<h1>2. Installing HIAS</h1>
+<ol class="steps">
+  <li>Copy <code>Hall Invigilator Allocation System Setup 1.0.0.exe</code> to the computer and double-click it.</li>
+  <li>If Windows shows <i>"Windows protected your PC"</i>, click <b>More info</b> and then <b>Run anyway</b>. This appears because the installer is not code-signed; it is safe.</li>
+  <li>Choose the installation folder (the default is fine) and click <b>Install</b>.</li>
+  <li>Open HIAS from the <b>HIAS</b> shortcut on the desktop or from the Start menu.</li>
+</ol>
+<div class="note"><b>Where is my data?</b> All data is kept in one file on this computer: <code>%APPDATA%\eias\eias.db</code>. Updating or reinstalling HIAS keeps this file. Uninstalling the app does not delete it either. See section 9 for backups.</div>
+
+<h1>3. A tour of the screen</h1>
+<figure><img src="images/dashboard.png" alt="HIAS dashboard"><figcaption>The dashboard. The sidebar on the left is always available. (All names in this guide are sample data.)</figcaption></figure>
+<table>
+  <tr><th style="width:28%">Sidebar item</th><th>What it is for</th></tr>
+  <tr><td>Dashboard</td><td>Totals at a glance: invigilators, halls, batches, upcoming and confirmed sessions, and sessions still pending allocation. Click a card to jump to it.</td></tr>
+  <tr><td>Allocation Batches</td><td>Create an exam batch (for example "November 2026 End Semester Exams") and open it to allocate each session.</td></tr>
+  <tr><td>Allocation History</td><td>Search every confirmed allocation by batch, session, staff member or hall.</td></tr>
+  <tr><td>Reports</td><td>Staff-wise, date-wise, timetable and audit reports, each exportable as PDF.</td></tr>
+  <tr><td>Staff / Halls / Departments</td><td>The master data HIAS allocates from.</td></tr>
+  <tr><td>Settings</td><td>College name, default session timings, backup and restore, and rotation restart.</td></tr>
+</table>
+<p>A <b>Back</b> link at the top of each page returns to the previous screen.</p>
+
+<h1>4. First-time setup</h1>
+<p>Do these steps once, in this order. You can come back and change anything later.</p>
+
+<h2>4.1 College profile and session timings</h2>
+<p>Open <b>Settings → College Profile</b>. The <b>College Full Name</b> is printed at the top of every PDF; the <b>Short Name</b> appears under the HIAS logo in the sidebar. Click <b>Save</b>.</p>
+<p>Under <b>Settings → Session Timings</b>, set the usual reporting, start and end times for the Forenoon (FN) and Afternoon (AN) sessions. New batches start with these times; you can still change them per session.</p>
+
+<h2>4.2 Departments</h2>
+<p>Open <b>Departments</b> and add each department with a short <b>Code</b> (for example <code>CSE</code>) and a full <b>Name</b>. Reports use the short code.</p>
+
+<h2>4.3 Halls</h2>
+<p>Open <b>Halls → Add Hall</b>. Only the <b>Hall Code</b> (for example <code>H101</code>) is required; if you leave <b>Hall Name</b> empty, the code is used as the name. Capacity and Block are optional. Untick <b>Active</b> for a hall that is temporarily unavailable; inactive halls are never allocated.</p>
+<figure><img src="images/halls.png" alt="Halls screen"><figcaption>Halls. The pencil edits a hall; the bin removes a hall that has never been allocated (for a used hall, untick Active instead).</figcaption></figure>
+
+<h2>4.4 Staff (invigilators)</h2>
+<p>Add staff one at a time with <b>Add Staff</b>, or many at once with <b>Import Excel</b>. The file <code>HIAS-Staff-Import-Template.xlsx</code>, supplied with HIAS, has the right headings ready. For an import, the first row of the sheet must contain these column headings:</p>
+<table>
+  <tr><th>Column</th><th>Required?</th><th>Notes</th></tr>
+  <tr><td>Staff ID</td><td>Yes</td><td>Must be unique. Rows whose Staff ID already exists are skipped.</td></tr>
+  <tr><td>Name</td><td>Yes</td><td>Full name of the staff member.</td></tr>
+  <tr><td>Department</td><td>Yes</td><td>The department's code or full name; it must already exist in Departments.</td></tr>
+  <tr><td>Designation, Email</td><td>No</td><td>Optional details.</td></tr>
+</table>
+<p>After the import, HIAS shows how many staff were added and lists each skipped row with the reason (for example <i>"Row 5: Department CIVIL does not match any existing department"</i>), so you can correct the sheet and import it again.</p>
+<figure><img src="images/staff.png" alt="Staff screen"><figcaption>Staff / Invigilators, with Import Excel and Add Staff at the top right.</figcaption></figure>
+<div class="tip"><b>Deactivate or delete?</b> The bin icon first <b>deactivates</b> a staff member: they stay in past records but are no longer allocated. An inactive staff member with no allocation history can then be <b>deleted permanently</b>; HIAS asks you to type <code>DELETE</code> to confirm.</div>
+
+<h1>5. Creating an allocation batch</h1>
+<p>A <b>batch</b> is one examination series, such as an end-semester or internal assessment exam. Open <b>Allocation Batches → New Allocation Batch</b>. The wizard has three steps:</p>
+<ol class="steps">
+  <li><b>Batch details.</b> Enter the batch name, the academic year (for example <code>2026-27</code>) and the number of exam days.</li>
+  <li><b>Pick the dates</b> on the calendar. Sundays and public holidays are highlighted so you do not pick them by mistake.</li>
+  <li><b>Sessions and timings.</b> For each date, choose Forenoon (FN), Afternoon (AN) or both. Timings come from Settings; expand a date to change its times.</li>
+</ol>
+<figure><img src="images/batches.png" alt="Allocation batches"><figcaption>Allocation Batches. A batch shows <b>Draft</b> until every session in it is confirmed, then <b>Confirmed</b>.</figcaption></figure>
+<p>To delete a whole batch, click its bin icon and type <code>DELETE</code>. This removes all its sessions, allocations and rotation records and cannot be undone.</p>
+
+<h1>6. Allocating invigilators to a session</h1>
+<p>Open a batch to reach its <b>Allocation Workspace</b>. Each session appears as a tab (for example <i>02 Nov 2026 FN</i>).</p>
+<ol class="steps">
+  <li>Select a session tab and click <b>Select Staff &amp; Generate</b>.</li>
+  <li>Tick the staff who are on duty and the halls in use for this session. <b>The number of staff must equal the number of halls</b>; HIAS tells you if they differ.</li>
+  <li>Click <b>Generate Allocation</b>. HIAS assigns each person the next hall in their rotation.</li>
+  <li>Review the list. To change one assignment, click the pencil on that row, choose a hall and, if you like, note the reason. HIAS only offers halls that keep the rules satisfied. <b>Regenerate</b> starts the session over.</li>
+  <li>Click <b>Confirm Allocation</b>. HIAS runs all rule checks; if something is wrong it explains what, and nothing is saved until it is fixed.</li>
+  <li>Click <b>Export PDF</b> to save the printable allocation sheet for this session.</li>
+</ol>
+<figure><img src="images/allocation.png" alt="Allocation workspace"><figcaption>A confirmed session. Rows you changed by hand are marked "Admin Edited" instead of "Auto-generated".</figcaption></figure>
+<div class="warn"><b>Why confirming matters.</b> The rotation only moves forward when a session is <b>confirmed</b>. Always confirm sessions in date order, so each session continues the rotation from the one before it.</div>
+
+<h2>The rules HIAS checks</h2>
+<table>
+  <tr><th style="width:9%">Rule</th><th>Meaning</th></tr>
+  <tr><td>R1</td><td>A staff member does not return to a hall until they have been through the other halls in the rotation.</td></tr>
+  <tr><td>R2</td><td>A hall gets only one invigilator per session.</td></tr>
+  <tr><td>R3</td><td>A staff member is in only one hall per session.</td></tr>
+  <tr><td>R4</td><td>Sessions are confirmed in rotation order.</td></tr>
+  <tr><td>R5 / R6</td><td>Inactive staff and inactive halls are never used.</td></tr>
+  <tr><td>R7</td><td>The number of staff equals the number of halls.</td></tr>
+</table>
+
+<h1>7. Reports</h1>
+<p>Open <b>Reports</b>, choose a report type, choose the filters, click <b>Generate</b> to preview it, then <b>Export PDF</b>. Each PDF carries the college name and the time it was generated. When you export, Windows asks where to save the file (the Downloads folder is suggested).</p>
+<table>
+  <tr><th style="width:30%">Report</th><th>Use it for</th><th style="width:22%">Filters</th></tr>
+  <tr><td>Staff-Wise Duty Report</td><td>Every duty of each staff member: date, session, hall and timings.</td><td>Optional: one staff member</td></tr>
+  <tr><td>Date-Wise Allocation Sheet</td><td>The hall-by-hall list for one session, for the notice board. The title names the date and session.</td><td>Batch and session</td></tr>
+  <tr><td>Complete Timetable Grid</td><td>One page showing every staff member against every session of a batch.</td><td>Batch</td></tr>
+  <tr><td>Rotation Audit Report</td><td>Which assignments were generated automatically and which were changed by an admin, with the reason.</td><td>Batch</td></tr>
+</table>
+<figure><img src="images/report-datewise.png" alt="Date-wise report"><figcaption>Date-Wise Allocation Sheet preview, ready to export.</figcaption></figure>
+
+<h1>8. Allocation history</h1>
+<p><b>Allocation History</b> lets you look up any past confirmed allocation. Filter by batch, session, staff member or hall and click <b>Search Records</b>. This is the quickest way to answer "Where was this person on that day?".</p>
+
+<h1>9. Backup and restore</h1>
+<div class="warn"><b>HIAS keeps its data only on this computer.</b> If the computer fails and there is no backup, the data cannot be recovered. Take a backup after every allocation batch and keep it on a pen drive or another computer.</div>
+<h2>To take a backup</h2>
+<ol class="steps">
+  <li>Open <b>Settings → Backup &amp; Restore</b> and click <b>Backup Database</b>.</li>
+  <li>Choose where to save the file (for example a pen drive). The file is named <code>hias-backup.db</code> by default; adding the date to the name helps.</li>
+</ol>
+<h2>To restore a backup</h2>
+<ol class="steps">
+  <li>Open <b>Settings → Backup &amp; Restore</b> and click <b>Restore Database</b>.</li>
+  <li>Choose the backup file and confirm. HIAS first saves a safety copy of the current data (<code>eias.db.bak</code> in the data folder), then replaces it.</li>
+  <li>HIAS restarts by itself a moment later and opens with the restored data.</li>
+</ol>
+<p>The same steps move HIAS to a new computer: back up on the old computer, install HIAS on the new one, and restore.</p>
+
+<h1>10. Restarting the rotation</h1>
+<p><b>Settings → Restart Rotation</b> clears the whole rotation history, so every staff member starts again from the first hall. Use it only at a genuine new start, such as the beginning of an academic year. You must type <code>RESTART</code> to confirm. Past allocations and reports are not deleted; only the rotation memory is cleared.</p>
+
+<h1>11. Troubleshooting and FAQ</h1>
+<table>
+  <tr><th style="width:38%">Problem</th><th>What to do</th></tr>
+  <tr><td>"Staff count must equal hall count"</td><td>Select the same number of staff and halls for the session.</td></tr>
+  <tr><td>A staff member or hall is missing from the selection list</td><td>Check it is marked <b>Active</b> in Staff or Halls.</td></tr>
+  <tr><td>Confirm is refused with a rule message (R1–R7)</td><td>Read the message; it names the person or hall. Edit that row, or regenerate, then confirm again.</td></tr>
+  <tr><td>Windows says "Windows protected your PC" when installing</td><td>Click <b>More info → Run anyway</b>. The installer is not code-signed.</td></tr>
+  <tr><td>The app shows an error box at start-up</td><td>Note the message, then restore the latest backup (section 9). The message is shown because a silent failure would give no clue.</td></tr>
+  <tr><td>Can two computers share the same data?</td><td>No. Each installation has its own data. Use one computer for allocation, and move data with backup and restore if needed.</td></tr>
+  <tr><td>Does HIAS need the internet?</td><td>No. It works completely offline.</td></tr>
+</table>
+
+</body>
+</html>

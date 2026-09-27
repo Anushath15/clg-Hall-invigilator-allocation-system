@@ -55,3 +55,6 @@ Thumbs.db
 /*.jpg
 /*.jpeg
 /*.pdf
+
+# Handover bundle (installer + PDFs) assembled for delivery
+HIAS-Handover/

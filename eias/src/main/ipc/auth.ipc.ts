@@ -49,6 +49,10 @@ export function registerAuthHandlers() {
       // Make a safety copy first
       if (fs.existsSync(dest)) fs.copyFileSync(dest, dest + ".bak")
       fs.copyFileSync(srcPath, dest)
+      // The open database lives in memory and is written back to disk after every
+      // change, so any action before a manual restart would overwrite the restored
+      // file. Restart right away (after the UI has shown its message) to load it.
+      setTimeout(() => { app.relaunch(); app.exit(0) }, 1500)
       return { success: true }
     } catch (e: any) {
       return { success: false, error: e.message }

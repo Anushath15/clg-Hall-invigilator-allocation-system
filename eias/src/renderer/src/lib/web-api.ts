@@ -929,13 +929,13 @@ export const webApi = {
                JOIN exam_sessions es ON a.session_id=es.id
                JOIN exam_cycles ec ON es.cycle_id=ec.id
                LEFT JOIN departments d ON u.department_id=d.id
-               WHERE 1=1`
+               WHERE es.status IN ('confirmed','published')`
     const params: any[] = []
     if (filters?.cycleId) { sql += ` AND es.cycle_id=?`; params.push(filters.cycleId) }
     if (filters?.userId) { sql += ` AND a.user_id=?`; params.push(filters.userId) }
     if (filters?.hallId) { sql += ` AND a.hall_id=?`; params.push(filters.hallId) }
     if (filters?.sessionId) { sql += ` AND a.session_id=?`; params.push(filters.sessionId) }
-    sql += ` ORDER BY es.exam_date, es.session_type, u.name`
+    sql += ` ORDER BY es.exam_date, CASE es.session_type WHEN 'FN' THEN 0 ELSE 1 END, u.name`
     return webDb.query(sql, params)
   },
 
