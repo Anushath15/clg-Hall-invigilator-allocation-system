@@ -49,3 +49,9 @@ lerna-debug.log*
 Thumbs.db
 [Dd]esktop.ini
 .DS_Store
+
+# Local screenshots, photos and exported reports at repo root
+/*.png
+/*.jpg
+/*.jpeg
+/*.pdf
