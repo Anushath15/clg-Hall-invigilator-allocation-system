@@ -62,6 +62,26 @@ export default function AllocationWorkspacePage() {
     }
   }
 
+  async function handleDeleteDraftSession() {
+    if (!activeSession) return
+    if (!window.confirm("Are you sure you want to delete this draft session? This will remove its draft allocations.")) return
+    try {
+      setLoading(true)
+      const res = await api.deleteSession(activeSession.id)
+      if (res.success) {
+        toast.success("Draft session deleted.")
+        setActiveSession(null)
+        await loadCycle()
+      } else {
+        toast.error(res.error || "Could not delete draft session.")
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete draft session.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const loadCycle = useCallback(async () => {
     const cycles = await api.getCycles()
     const c = cycles.find((x: any) => x.id === Number(cycleId))
@@ -171,6 +191,9 @@ export default function AllocationWorkspacePage() {
   const statusActions: Record<string, React.ReactNode> = {
     pending: allocation.length > 0 ? (
       <div className="flex gap-2">
+        <button onClick={handleDeleteDraftSession} disabled={loading} className="btn-secondary text-red-600 hover:bg-red-50 flex items-center gap-2">
+          <Trash2 className="w-4 h-4" /> Delete Draft
+        </button>
         <button onClick={() => handleGenerate()} disabled={loading} className="btn-secondary flex items-center gap-2">
           <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} /> Regenerate
         </button>
@@ -187,6 +210,9 @@ export default function AllocationWorkspacePage() {
     ),
     draft: (
       <div className="flex gap-2">
+        <button onClick={handleDeleteDraftSession} disabled={loading} className="btn-secondary text-red-600 hover:bg-red-50 flex items-center gap-2">
+          <Trash2 className="w-4 h-4" /> Delete Draft
+        </button>
         <button onClick={() => handleGenerate()} disabled={loading} className="btn-secondary flex items-center gap-2">
           <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} /> Regenerate
         </button>

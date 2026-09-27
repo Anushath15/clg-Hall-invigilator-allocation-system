@@ -210,3 +210,17 @@ export function hardDeleteUser(id: number) {
   })
   return { success: true }
 }
+export function deleteSession(id: number) {
+  const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
+  if (!session) return { success: false, error: "Session not found." }
+  if (session.status === "confirmed" || session.status === "published") {
+    return { success: false, error: "Cannot delete a confirmed or published session." }
+  }
+  db.run("DELETE FROM allocations WHERE session_id=?", [id])
+  db.run("DELETE FROM exam_sessions WHERE id=?", [id])
+  const remaining = db.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
+  remaining.forEach((s, idx) => {
+    db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
+  })
+  return { success: true }
+}

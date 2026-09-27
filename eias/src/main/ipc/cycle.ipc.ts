@@ -1,5 +1,6 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
+import { deleteSession } from "../services/allocation.service"
 
 export function registerCycleHandlers() {
   ipcMain.handle("cycle:getCycles", () => db.query("SELECT * FROM exam_cycles ORDER BY created_at DESC"))
@@ -89,22 +90,5 @@ export function registerCycleHandlers() {
     )
     return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
   })
-  ipcMain.handle("cycle:deleteSession", async (_, id) => {
-    const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
-    if (!session) return { success: false, error: "Session not found." }
-    if (session.status === "confirmed" || session.status === "published") {
-      return { success: false, error: "Cannot delete a confirmed or published session." }
-    }
-    const hasAllocations = db.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id=?", [id])
-    if (hasAllocations && hasAllocations.c > 0) {
-      return { success: false, error: "Cannot delete session: allocations already exist." }
-    }
-    db.run("DELETE FROM exam_sessions WHERE id=?", [id])
-    // Renumber remaining sessions in this cycle to maintain contiguous 1..N rotation_step
-    const remaining = db.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
-    remaining.forEach((s, idx) => {
-      db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
-    })
-    return { success: true }
-  })
+  ipcMain.handle("cycle:deleteSession", async (_, id) => deleteSession(id))
 }

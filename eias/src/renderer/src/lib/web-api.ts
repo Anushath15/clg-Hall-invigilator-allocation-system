@@ -634,10 +634,7 @@ export const webApi = {
     if (session.status === "confirmed" || session.status === "published") {
       return { success: false, error: "Cannot delete a confirmed or published session. Reopen it first." }
     }
-    const hasAllocations = webDb.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id=?", [id])
-    if (hasAllocations && hasAllocations.c > 0) {
-      return { success: false, error: "Cannot delete session: allocations already exist." }
-    }
+    webDb.run("DELETE FROM allocations WHERE session_id=?", [id])
     webDb.run("DELETE FROM exam_sessions WHERE id=?", [id])
     const remaining = webDb.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
     remaining.forEach((s, idx) => {
