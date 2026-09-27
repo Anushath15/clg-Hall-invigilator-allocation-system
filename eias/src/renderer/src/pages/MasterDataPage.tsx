@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Plus, Pencil, Trash2, Upload, Download, CheckCircle, XCircle } from "lucide-react"
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
+import { IS_DESKTOP } from "../lib/platform"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { cn } from "../lib/utils"
@@ -95,7 +96,7 @@ function StaffTab() {
                     {depts.map((d: any) => <option key={d.id} value={d.id}>{d.name} ({d.code})</option>)}
                   </select>
                 </div>
-                {!form.id && <div><label className="label">Password</label><input className="input-field" type="password" value={form.password ?? ""} onChange={e => setForm({ ...form, password: e.target.value })} /></div>}
+                {!form.id && !IS_DESKTOP && <div><label className="label">Password</label><input className="input-field" type="password" value={form.password ?? ""} onChange={e => setForm({ ...form, password: e.target.value })} /></div>}
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
               </div>
               <div className="flex gap-2 mt-5 justify-end">

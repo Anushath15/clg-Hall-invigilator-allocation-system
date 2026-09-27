@@ -2,7 +2,7 @@ import { ipcMain, dialog } from "electron"
 import path from "path"
 import fs from "fs"
 import { app } from "electron"
-import { login, changePassword, verifyPassword } from "../services/auth.service"
+import { login, changePassword, verifyPassword, getLocalAdmin } from "../services/auth.service"
 
 function getDbPath(): string {
   const base = app.isPackaged ? app.getPath("userData") : process.cwd()
@@ -12,6 +12,7 @@ function getDbPath(): string {
 export function registerAuthHandlers() {
   ipcMain.handle("auth:login", async (_, staffId, password) => login(staffId, password))
   ipcMain.handle("auth:logout", async () => ({ success: true }))
+  ipcMain.handle("auth:getLocalAdmin", async () => getLocalAdmin())
   ipcMain.handle("auth:verifyPassword", async (_, staffId, password) => verifyPassword(staffId, password))
   ipcMain.handle("auth:changePassword", async (_, userId, oldPw, newPw) => changePassword(userId, oldPw, newPw))
 

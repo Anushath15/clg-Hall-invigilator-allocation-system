@@ -4,6 +4,7 @@ const api = {
   // Auth
   login:           (staffId: string, password: string) => ipcRenderer.invoke("auth:login", staffId, password),
   logout:          () => ipcRenderer.invoke("auth:logout"),
+  getLocalAdmin:   () => ipcRenderer.invoke("auth:getLocalAdmin"),
   verifyPassword:  (staffId: string, password: string) => ipcRenderer.invoke("auth:verifyPassword", staffId, password),
   changePassword:  (userId: number, oldPw: string, newPw: string) => ipcRenderer.invoke("auth:changePassword", userId, oldPw, newPw),
   // Departments

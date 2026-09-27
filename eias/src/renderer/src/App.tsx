@@ -1,6 +1,9 @@
-﻿import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom"
+﻿import { useEffect, useState } from "react"
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Toaster } from "react-hot-toast"
 import { useAuthStore } from "./store/auth.store"
+import { api } from "./lib/api"
+import { IS_DESKTOP } from "./lib/platform"
 import LoginPage from "./pages/LoginPage"
 import AdminLayout from "./components/AdminLayout"
 import DashboardPage from "./pages/DashboardPage"
@@ -31,12 +34,35 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 // Hash routing works there; the web build and dev server keep clean URLs.
 const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter
 
+// Offline desktop app: no login screen. Sign in as the local admin on every start
+// (this also replaces any user left in storage from older versions that had login).
+function useDesktopAutoLogin() {
+  const login = useAuthStore(s => s.login)
+  const [state, setState] = useState<"loading" | "ready" | string>(IS_DESKTOP ? "loading" : "ready")
+  useEffect(() => {
+    if (!IS_DESKTOP) return
+    api.getLocalAdmin()
+      .then((r: any) => {
+        if (r?.success) { login(r.user); setState("ready") }
+        else setState(r?.error ?? "Could not start the application.")
+      })
+      .catch((e: any) => setState(e?.message ?? "Could not start the application."))
+  }, [login])
+  return state
+}
+
 export default function App() {
+  const session = useDesktopAutoLogin()
+  if (session === "loading") return null
+  if (session !== "ready") {
+    return <div className="min-h-screen flex items-center justify-center p-8 text-red-600">{session}</div>
+  }
+
   return (
     <Router>
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={IS_DESKTOP ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
 
         {/* Admin routes */}
         <Route path="/" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>

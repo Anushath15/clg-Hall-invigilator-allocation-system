@@ -31,6 +31,14 @@ export async function login(staffId: string, password: string): Promise<LoginRes
   return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
 }
 
+// The offline desktop app has no login screen: it always runs as the local admin.
+// ensureDefaultAdmin() runs at startup, so an admin account always exists.
+export function getLocalAdmin(): LoginResult {
+  const user = db.queryOne<any>("SELECT * FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1")
+  if (!user) return { success: false, error: "No active administrator account found." }
+  return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
+}
+
 export async function verifyPassword(staffId: string, password: string): Promise<boolean> {
   const user = db.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
   if (!user || !user.is_active || !user.password_hash) return false

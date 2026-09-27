@@ -1,6 +1,7 @@
 import React, { useState } from "react"
 import { Lock, X, Loader2, AlertCircle } from "lucide-react"
 import { api } from "../lib/api"
+import { IS_DESKTOP } from "../lib/platform"
 import { useAuthStore } from "../store/auth.store"
 
 interface Props {
@@ -8,15 +9,20 @@ interface Props {
   title: string
   message: string
   confirmButtonText?: string
+  /** Word the user must type to confirm in the desktop app (which has no passwords). */
+  confirmWord?: string
   onClose: () => void
   onConfirmed: () => void | Promise<void>
 }
 
+// Web build: re-enter the admin password. Offline desktop app (no login): type a
+// confirmation word instead, which still stops accidental destructive clicks.
 export default function ConfirmWithPasswordModal({
   isOpen,
   title,
   message,
   confirmButtonText = "Confirm",
+  confirmWord = "DELETE",
   onClose,
   onConfirmed
 }: Props) {
@@ -35,19 +41,26 @@ export default function ConfirmWithPasswordModal({
 
   async function handleConfirm(e: React.FormEvent) {
     e.preventDefault()
-    if (!user) {
-      setError("No active user session.")
-      return
-    }
-    if (!password) {
-      setError("Please enter your password.")
-      return
+    if (IS_DESKTOP) {
+      if (password.trim().toUpperCase() !== confirmWord) {
+        setError(`Please type ${confirmWord} to confirm.`)
+        return
+      }
+    } else {
+      if (!user) {
+        setError("No active user session.")
+        return
+      }
+      if (!password) {
+        setError("Please enter your password.")
+        return
+      }
     }
 
     setLoading(true)
     setError(null)
     try {
-      const isValid = await api.verifyPassword(user.staff_id, password)
+      const isValid = IS_DESKTOP || await api.verifyPassword(user!.staff_id, password)
       if (!isValid) {
         setError("Incorrect password. Please try again.")
         setLoading(false)
@@ -91,16 +104,16 @@ export default function ConfirmWithPasswordModal({
 
           <div>
             <label className="label text-xs font-semibold text-brand-textmain mb-1.5 block">
-              Confirm with Password *
+              {IS_DESKTOP ? <>Type <span className="font-mono text-red-600">{confirmWord}</span> to confirm *</> : "Confirm with Password *"}
             </label>
             <input
-              type="password"
+              type={IS_DESKTOP ? "text" : "password"}
               value={password}
               onChange={e => {
                 setPassword(e.target.value)
                 if (error) setError(null)
               }}
-              placeholder="Enter your current password"
+              placeholder={IS_DESKTOP ? confirmWord : "Enter your current password"}
               className="input-field"
               autoFocus
               disabled={loading}

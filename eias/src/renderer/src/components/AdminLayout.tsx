@@ -5,6 +5,7 @@ import {
 } from "lucide-react"
 import { useAuthStore } from "../store/auth.store"
 import { api } from "../lib/api"
+import { IS_DESKTOP } from "../lib/platform"
 import toast from "react-hot-toast"
 
 const navItems = [
@@ -90,7 +91,7 @@ export default function AdminLayout() {
 
         {/* User footer */}
         <div className="px-4 py-4 border-t border-white/10">
-          <div className="flex items-center gap-3 mb-3 px-2">
+          <div className={`flex items-center gap-3 px-2 ${IS_DESKTOP ? "" : "mb-3"}`}>
             <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {user?.name?.charAt(0) ?? "A"}
             </div>
@@ -99,10 +100,12 @@ export default function AdminLayout() {
               <p className="text-xs text-gray-400 truncate">{user?.staff_id} · Admin</p>
             </div>
           </div>
-          <button onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-gray-300 hover:bg-red-500/20 hover:text-red-300 transition-colors text-sm">
-            <LogOut className="w-4 h-4" /><span>Logout</span>
-          </button>
+          {!IS_DESKTOP && (
+            <button onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-gray-300 hover:bg-red-500/20 hover:text-red-300 transition-colors text-sm">
+              <LogOut className="w-4 h-4" /><span>Logout</span>
+            </button>
+          )}
         </div>
       </aside>
 

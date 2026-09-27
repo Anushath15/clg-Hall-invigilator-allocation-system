@@ -4,8 +4,11 @@ import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
+import { IS_DESKTOP } from "../lib/platform"
 
+// The offline desktop app has no login, so there is no password to change there.
 const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore", "Restart Rotation"]
+  .filter(s => !(IS_DESKTOP && s === "Change Password"))
 
 export default function SettingsPage() {
   const { user } = useAuthStore()
@@ -32,6 +35,19 @@ export default function SettingsPage() {
       setChanged({})
       toast.success("Settings saved!")
     } finally { setSaving(false) }
+  }
+
+  async function restartRotation() {
+    try {
+      const res = await api.restartRotation()
+      if (res?.success) {
+        toast.success("Rotation restarted successfully! Active staff have been notified.")
+      } else {
+        toast.error(res?.error || "Failed to restart rotation.")
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to restart rotation.")
+    }
   }
 
   async function changePassword() {
@@ -248,7 +264,7 @@ export default function SettingsPage() {
                     Permanently clear the entire rotation history across all sessions. All staff will begin again from the first hall in the rotation, and all active staff members will be sent a notification.
                   </p>
                   <div className="mt-3 p-3 bg-red-100/70 rounded-lg border border-red-200 text-xs text-red-800">
-                    <strong>Warning:</strong> This action cannot be reversed. You will be prompted to type <strong>RESTART</strong> and confirm your password before rotation history is cleared.
+                    <strong>Warning:</strong> This action cannot be reversed. You will be prompted to type <strong>RESTART</strong>{IS_DESKTOP ? "" : " and confirm your password"} before rotation history is cleared.
                   </div>
                   <button
                     onClick={() => { setRestartInput(""); setShowRestartStep1(true) }}
@@ -318,7 +334,9 @@ export default function SettingsPage() {
                   disabled={restartInput !== "RESTART"}
                   onClick={() => {
                     setShowRestartStep1(false)
-                    setShowRestartStep2(true)
+                    // Desktop: typing RESTART is the whole confirmation. Web: also verify password.
+                    if (IS_DESKTOP) restartRotation()
+                    else setShowRestartStep2(true)
                   }}
                   className="btn-primary bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs px-4 py-2 font-semibold"
                 >
@@ -330,25 +348,14 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Step 2: Password Modal */}
+      {/* Step 2: Password Modal (web only; the desktop app has no passwords) */}
       <ConfirmWithPasswordModal
         isOpen={showRestartStep2}
         title="Verify Password to Restart Rotation"
         message="Enter your password to confirm restarting the rotation history across the system."
         confirmButtonText="Confirm Restart"
         onClose={() => setShowRestartStep2(false)}
-        onConfirmed={async () => {
-          try {
-            const res = await api.restartRotation()
-            if (res?.success) {
-              toast.success("Rotation restarted successfully! Active staff have been notified.")
-            } else {
-              toast.error(res?.error || "Failed to restart rotation.")
-            }
-          } catch (e: any) {
-            toast.error(e?.message || "Failed to restart rotation.")
-          }
-        }}
+        onConfirmed={restartRotation}
       />
     </div>
   )
