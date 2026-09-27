@@ -9,9 +9,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:web": "node scripts/build-web.mjs",
     "package": "npm run build && electron-builder",
     "test": "vitest run",
-    "deploy:firebase": "electron-vite build && firebase deploy --only hosting"
+    "deploy:firebase": "npm run build:web && firebase deploy --only hosting"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
