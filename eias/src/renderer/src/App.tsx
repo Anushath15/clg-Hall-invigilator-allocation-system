@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+﻿import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Toaster } from "react-hot-toast"
 import { useAuthStore } from "./store/auth.store"
 import LoginPage from "./pages/LoginPage"
@@ -26,9 +26,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// The packaged desktop app loads index.html over file://, where BrowserRouter's
+// history paths turn into file:///D:/login and match no route (blank window).
+// Hash routing works there; the web build and dev server keep clean URLs.
+const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -53,6 +58,6 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   )
 }
