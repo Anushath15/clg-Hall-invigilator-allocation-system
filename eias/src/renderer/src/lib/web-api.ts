@@ -646,6 +646,32 @@ export const webApi = {
     return { success: true }
   },
 
+  // Deleting an entire batch (exam cycle) is a deliberate, explicit action distinct from
+  // deleteSession above: unlike removing one session from an in-progress workflow, this is
+  // meant to work even on a confirmed/published batch (the UI gates it behind a password
+  // re-confirmation instead). It removes the batch's rotation_history too, so any fairness
+  // effect that batch had on future allocations is fully undone along with it — the rotation
+  // engine only ever reads the *latest* remaining entry per staff member and the running
+  // MAX(global_order), neither of which requires the deleted step numbers to be contiguous.
+  deleteCycle: async (id: number) => {
+    await ensureDb()
+    const cycle = webDb.queryOne<any>("SELECT * FROM exam_cycles WHERE id=?", [id])
+    if (!cycle) return { success: false, error: "Allocation batch not found." }
+
+    return webDb.runTransaction(() => {
+      const sessions = webDb.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=?", [id])
+      for (const s of sessions) {
+        webDb.run("DELETE FROM rotation_history WHERE session_id=?", [s.id])
+        webDb.run("DELETE FROM allocations WHERE session_id=?", [s.id])
+      }
+      webDb.run("DELETE FROM exam_sessions WHERE cycle_id=?", [id])
+      webDb.run("DELETE FROM exam_cycles WHERE id=?", [id])
+      writeAuditLog(null, "CYCLE_DELETE",
+        `Allocation batch deleted: ${cycle.name} (${cycle.academic_year}) — ${sessions.length} session(s) removed`,
+        { id, name: cycle.name, sessionCount: sessions.length })
+      return { success: true }
+    })
+  },
 
   // Allocation
   generateAllocation: async (sessionId: number, userIds: number[], hallIds: number[]) => {

@@ -60,6 +60,7 @@ export const api = apiBridge as {
   updateSession: (id: number, data: any) => Promise<any>
   addSession: (cycleId: number, data: any) => Promise<any>
   deleteSession: (id: number) => Promise<any>
+  deleteCycle: (id: number) => Promise<any>
   // Allocation
   generateAllocation: (sessionId: number, userIds: number[], hallIds: number[]) => Promise<any>
   getSessionAllocation: (sessionId: number) => Promise<any[]>
