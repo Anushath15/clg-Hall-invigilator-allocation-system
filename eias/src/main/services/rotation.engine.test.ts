@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from "vitest"
 import { initDatabase, db } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, validateSingleEdit } from "./validation.engine"
-import { getOrCreateAllocation, editAllocationEntry, confirmAllocation } from "./allocation.service"
+import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, hardDeleteUser, deleteSession, restartRotation, getNotifications, getUnreadCount } from "./allocation.service"
 
 // ??? Pure rotation logic (no DB needed) ??????????????????????????????????????
 
@@ -512,5 +512,99 @@ it("T7 ? Edited hall becomes future baseline", async () => {
     // Confirm Session 3 succeeds cleanly with zero errors
     const conf3 = await confirmAllocation(3)
     expect(conf3.success).toBe(true)
+  })
+
+  it("T14 — hardDeleteUser: refuses when history exists and succeeds when it doesn't", async () => {
+    // 1. Staff 1 has rotation history -> deletion refused
+    db.run(
+      "INSERT INTO rotation_history(user_id, session_id, hall_id, rotation_step, global_order, recorded_at) VALUES(1, 1, 1, 1, 1, '2026-11-01 10:00:00')"
+    )
+    const historyCheck = db.queryOne<any>("SELECT id FROM rotation_history WHERE user_id = 1")
+    expect(historyCheck).toBeDefined()
+
+    const failRes = hardDeleteUser(1)
+    expect(failRes.success).toBe(false)
+    expect(failRes.error).toBe("Cannot permanently delete: this staff member has allocation history.")
+
+    // Confirm staff 1 still exists
+    const user1StillExists = db.queryOne<any>("SELECT id FROM users WHERE id = 1")
+    expect(user1StillExists).toBeDefined()
+
+    // 2. Create a new inactive staff member without any history or allocations
+    const { lastInsertRowid: newUserId } = db.run(
+      "INSERT INTO users (staff_id, name, role, is_active) VALUES ('TEMP999', 'Temporary Inactive Staff', 'staff', 0)"
+    )
+    const newUserBefore = db.queryOne<any>("SELECT id FROM users WHERE id = ?", [newUserId])
+    expect(newUserBefore).toBeDefined()
+
+    // Deletion must succeed
+    const okRes = hardDeleteUser(newUserId)
+    expect(okRes.success).toBe(true)
+
+    // Confirm user is completely deleted
+    const newUserAfter = db.queryOne<any>("SELECT id FROM users WHERE id = ?", [newUserId])
+    expect(newUserAfter).toBeUndefined()
+  })
+
+  it("T15 — deleteSession: succeeds on a draft with existing allocations", async () => {
+    // Create a new session in cycle 1
+    const { lastInsertRowid: testSessionId } = db.run(
+      "INSERT INTO exam_sessions (cycle_id, exam_date, session_type, rotation_step, status) VALUES (1, '2026-10-10', 'FN', 99, 'draft')"
+    )
+
+    // Insert dummy draft allocations for this session
+    db.run("INSERT INTO allocations (session_id, user_id, hall_id) VALUES (?, 1, 1)", [testSessionId])
+    db.run("INSERT INTO allocations (session_id, user_id, hall_id) VALUES (?, 2, 2)", [testSessionId])
+
+    const allocCountBefore = db.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id = ?", [testSessionId])
+    expect(allocCountBefore.c).toBe(2)
+
+    // Call deleteSession
+    const res = deleteSession(testSessionId)
+    expect(res.success).toBe(true)
+
+    // Session must be deleted
+    const sessionAfter = db.queryOne<any>("SELECT id FROM exam_sessions WHERE id = ?", [testSessionId])
+    expect(sessionAfter).toBeUndefined()
+
+    // Allocations must be deleted
+    const allocCountAfter = db.queryOne<any>("SELECT COUNT(*) as c FROM allocations WHERE session_id = ?", [testSessionId])
+    expect(allocCountAfter.c).toBe(0)
+  })
+
+  it("T16 — restartRotation: empties rotation_history and creates one notification per active staff member", async () => {
+    // Insert history rows before restart
+    db.run(
+      "INSERT INTO rotation_history(user_id, session_id, hall_id, rotation_step, global_order, recorded_at) VALUES(1, 1, 1, 1, 1, '2026-11-01 10:00:00')"
+    )
+    db.run(
+      "INSERT INTO rotation_history(user_id, session_id, hall_id, rotation_step, global_order, recorded_at) VALUES(2, 1, 2, 1, 2, '2026-11-01 10:00:00')"
+    )
+
+    // Confirm rotation_history is non-empty before restart
+    const historyBefore = db.queryOne<any>("SELECT COUNT(*) as c FROM rotation_history")
+    expect(historyBefore.c).toBeGreaterThan(0)
+
+    const activeStaff = db.query<any>("SELECT id FROM users WHERE role = 'staff' AND is_active = 1")
+    expect(activeStaff.length).toBeGreaterThan(0)
+
+    // Execute restartRotation
+    const res = restartRotation()
+    expect(res.success).toBe(true)
+
+    // rotation_history must now be completely empty
+    const historyAfter = db.queryOne<any>("SELECT COUNT(*) as c FROM rotation_history")
+    expect(historyAfter.c).toBe(0)
+
+    // Each active staff member must have received a notification
+    for (const staff of activeStaff) {
+      const notifs = getNotifications(staff.id)
+      const restartNotif = notifs.find((n: any) => n.title === "Rotation Restarted")
+      expect(restartNotif).toBeDefined()
+      expect(restartNotif.message).toBe(
+        "Your entire hall rotation history has been restarted by the admin. Your next assigned hall will begin again from the first hall in the rotation."
+      )
+      expect(getUnreadCount(staff.id)).toBeGreaterThan(0)
+    }
   })
 })
