@@ -34,7 +34,7 @@ export function getDateWiseReport(sessionId: number) {
      JOIN exam_sessions es ON a.session_id = es.id
      LEFT JOIN departments d ON u.department_id = d.id
      WHERE a.session_id = ?
-     ORDER BY h.sort_order`, [sessionId]
+     ORDER BY h.sort_order, h.id`, [sessionId]
   )
 }
 
@@ -46,7 +46,7 @@ export function getCompleteTimetable(cycleId: number) {
   const users = db.query(
     "SELECT u.id, u.staff_id, u.name, d.name as deptName FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.is_active = 1 ORDER BY d.code, u.name"
   )
-  const halls = db.query("SELECT * FROM halls WHERE is_active = 1 ORDER BY sort_order")
+  const halls = db.query("SELECT * FROM halls WHERE is_active = 1 ORDER BY sort_order, id")
   return { sessions, allocations, users, halls }
 }
 

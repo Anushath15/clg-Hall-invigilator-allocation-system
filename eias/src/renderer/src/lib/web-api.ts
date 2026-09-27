@@ -941,7 +941,7 @@ export const webApi = {
       JOIN users u ON a.user_id = u.id
       LEFT JOIN departments d ON u.department_id = d.id
       WHERE a.session_id = ?
-      ORDER BY h.sort_order, h.hall_code`,
+      ORDER BY h.sort_order, h.id`,
       [sessionId]
     )
   },
@@ -964,7 +964,7 @@ export const webApi = {
        JOIN halls h ON a.hall_id = h.id
        LEFT JOIN departments d ON u.department_id = d.id
        WHERE es.cycle_id = ?
-       ORDER BY es.rotation_step, h.sort_order`,
+       ORDER BY es.rotation_step, h.sort_order, h.id`,
       [cycleId]
     )
     // Build unique ordered staff list from allocations in this cycle
