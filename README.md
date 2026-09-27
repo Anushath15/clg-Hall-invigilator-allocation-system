@@ -1,10 +1,10 @@
 # HIAS â€“ Hall Invigilator Allocation System
 
-<img src="eias/resources/icon.png" alt="HIAS logo" width="96" align="right">
+<img src="app/resources/icon.png" alt="HIAS logo" width="96" align="right">
 
 An offline Windows desktop application for St. Xavier's Catholic College of Engineering (SXCCE), Nagercoil, that assigns invigilators to examination halls for every exam session and rotates those assignments fairly. It remembers every confirmed duty, so nobody returns to a hall before they have been through the rest of the rotation.
 
-- **Install:** `release/Hall Invigilator Allocation System Setup 1.0.0.exe` (built with `npm run package`)
+- **Install:** `app/release/Hall Invigilator Allocation System Setup 1.0.0.exe` (built with `npm run package`)
 - **User guide:** [docs/HIAS-User-Guide.pdf](docs/HIAS-User-Guide.pdf)
 - **Project report:** [docs/HIAS-Project-Report.pdf](docs/HIAS-Project-Report.pdf)
 
@@ -26,9 +26,10 @@ Electron 32 Â· electron-vite (Vite 5) Â· TypeScript 5 (strict) Â· React 18
 
 ```
 README.md
-docs/                        User guide and project report (HTML sources + PDFs, screenshots)
+docs/                        User guide and project report (HTML sources + PDFs, screenshots),
+                             staff-import Excel template, original workflow spec (.docx)
 start-hias-dev.bat           Double-click launcher for development mode
-eias/                        The application (folder name kept for compatibility)
+app/                         The application
   resources/logo-source.webp Logo artwork; icon.png / icon.ico are generated from it
   scripts/                   build-icons.cjs, build-docs.cjs, build-web.mjs
   seed.js                    Fills a development database with demo data
@@ -64,17 +65,17 @@ The same UI can be built for a browser with `npm run build:web` (Firebase Hostin
 Requirements: Node.js 20+ on Windows.
 
 ```bash
-cd eias
+cd app
 npm install
 npm run dev          # run the desktop app with hot reload (or double-click start-hias-dev.bat)
 npm test             # 60 Vitest unit/integration tests
 npm run typecheck    # TypeScript, main + renderer
-npm run package      # build the Windows installer into eias/release/
+npm run package      # build the Windows installer into app/release/
 npm run icons        # regenerate icon.png / icon.ico from resources/logo-source.webp
 npm run docs         # re-render docs/*.html to PDF
 ```
 
-Development mode keeps its database at `eias/eias.db`; the installed app uses `%APPDATA%\eias\eias.db`. To run the packaged app against a throwaway data folder (for testing), start it with `--user-data-dir=<folder>`.
+Development mode keeps its database at `app/eias.db`; the installed app uses `%APPDATA%\eias\eias.db`. To run the packaged app against a throwaway data folder (for testing), start it with `--user-data-dir=<folder>`.
 
 ## Known limitations
 

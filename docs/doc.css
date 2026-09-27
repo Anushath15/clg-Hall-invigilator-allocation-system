@@ -1,4 +1,4 @@
-/* Shared print styles for the HIAS documents (rendered to A4 PDF by eias/scripts/build-docs.cjs). */
+/* Shared print styles for the HIAS documents (rendered to A4 PDF by app/scripts/build-docs.cjs). */
 @page { size: A4; margin: 18mm 16mm 20mm; }
 :root {
   --green: #16A34A; --green-dark: #123B2A; --green-light: #DCFCE7; --green-faint: #F0FDF4;
