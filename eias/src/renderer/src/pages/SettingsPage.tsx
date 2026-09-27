@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
-import { Save, Download, Upload, Lock, CheckCircle, AlertTriangle, Info } from "lucide-react"
+import { Save, Download, Upload, Lock, CheckCircle, AlertTriangle, Info, RotateCcw, X } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
+import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 
-const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore"]
+const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore", "Restart Rotation"]
 
 export default function SettingsPage() {
   const { user } = useAuthStore()
@@ -14,6 +15,9 @@ export default function SettingsPage() {
   const [pw, setPw] = useState({ old: "", new1: "", new2: "" })
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [showRestartStep1, setShowRestartStep1] = useState(false)
+  const [restartInput, setRestartInput] = useState("")
+  const [showRestartStep2, setShowRestartStep2] = useState(false)
 
   useEffect(() => { api.getSettings().then(s => { setSettings(s); setChanged({}) }) }, [])
 
@@ -72,7 +76,9 @@ export default function SettingsPage() {
             {SECTIONS.map(s => (
               <button key={s} onClick={() => setActive(s)}
                 className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active === s ? "bg-brand-primary text-white" : "text-brand-textsec hover:bg-gray-100"
+                  active === s
+                    ? (s === "Restart Rotation" ? "bg-red-600 text-white" : "bg-brand-primary text-white")
+                    : (s === "Restart Rotation" ? "text-red-600 hover:bg-red-50" : "text-brand-textsec hover:bg-gray-100")
                 }`}>{s}</button>
             ))}
           </nav>
@@ -229,8 +235,121 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* Restart Rotation */}
+          {active === "Restart Rotation" && (
+            <div className="card border border-red-200 bg-red-50/40">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-red-900 text-base">Restart Rotation</h3>
+                  <p className="text-sm text-red-700 mt-1 leading-relaxed">
+                    Permanently clear the entire rotation history across all sessions. All staff will begin again from the first hall in the rotation, and all active staff members will be sent a notification.
+                  </p>
+                  <div className="mt-3 p-3 bg-red-100/70 rounded-lg border border-red-200 text-xs text-red-800">
+                    <strong>Warning:</strong> This action cannot be reversed. You will be prompted to type <strong>RESTART</strong> and confirm your password before rotation history is cleared.
+                  </div>
+                  <button
+                    onClick={() => { setRestartInput(""); setShowRestartStep1(true) }}
+                    className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
+                  >
+                    <RotateCcw className="w-4 h-4" /> Restart Rotation
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
+
+      {/* Step 1: Type RESTART Modal */}
+      {showRestartStep1 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-red-100 bg-red-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <h2 className="text-base font-bold text-red-950">Restart Rotation</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowRestartStep1(false); setRestartInput("") }}
+                className="p-1.5 rounded-lg hover:bg-gray-200/60 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-brand-textsec leading-relaxed">
+                This will wipe the entire rotation history for all staff members. Your next assigned hall will begin again from the first hall in the rotation.
+              </p>
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs">
+                To confirm, type <span className="font-mono font-bold">RESTART</span> in the field below:
+              </div>
+              <div>
+                <label className="label text-xs font-semibold text-brand-textmain mb-1.5 block">
+                  Type RESTART to confirm
+                </label>
+                <input
+                  type="text"
+                  value={restartInput}
+                  onChange={e => setRestartInput(e.target.value)}
+                  placeholder="RESTART"
+                  className="input-field"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-brand-border">
+                <button
+                  type="button"
+                  onClick={() => { setShowRestartStep1(false); setRestartInput("") }}
+                  className="btn-secondary text-xs px-3.5 py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={restartInput !== "RESTART"}
+                  onClick={() => {
+                    setShowRestartStep1(false)
+                    setShowRestartStep2(true)
+                  }}
+                  className="btn-primary bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs px-4 py-2 font-semibold"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Password Modal */}
+      <ConfirmWithPasswordModal
+        isOpen={showRestartStep2}
+        title="Verify Password to Restart Rotation"
+        message="Enter your password to confirm restarting the rotation history across the system."
+        confirmButtonText="Confirm Restart"
+        onClose={() => setShowRestartStep2(false)}
+        onConfirmed={async () => {
+          try {
+            const res = await api.restartRotation()
+            if (res?.success) {
+              toast.success("Rotation restarted successfully! Active staff have been notified.")
+            } else {
+              toast.error(res?.error || "Failed to restart rotation.")
+            }
+          } catch (e: any) {
+            toast.error(e?.message || "Failed to restart rotation.")
+          }
+        }}
+      />
     </div>
   )
 }

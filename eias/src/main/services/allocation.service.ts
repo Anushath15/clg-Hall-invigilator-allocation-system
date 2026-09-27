@@ -184,6 +184,40 @@ export function getStaffDutyHistory(userId: number) {
   )
 }
 
+export function restartRotation() {
+  db.run("DELETE FROM rotation_history")
+  const activeStaff = db.query<any>("SELECT id FROM users WHERE role = 'staff' AND is_active = 1")
+  for (const staff of activeStaff) {
+    db.run(
+      "INSERT INTO notifications (user_id, title, message, is_read, created_at) VALUES (?, ?, ?, 0, datetime('now'))",
+      [
+        staff.id,
+        "Rotation Restarted",
+        "Your entire hall rotation history has been restarted by the admin. Your next assigned hall will begin again from the first hall in the rotation."
+      ]
+    )
+  }
+  writeAuditLog(null, "ROTATION_RESTART", "Entire rotation history restarted by admin", { affectedStaffCount: activeStaff.length })
+  return { success: true }
+}
+
+export function getNotifications(userId: number) {
+  return db.query("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC", [userId])
+}
+
+export function getUnreadCount(userId: number) {
+  const row = db.queryOne<any>("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0", [userId])
+  return row?.cnt || 0
+}
+
+export function markNotificationRead(id: number) {
+  db.run("UPDATE notifications SET is_read = 1 WHERE id = ?", [id])
+  return { success: true }
+}
+
+export function markAllRead(userId: number) {
+  db.run("UPDATE notifications SET is_read = 1 WHERE user_id = ?", [userId])
+  return { success: true }
 }
 
 export function hardDeleteUser(id: number) {
@@ -198,18 +232,6 @@ export function hardDeleteUser(id: number) {
   return { success: true }
 }
 
-  if (session.status === "confirmed" || session.status === "published") {
-    return { success: false, error: "Cannot delete a confirmed or published session." }
-  }
-  db.run("DELETE FROM allocations WHERE session_id=?", [id])
-  db.run("DELETE FROM exam_sessions WHERE id=?", [id])
-  // Renumber remaining sessions in this cycle to maintain contiguous 1..N rotation_step
-  const remaining = db.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
-  remaining.forEach((s, idx) => {
-    db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
-  })
-  return { success: true }
-}
 export function deleteSession(id: number) {
   const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
   if (!session) return { success: false, error: "Session not found." }
@@ -218,6 +240,7 @@ export function deleteSession(id: number) {
   }
   db.run("DELETE FROM allocations WHERE session_id=?", [id])
   db.run("DELETE FROM exam_sessions WHERE id=?", [id])
+  // Renumber remaining sessions in this cycle to maintain contiguous 1..N rotation_step
   const remaining = db.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
   remaining.forEach((s, idx) => {
     db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])

@@ -124,7 +124,8 @@ function runMigrations(): void {
 
   const migrations: Record<string, () => void> = {
     "001_initial_schema": migration001,
-    "002_rotation_global_order": migration002
+    "002_rotation_global_order": migration002,
+    "003_notifications": migration003
   }
 
   for (const [name, fn] of Object.entries(migrations)) {
@@ -249,6 +250,17 @@ function migration002(): void {
   for (const r of rows) {
     run("UPDATE rotation_history SET global_order = ? WHERE id = ?", [order++, r.id])
   }
+}
+
+function migration003(): void {
+  run(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_read INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`)
 }
 
 // ?? Default seed data ?????????????????????????????????????????????????????

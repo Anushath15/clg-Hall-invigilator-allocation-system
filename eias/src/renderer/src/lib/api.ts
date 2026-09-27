@@ -68,7 +68,12 @@ export const api = apiBridge as {
   confirmAllocation: (sessionId: number) => Promise<any>
   publishAllocation: (sessionId: number) => Promise<any>
   getStaffDutyHistory: (userId: number) => Promise<any[]>
-  getAllocationHistory: (filters: any) => Promise<any[]> Promise<any>
+  getAllocationHistory: (filters: any) => Promise<any[]>
+  restartRotation: () => Promise<any>
+  getNotifications: (userId: number) => Promise<any[]>
+  getUnreadCount: (userId: number) => Promise<number>
+  markNotificationRead: (id: number) => Promise<any>
+  markAllRead: (userId: number) => Promise<any>
   // Reports
   getStaffWiseReport: (userId?: number, fromYear?: string, toYear?: string) => Promise<any[]>
   getDateWiseReport: (sessionId: number) => Promise<any[]>

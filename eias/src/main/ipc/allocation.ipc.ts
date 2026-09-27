@@ -1,6 +1,6 @@
-﻿import { ipcMain } from "electron"
+import { ipcMain } from "electron"
 import { db } from "../db/database"
-import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, publishAllocation, getSessionAllocationFull, getValidHallsFor, getStaffDutyHistory } from "../services/allocation.service"
+import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, publishAllocation, getSessionAllocationFull, getValidHallsFor, getStaffDutyHistory, restartRotation, getNotifications, getUnreadCount, markNotificationRead, markAllRead } from "../services/allocation.service"
 
 export function registerAllocationHandlers() {
   ipcMain.handle("allocation:generate", async (_, sessionId, userIds, hallIds) =>
@@ -12,6 +12,11 @@ export function registerAllocationHandlers() {
   ipcMain.handle("allocation:confirm", async (_, sessionId) => confirmAllocation(sessionId))
   ipcMain.handle("allocation:publish", async (_, sessionId) => publishAllocation(sessionId))
   ipcMain.handle("allocation:staffDutyHistory", async (_, userId) => getStaffDutyHistory(userId))
+  ipcMain.handle("allocation:restartRotation", async () => restartRotation())
+  ipcMain.handle("allocation:getNotifications", async (_, userId) => getNotifications(userId))
+  ipcMain.handle("allocation:getUnreadCount", async (_, userId) => getUnreadCount(userId))
+  ipcMain.handle("allocation:markNotificationRead", async (_, id) => markNotificationRead(id))
+  ipcMain.handle("allocation:markAllRead", async (_, userId) => markAllRead(userId))
   ipcMain.handle("allocation:history", async (_, filters) => {
     let sql = `SELECT u.staff_id, u.name as staffName, d.code as deptCode, h.hall_code,
                es.exam_date, es.session_type, ec.name as cycleName, a.is_manually_edited

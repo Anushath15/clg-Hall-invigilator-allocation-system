@@ -295,6 +295,16 @@ function runMigrations(): void {
       try { run("DELETE FROM notifications") } catch {}
       try { run("DELETE FROM exam_sessions") } catch {}
       try { run("DELETE FROM exam_cycles") } catch {}
+    },
+    "004_notifications": () => {
+      run(`CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`)
     }
   }
 

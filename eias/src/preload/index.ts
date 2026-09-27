@@ -42,6 +42,11 @@ const api = {
   publishAllocation:    (sessionId: number) => ipcRenderer.invoke("allocation:publish", sessionId),
   getStaffDutyHistory:  (userId: number) => ipcRenderer.invoke("allocation:staffDutyHistory", userId),
   getAllocationHistory:  (filters: any) => ipcRenderer.invoke("allocation:history", filters),
+  restartRotation:      () => ipcRenderer.invoke("allocation:restartRotation"),
+  getNotifications:     (userId: number) => ipcRenderer.invoke("allocation:getNotifications", userId),
+  getUnreadCount:       (userId: number) => ipcRenderer.invoke("allocation:getUnreadCount", userId),
+  markNotificationRead: (id: number) => ipcRenderer.invoke("allocation:markNotificationRead", id),
+  markAllRead:          (userId: number) => ipcRenderer.invoke("allocation:markAllRead", userId),
   // Reports
   getStaffWiseReport:   (userId?: number, fromYear?: string, toYear?: string) => ipcRenderer.invoke("report:staffWise", userId, fromYear, toYear),
   getDateWiseReport:    (sessionId: number) => ipcRenderer.invoke("report:dateWise", sessionId),

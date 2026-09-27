@@ -862,6 +862,47 @@ export const webApi = {
     return webDb.query(sql, params)
   },
 
+  restartRotation: async () => {
+    await ensureDb()
+    webDb.run("DELETE FROM rotation_history")
+    const activeStaff = webDb.query<any>("SELECT id FROM users WHERE role = 'staff' AND is_active = 1")
+    for (const staff of activeStaff) {
+      webDb.run(
+        "INSERT INTO notifications (user_id, title, message, is_read, created_at) VALUES (?, ?, ?, 0, datetime('now'))",
+        [
+          staff.id,
+          "Rotation Restarted",
+          "Your entire hall rotation history has been restarted by the admin. Your next assigned hall will begin again from the first hall in the rotation."
+        ]
+      )
+    }
+    writeAuditLog(null, "ROTATION_RESTART", "Entire rotation history restarted by admin", { affectedStaffCount: activeStaff.length })
+    return { success: true }
+  },
+
+  getNotifications: async (userId: number) => {
+    await ensureDb()
+    return webDb.query("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC", [userId])
+  },
+
+  getUnreadCount: async (userId: number) => {
+    await ensureDb()
+    const row = webDb.queryOne<any>("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0", [userId])
+    return row?.cnt || 0
+  },
+
+  markNotificationRead: async (id: number) => {
+    await ensureDb()
+    webDb.run("UPDATE notifications SET is_read = 1 WHERE id = ?", [id])
+    return { success: true }
+  },
+
+  markAllRead: async (userId: number) => {
+    await ensureDb()
+    webDb.run("UPDATE notifications SET is_read = 1 WHERE user_id = ?", [userId])
+    return { success: true }
+  },
+
   // Reports
   getStaffWiseReport: async (userId?: number, fromYear?: string, toYear?: string) => {
     await ensureDb()
