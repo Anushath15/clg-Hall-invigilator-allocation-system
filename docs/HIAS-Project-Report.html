@@ -167,12 +167,12 @@
 
 <h1>8. Testing and quality</h1>
 <h2>Automated tests</h2>
-<p><b>72 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
+<p><b>89 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
 <ul>
   <li>The rotation algorithm: first allocation, circular wrap-around, staff who join later, pools smaller than the total number of halls, ordering across batches.</li>
   <li>Every validation rule, including a regression test for a full-cycle restart that an earlier version wrongly blocked.</li>
   <li>The allocation lifecycle: generate, edit, confirm, delete draft sessions, permanent staff deletion, rotation restart, and batch status updates.</li>
-  <li>A <b>fairness suite</b> of 12 multi-session scenarios run through the real engine, validator and database (below).</li>
+  <li>A <b>fairness suite</b> of 29 multi-session scenarios run through the real engine, validator and database (below).</li>
 </ul>
 <h2>Fairness testing</h2>
 <p>Each scenario generates and confirms every session in turn and checks that no hall or person is double-booked. "Hall spread" is, for the worst-off person, the difference between the hall they had most often and least often.</p>
@@ -189,6 +189,23 @@
   <tr><td>Restart rotation part-way</td><td>16 / 16</td><td>0</td><td>0</td><td>0</td></tr>
   <tr><td>Same team morning and afternoon every day</td><td>20 / 20</td><td>0</td><td>0</td><td>0</td></tr>
   <tr><td>Large college: 30 of 60 staff, 30 halls</td><td>60 / 60</td><td>24 of 1,800</td><td>0</td><td>2 (15 ms per session)</td></tr>
+</table>
+<p>A second set of 17 scenarios covers messier situations, edge cases and attempts to break the rules. All pass:</p>
+<table>
+  <tr><th>Scenario</th><th>Result</th></tr>
+  <tr><td>A different number of halls each day (3 to 8)</td><td>60 / 60 confirmed; hall counts within 2 on the halls open every day</td></tr>
+  <tr><td>A different set of halls each session (5 of 8)</td><td>80 / 80 confirmed; 10 unavoidable repeats in 400 duties</td></tr>
+  <tr><td>A hall added permanently; a teacher on long leave returns</td><td>All confirmed; newcomers and returners slot in within 1–2</td></tr>
+  <tr><td>A single hall</td><td>All confirmed, no false warnings</td></tr>
+  <tr><td>Regenerating a draft several times</td><td>Identical result every time; nothing recorded until confirmed</td></tr>
+  <tr><td>Ticking staff and halls in a different order</td><td>Same person gets the same hall</td></tr>
+  <tr><td>Confirming sessions out of order; mismatched counts; inactive staff or hall</td><td>Refused with R4, R7, R5 and R6</td></tr>
+  <tr><td>History built so that a repeat is forced</td><td>Exactly one repeat (the minimum), in the hall visited longest ago; confirmed with a warning</td></tr>
+  <tr><td>Manual edit onto an occupied hall or a hall outside the session</td><td>Refused; nothing changes</td></tr>
+  <tr><td>Deleting a draft part-way</td><td>Rotation unaffected; the next session gets exactly the deleted draft's halls</td></tr>
+  <tr><td>300 sessions with a fixed team</td><td>Every hall exactly 50 times each, no repeats</td></tr>
+  <tr><td>Two batches running side by side; 20 newcomers starting together</td><td>Perfect rotation</td></tr>
+  <tr><td>Very large college: 100 of 150 staff, 100 halls</td><td>All confirmed, about 0.1 s per session</td></tr>
 </table>
 <p>With a stable team, or staff taking turns in order, the rotation is perfect. With a random duty list every session still confirms, but some repeats are unavoidable; they are kept to the proven minimum and the hall counts of each person stay within 2–3 of each other. How many duties each person gets depends on who the administrator puts on duty, which the engine does not choose.</p>
 <p>TypeScript runs in strict mode and the whole code base type-checks without errors (<code>npm run typecheck</code>).</p>

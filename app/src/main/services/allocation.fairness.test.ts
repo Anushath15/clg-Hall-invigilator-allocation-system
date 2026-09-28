@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { initDatabase, db } from "../db/database"
-import { getOrCreateAllocation, confirmAllocation, restartRotation } from "./allocation.service"
+import { getOrCreateAllocation, confirmAllocation, restartRotation, editAllocationEntry, deleteSession } from "./allocation.service"
 
 // ─── Harness ──────────────────────────────────────────────────────────────────
 
@@ -90,9 +90,21 @@ function record(name: string, spread: number, extra: Record<string, any> = {}) {
 
 // ─── Scenarios ────────────────────────────────────────────────────────────────
 
+beforeAll(async () => { await initDatabase({ inMemory: true }) })
+afterAll(() => { console.log("\nFAIRNESS REPORT"); console.table(report) })
+
+/** Create a pending session without generating it (for scenarios that drive each step themselves). */
+function newSession(cycleId = 1) {
+  step++; sessionId++
+  db.run("INSERT INTO exam_sessions(id, cycle_id, exam_date, session_type, rotation_step, status) VALUES(?,?,?,?,?,'pending')",
+    [sessionId, cycleId, "2027-01-01", sessionId % 2 ? "FN" : "AN", step])
+  return sessionId
+}
+const mapping = (sid: number) => Object.fromEntries(
+  db.query<any>("SELECT user_id, hall_id FROM allocations WHERE session_id=? ORDER BY user_id", [sid]).map(r => [r.user_id, r.hall_id]))
+const historyCount = () => db.queryOne<any>("SELECT COUNT(*) as c FROM rotation_history")?.c ?? 0
+
 describe("Allocation fairness across many sessions", () => {
-  beforeAll(async () => { await initDatabase({ inMemory: true }) })
-  afterAll(() => { console.log("\nFAIRNESS REPORT"); console.table(report) })
 
   it("F1 fixed team (6 staff, 6 halls, 36 sessions): perfect rotation, every hall exactly 6 times", async () => {
     reset(6, 6)
@@ -241,4 +253,222 @@ describe("Allocation fairness across many sessions", () => {
     expect(ms).toBeLessThan(2000)
     record("F12 large 60 staff/30 halls", worstSpread(all, h), { msPerSession: Math.round(ms), dutiesPerPerson: dutyRange(all) })
   }, 120_000)
+})
+
+
+// ─── More scenarios: messier real life, edge cases, and attempts to break the rules ───
+
+describe("More allocation scenarios", () => {
+  it("G1 a different number of halls each day (3 to 8 halls, staff drawn from 12)", async () => {
+    reset(12, 8)
+    const all = staffIds(12), r = rng(5)
+    for (let i = 0; i < 60; i++) {
+      const k = 3 + Math.floor(r() * 6)
+      await session(pick(all, k, r), hallIdList(k))
+    }
+    expect(stats.backToBack / (stats.sessions * 5)).toBeLessThan(0.02)
+    // Halls 1-3 are open every day, so that is where fairness can be compared.
+    const alwaysOpen = worstSpread(all, hallIdList(3))
+    expect(alwaysOpen).toBeLessThanOrEqual(3)
+    record("G1 3-8 halls per day", alwaysOpen, { note: "spread over halls open every day" })
+  })
+
+  it("G2 a different set of halls each session (5 of 8 halls, 5 of 10 staff)", async () => {
+    reset(10, 8)
+    const all = staffIds(10), halls = hallIdList(8), r = rng(21)
+    for (let i = 0; i < 80; i++) await session(pick(all, 5, r), pick(halls, 5, r).sort((a, b) => a - b))
+    expect(stats.backToBack / (stats.sessions * 5)).toBeLessThan(0.02)
+    record("G2 random hall sets", worstSpread(all, halls), { dutiesPerPerson: dutyRange(all) })
+  })
+
+  it("G3 a new hall is added permanently (5 halls, then 6 with one more staff)", async () => {
+    reset(6, 6)
+    const u = staffIds(6)
+    for (let i = 0; i < 10; i++) await session(u.slice(0, 5), hallIdList(5))
+    for (let i = 0; i < 18; i++) await session(u, hallIdList(6))
+    expect(stats.backToBack).toBe(0)
+    // Everyone, including the late starter, has had the new hall 6 at least twice.
+    for (const row of visitMatrix(u, [6])) expect(row[0]).toBeGreaterThanOrEqual(2)
+    record("G3 hall added", worstSpread(u, hallIdList(6)))
+  })
+
+  it("G4 a teacher goes on long leave and returns", async () => {
+    reset(7, 6)
+    const u = staffIds(7), h = hallIdList(6)
+    const team = u.slice(0, 6), cover = [...u.slice(0, 5), u[6]]
+    for (let i = 0; i < 12; i++) await session(team, h)
+    for (let i = 0; i < 20; i++) await session(cover, h)   // u[5] away, u[6] covers
+    for (let i = 0; i < 12; i++) await session(team, h)   // u[5] back
+    expect(stats.backToBack).toBe(0)
+    record("G4 long leave and return", worstSpread(u.slice(0, 5), h))
+  })
+
+  it("G5 a single hall with one invigilator, and a single hall with staff taking turns", async () => {
+    reset(3, 1)
+    for (let i = 0; i < 5; i++) await session([101], [1])
+    for (let i = 0; i < 9; i++) await session([staffIds(3)[i % 3]], [1])
+    expect(stats.repeats).toBe(0)
+    record("G5 single hall", 0)
+  })
+
+  it("G6 regenerating a draft gives the same result and does not touch the rotation", async () => {
+    reset(8, 8)
+    const u = staffIds(8), h = hallIdList(8)
+    for (let i = 0; i < 5; i++) await session(u, h)
+    const sid = newSession(), before = historyCount()
+    await getOrCreateAllocation(sid, u, h)
+    const first = mapping(sid)
+    for (let i = 0; i < 3; i++) {
+      await getOrCreateAllocation(sid, u, h)
+      expect(mapping(sid)).toEqual(first)
+    }
+    expect(historyCount()).toBe(before) // nothing recorded until confirmation
+    expect((await confirmAllocation(sid)).success).toBe(true)
+    expect(historyCount()).toBe(before + 8)
+    record("G6 regenerate draft", worstSpread(u, h))
+  })
+
+  it("G7 the order in which staff and halls are ticked does not change who gets which hall", async () => {
+    reset(10, 6)
+    const all = staffIds(10), h = hallIdList(6), r = rng(3)
+    for (let i = 0; i < 12; i++) await session(pick(all, 6, r), h)
+    const duty = pick(all, 6, r)
+    const sid = newSession()
+    await getOrCreateAllocation(sid, duty, h)
+    const expected = mapping(sid)
+    for (const order of [[...duty].reverse(), pick(duty, 6, r), pick(duty, 6, r)]) {
+      await getOrCreateAllocation(sid, order, h)
+      expect(mapping(sid)).toEqual(expected)
+    }
+    record("G7 selection order", worstSpread(all, h))
+  })
+
+  it("G8 sessions must be confirmed in order", async () => {
+    reset(4, 4)
+    const u = staffIds(4), h = hallIdList(4)
+    const s1 = newSession(), s2 = newSession()
+    await getOrCreateAllocation(s2, u, h)
+    const early = await confirmAllocation(s2)
+    expect(early.success).toBe(false)
+    expect(early.validation?.blockingErrors.map((e: any) => e.rule)).toContain("R4")
+    await getOrCreateAllocation(s1, u, h)
+    expect((await confirmAllocation(s1)).success).toBe(true)
+    await getOrCreateAllocation(s2, u, h)
+    expect((await confirmAllocation(s2)).success).toBe(true)
+  })
+
+  it("G9 staff and hall counts must match", async () => {
+    reset(6, 6)
+    const sid = newSession()
+    await expect(getOrCreateAllocation(sid, staffIds(5), hallIdList(6))).rejects.toThrow(/must equal hall count/)
+    await expect(getOrCreateAllocation(sid, staffIds(6), hallIdList(5))).rejects.toThrow(/must equal hall count/)
+  })
+
+  it("G10 inactive staff or halls cannot be confirmed", async () => {
+    reset(4, 4)
+    const u = staffIds(4), h = hallIdList(4)
+    const sid = newSession()
+    await getOrCreateAllocation(sid, u, h)
+    db.run("UPDATE users SET is_active=0 WHERE id=?", [u[0]])
+    let c = await confirmAllocation(sid)
+    expect(c.success).toBe(false)
+    expect(c.validation?.blockingErrors.map((e: any) => e.rule)).toContain("R5")
+    db.run("UPDATE users SET is_active=1 WHERE id=?", [u[0]])
+    db.run("UPDATE halls SET is_active=0 WHERE id=2")
+    c = await confirmAllocation(sid)
+    expect(c.success).toBe(false)
+    expect(c.validation?.blockingErrors.map((e: any) => e.rule)).toContain("R6")
+  })
+
+  it("G11 a forced repeat: minimum repeats, oldest hall chosen, confirmed with a warning", async () => {
+    reset(3, 3)
+    const [a, b, c] = staffIds(3)
+    // a and b both had halls 1 then 2, so each may only take hall 3 next: one of them must repeat.
+    const past = [newSession(), newSession()]
+    for (const p of past) db.run("UPDATE exam_sessions SET status='confirmed' WHERE id=?", [p])
+    let order = 1
+    for (const [u, h, p] of [[a, 1, past[0]], [b, 1, past[0]], [a, 2, past[1]], [b, 2, past[1]]]) {
+      db.run("INSERT INTO rotation_history(user_id, session_id, hall_id, rotation_step, global_order, recorded_at) VALUES(?,?,?,1,?,datetime('now'))", [u, p, h, order++])
+    }
+    const sid = newSession()
+    const gen = await getOrCreateAllocation(sid, [a, b, c], hallIdList(3))
+    const m = mapping(sid)
+    const repeaters = [a, b].filter(u => m[u] !== 3)
+    expect(repeaters.length).toBe(1)                // exactly one repeat, the minimum
+    expect(m[repeaters[0]]).toBe(1)                 // the hall visited longest ago, not their last (2)
+    expect(gen.validation.isValid).toBe(true)
+    expect(gen.validation.warnings.length).toBe(1)
+    const conf = await confirmAllocation(sid)
+    expect(conf.success).toBe(true)
+    expect(conf.validation?.warnings[0]).toMatch(/Unavoidable repeat/)
+  })
+
+  it("G12 illegal manual edits are refused", async () => {
+    reset(4, 5)
+    const u = staffIds(4)
+    for (let i = 0; i < 3; i++) await session(u, hallIdList(4))
+    const sid = newSession()
+    await getOrCreateAllocation(sid, u, hallIdList(4))
+    const m = mapping(sid)
+    // Onto a hall someone else already has in this session (R2).
+    expect(editAllocationEntry(sid, u[0], m[u[1]]).error?.rule).toBe("R2")
+    // Onto a hall outside this session's pool.
+    expect(editAllocationEntry(sid, u[0], 5).error?.rule).toBe("SESSION_POOL")
+    // Nothing changed.
+    expect(mapping(sid)).toEqual(m)
+  })
+
+  it("G13 deleting a draft session part-way does not disturb the rotation", async () => {
+    reset(5, 5)
+    const u = staffIds(5), h = hallIdList(5)
+    for (let i = 0; i < 3; i++) await session(u, h)
+    const draft = newSession()
+    await getOrCreateAllocation(draft, u, h)
+    const planned = mapping(draft)
+    expect(deleteSession(draft).success).toBe(true)
+    const { conf } = await session(u, h)
+    expect(conf.success).toBe(true)
+    expect(mapping(sessionId)).toEqual(planned) // the next session gets exactly what the deleted draft had
+    for (let i = 0; i < 6; i++) await session(u, h)
+    expect(visitMatrix(u, h).every(row => row.every(c => c === 2))).toBe(true)
+    record("G13 draft deleted", worstSpread(u, h))
+  })
+
+  it("G14 long run: 300 sessions with a fixed team stay perfectly balanced", async () => {
+    reset(6, 6)
+    const u = staffIds(6), h = hallIdList(6)
+    for (let i = 0; i < 300; i++) await session(u, h)
+    expect(visitMatrix(u, h).every(row => row.every(c => c === 50))).toBe(true)
+    expect(stats.repeats + stats.backToBack).toBe(0)
+    record("G14 300 sessions", worstSpread(u, h))
+  }, 120_000)
+
+  it("G15 two batches running side by side (sessions alternate between them)", async () => {
+    reset(6, 6)
+    db.run("INSERT INTO exam_cycles(id, name, academic_year, status) VALUES(2,'Batch 2','2026-27','draft')")
+    const u = staffIds(6), h = hallIdList(6)
+    for (let i = 0; i < 24; i++) await session(u, h, i % 2 ? 2 : 1)
+    expect(visitMatrix(u, h).every(row => row.every(c => c === 4))).toBe(true)
+    record("G15 interleaved batches", worstSpread(u, h))
+  })
+
+  it("G16 a large group of newcomers all start together", async () => {
+    reset(20, 20)
+    const u = staffIds(20), h = hallIdList(20)
+    for (let i = 0; i < 40; i++) await session(u, h)
+    expect(visitMatrix(u, h).every(row => row.every(c => c === 2))).toBe(true)
+    expect(stats.repeats + stats.backToBack).toBe(0)
+    record("G16 20 newcomers", worstSpread(u, h))
+  })
+
+  it("G17 very large college: 150 staff, 100 halls, random 100 on duty", async () => {
+    reset(150, 100)
+    const all = staffIds(150), h = hallIdList(100), r = rng(77)
+    const t0 = Date.now()
+    for (let i = 0; i < 15; i++) await session(pick(all, 100, r), h)
+    const ms = (Date.now() - t0) / 15
+    expect(ms).toBeLessThan(3000)
+    expect(stats.backToBack).toBe(0)
+    record("G17 150 staff/100 halls", worstSpread(all, h), { msPerSession: Math.round(ms), dutiesPerPerson: dutyRange(all) })
+  }, 180_000)
 })
