@@ -1,9 +1,9 @@
 {
   "name": "hias",
   "version": "1.0.0",
-  "description": "Hall Invigilator Allocation System - SXCCE Nagercoil",
+  "description": "HIAS - Hall Invigilator Allocation System",
   "main": "out/main/index.js",
-  "author": "SXCCE",
+  "author": "SXCCE Nagercoil (Anushath S, Akhil Koska A, Harish S)",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -19,20 +19,8 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "clsx": "^2.1.1",
-    "date-fns": "^3.6.0",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.1",
-    "jspdf-autotable": "^3.8.2",
-    "lucide-react": "^0.441.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^6.26.1",
     "sql.js": "^1.12.0",
-    "tailwind-merge": "^2.5.2",
-    "xlsx": "^0.18.5",
-    "zustand": "^4.5.4"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -43,37 +31,75 @@
     "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
+    "clsx": "^2.1.1",
+    "date-fns": "^3.6.0",
     "electron": "^32.3.3",
     "electron-builder": "^25.0.5",
     "electron-vite": "^2.3.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
+    "lucide-react": "^0.441.0",
     "postcss": "^8.4.45",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.26.1",
+    "tailwind-merge": "^2.5.2",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
     "vite": "^5.4.3",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "zustand": "^4.5.4"
   },
   "build": {
     "appId": "in.edu.sxcce.eias",
     "productName": "Hall Invigilator Allocation System",
+    "executableName": "HIAS",
+    "copyright": "Copyright © 2026 St. Xavier's Catholic College of Engineering, Nagercoil",
     "directories": {
       "output": "release"
     },
     "files": [
       "out/**/*",
       "resources/**/*",
-      "!resources/logo-source.webp"
+      "!resources/logo-source.webp",
+      "!node_modules/sql.js/dist/*debug*",
+      "!node_modules/sql.js/dist/sql-asm*",
+      "!node_modules/sql.js/dist/worker.*",
+      "!node_modules/sql.js/dist/*browser*",
+      "!node_modules/sql.js/dist/*.zip",
+      "!node_modules/xlsx/xlsx.mjs",
+      "!node_modules/xlsx/dist/xlsx.*",
+      "!node_modules/xlsx/dist/*.mjs",
+      "!node_modules/xlsx/dist/*.map",
+      "!node_modules/xlsx/formats.png",
+      "!node_modules/**/*.{md,markdown,map,d.ts,flow}",
+      "!node_modules/**/{test,tests,__tests__,docs,example,examples,bin}/**"
     ],
+    "electronLanguages": [
+      "en-US"
+    ],
+    "compression": "maximum",
+    "icon": "resources/icon.png",
     "win": {
       "target": "nsis",
       "icon": "resources/icon.ico"
     },
-    "icon": "resources/icon.png",
     "nsis": {
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
+      "artifactName": "HIAS-Setup-${version}.${ext}",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "uninstallDisplayName": "HIAS - Hall Invigilator Allocation System",
       "createDesktopShortcut": true,
-      "shortcutName": "HIAS"
+      "createStartMenuShortcut": true,
+      "shortcutName": "HIAS",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
     }
   }
 }

@@ -4,7 +4,7 @@
 
 An offline Windows desktop application for St. Xavier's Catholic College of Engineering (SXCCE), Nagercoil, that assigns invigilators to examination halls for every exam session and rotates those assignments fairly. It remembers every confirmed duty, so nobody returns to a hall before they have been through the rest of the rotation.
 
-- **Install:** `app/release/Hall Invigilator Allocation System Setup 1.0.0.exe` (built with `npm run package`)
+- **Install:** `app/release/HIAS-Setup-1.0.0.exe` (built with `npm run package`; installs `HIAS.exe` for all users)
 - **User guide:** [docs/HIAS-User-Guide.pdf](docs/HIAS-User-Guide.pdf)
 - **Project report:** [docs/HIAS-Project-Report.pdf](docs/HIAS-Project-Report.pdf)
 
@@ -72,7 +72,7 @@ npm install
 npm run dev          # run the desktop app with hot reload (or double-click start-hias-dev.bat)
 npm test             # 89 Vitest tests, including the fairness suite
 npm run typecheck    # TypeScript, main + renderer
-npm run package      # build the Windows installer into app/release/
+npm run package      # build the Windows installer app/release/HIAS-Setup-<version>.exe
 npm run icons        # regenerate icon.png / icon.ico from resources/logo-source.webp
 npm run docs         # re-render docs/*.html to PDF
 ```
