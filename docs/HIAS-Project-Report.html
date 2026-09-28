@@ -143,9 +143,10 @@
 <h2>Rotation algorithm</h2>
 <ol>
   <li>The halls selected for a session form an ordered <b>hall pool</b> (ordered by sort order, then id, so the order is always deterministic).</li>
-  <li>For each selected staff member, HIAS looks up their most recent confirmed hall in <code>rotation_history</code>.</li>
-  <li>A staff member with history moves to the next hall after their last one in the pool, wrapping around circularly; if that hall is already taken in this session, the next free hall is used.</li>
-  <li>A staff member with no history receives the first free hall.</li>
+  <li>For each selected staff member, HIAS reads their confirmed hall history from <code>rotation_history</code>.</li>
+  <li>Every (staff, hall) pair gets a cost: a very large penalty if the hall is among the person's last <i>n&nbsp;−&nbsp;1</i> halls (rule R1, larger for more recent visits), plus how often they have already had that hall, plus the circular distance from their last hall (so the natural "next hall" is preferred).</li>
+  <li>All staff of the session are assigned <b>together</b> by finding the minimum-cost perfect matching (the <b>Hungarian algorithm</b>, O(n³)). Because the R1 penalty outweighs everything else, no rule is broken whenever a valid assignment exists, and with a fixed team the result is the classic perfect rotation (everyone moves one hall on).</li>
+  <li>When the staff on duty vary, a repeat can be mathematically unavoidable (for example, two people whose only remaining hall is the same one). The algorithm then uses the minimum possible number of repeats, choosing the hall visited longest ago.</li>
   <li>The result is saved as a <b>draft</b>. Only when the administrator <b>confirms</b> it is it written to <code>rotation_history</code>, inside a transaction, which moves the rotation forward.</li>
 </ol>
 <p>Because the rotation history is global rather than per batch, fairness carries over from one exam series to the next. An administrator can reset it deliberately (Restart Rotation), for example at the start of an academic year.</p>
@@ -160,22 +161,43 @@
   <tr><td>R6</td><td>Halls must be active.</td></tr>
   <tr><td>R7</td><td>The number of staff equals the number of halls.</td></tr>
 </table>
-<p>Manual edits are checked against the same rules as they are made, and the edit dialog only offers halls that keep the allocation valid.</p>
+<p>R1 is enforced strictly with one exception: if an allocation has no more repeats than the proven minimum for the staff and halls of that session, the repeats are shown to the administrator as <b>warnings</b> ("unavoidable repeat") instead of blocking the session. Manual edits are checked against the rules as they are made, and the edit dialog only offers halls that keep the allocation valid.</p>
+<h2>Why a matching algorithm</h2>
+<p>An earlier version assigned halls one person at a time. Fairness testing showed that this worked perfectly for a fixed team but failed badly when more staff than halls take turns (the normal case in a college): two people competed for the same "next" hall and one was pushed into a recently used hall, so the system rejected its own allocation. With 10 staff sharing 6 halls, only 5 of 60 sessions could be confirmed; with a random duty list of 6 out of 12 staff, 9 of 80. Assigning everyone together as an optimal matching fixed this: all sessions in every tested scenario now confirm.</p>
 
 <h1>8. Testing and quality</h1>
 <h2>Automated tests</h2>
-<p><b>60 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
+<p><b>72 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
 <ul>
   <li>The rotation algorithm: first allocation, circular wrap-around, staff who join later, pools smaller than the total number of halls, ordering across batches.</li>
   <li>Every validation rule, including a regression test for a full-cycle restart that an earlier version wrongly blocked.</li>
   <li>The allocation lifecycle: generate, edit, confirm, delete draft sessions, permanent staff deletion, rotation restart, and batch status updates.</li>
+  <li>A <b>fairness suite</b> of 12 multi-session scenarios run through the real engine, validator and database (below).</li>
 </ul>
+<h2>Fairness testing</h2>
+<p>Each scenario generates and confirms every session in turn and checks that no hall or person is double-booked. "Hall spread" is, for the worst-off person, the difference between the hall they had most often and least often.</p>
+<table>
+  <tr><th>Scenario</th><th>Sessions confirmed</th><th>Unavoidable repeats</th><th>Same hall twice in a row</th><th>Hall spread</th></tr>
+  <tr><td>Fixed team: 6 staff, 6 halls (also 2, 3, 5 and 9)</td><td>36 / 36</td><td>0</td><td>0</td><td>0 (every hall exactly 6 times)</td></tr>
+  <tr><td>10 staff taking turns in 6 halls</td><td>60 / 60</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td>Random duty list: 6 of 12 staff each session</td><td>120 / 120</td><td>162 of 720 duties</td><td>0</td><td>3</td></tr>
+  <tr><td>Random duty list: 8 of 15 staff (3 runs)</td><td>240 / 240</td><td>402 of 1,920</td><td>1</td><td>2</td></tr>
+  <tr><td>New staff join half-way</td><td>24 / 24</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td>A hall closes for 10 sessions and reopens</td><td>28 / 28</td><td>15</td><td>0</td><td>2</td></tr>
+  <tr><td>Manual swap by the administrator</td><td>12 / 12</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td>Rotation continues across two batches</td><td>12 / 12</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td>Restart rotation part-way</td><td>16 / 16</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td>Same team morning and afternoon every day</td><td>20 / 20</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td>Large college: 30 of 60 staff, 30 halls</td><td>60 / 60</td><td>24 of 1,800</td><td>0</td><td>2 (15 ms per session)</td></tr>
+</table>
+<p>With a stable team, or staff taking turns in order, the rotation is perfect. With a random duty list every session still confirms, but some repeats are unavoidable; they are kept to the proven minimum and the hall counts of each person stay within 2–3 of each other. How many duties each person gets depends on who the administrator puts on duty, which the engine does not choose.</p>
 <p>TypeScript runs in strict mode and the whole code base type-checks without errors (<code>npm run typecheck</code>).</p>
 <h2>End-to-end verification</h2>
 <p>The packaged Windows application was driven automatically against a separate test data folder with sample data (3 departments, 6 halls, 8 staff, one batch of 4 sessions). The run checked:</p>
 <table>
   <tr><th>Check</th><th style="width:24%">Result</th></tr>
   <tr><td>Generate and confirm four sessions</td><td>Passed, 0 rule violations</td></tr>
+  <tr><td>30 sessions with 10 staff taking turns in 6 halls; 20 sessions with random duty lists</td><td>All 50 confirmed</td></tr>
   <tr><td>Batch status moves from Draft to Confirmed</td><td>Passed</td></tr>
   <tr><td>Excel import with two valid and two invalid rows</td><td>2 imported, 2 reported with reasons</td></tr>
   <tr><td>Delete a batch; database backup</td><td>Passed</td></tr>
@@ -183,7 +205,7 @@
   <tr><td>Session PDF and all four report PDFs</td><td>All valid PDFs, content checked</td></tr>
   <tr><td>Network access while running</td><td>None (fully offline)</td></tr>
 </table>
-<p>This run found and fixed several defects before release, including empty staff-wise reports, a dashboard counter that was never calculated, batches that never left the Draft state, the order of sessions in the timetable, and a restore that could be undone by further use before a restart.</p>
+<p>This run found and fixed several defects before release, including an allocation engine that rejected its own allocations when staff took turns, empty staff-wise reports, a dashboard counter that was never calculated, batches that never left the Draft state, the order of sessions in the timetable, and a restore that could be undone by further use before a restart.</p>
 
 <h1>9. Screenshots</h1>
 <figure><img src="images/allocation.png" alt="Allocation workspace"><figcaption>Allocation workspace: a confirmed session with its generated hall assignments.</figcaption></figure>

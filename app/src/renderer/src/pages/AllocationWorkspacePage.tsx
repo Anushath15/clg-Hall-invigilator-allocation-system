@@ -172,9 +172,13 @@ export default function AllocationWorkspacePage() {
     try {
       const r = await api.confirmAllocation(activeSession.id)
       if (r.success) {
-        toast.success("Allocation confirmed and locked!")
+        toast.success(r.validation?.warnings?.length
+          ? `Allocation confirmed with ${r.validation.warnings.length} unavoidable repeat(s).`
+          : "Allocation confirmed and locked!")
         await loadCycle()
         await loadAllocation()
+        // After the reload (which clears validation), keep any unavoidable-repeat warnings visible.
+        if (r.validation?.warnings?.length) setValidation(r.validation)
       } else {
         toast.error(r.error || "Validation failed — check errors below.")
         setValidation(r.validation)
@@ -406,9 +410,19 @@ export default function AllocationWorkspacePage() {
                   ))}
                 </div>
               )}
-              {validation?.isValid && (
+              {validation?.isValid && !validation.warnings?.length && (
                 <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-green-700 text-sm">
                   <CheckCircle className="w-4 h-4" /> All 7 validation rules passed successfully.
+                </div>
+              )}
+              {validation?.warnings?.length > 0 && (
+                <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-amber-800 font-semibold mb-2">
+                    <AlertTriangle className="w-4 h-4" /> {validation.warnings.length} Unavoidable Repeat(s): allowed, but please review
+                  </div>
+                  {validation.warnings.map((w: string, i: number) => (
+                    <p key={i} className="text-sm text-amber-700 mb-1">• {w}</p>
+                  ))}
                 </div>
               )}
 

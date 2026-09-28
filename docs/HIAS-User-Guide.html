@@ -113,7 +113,7 @@
 <ol class="steps">
   <li>Select a session tab and click <b>Select Staff &amp; Generate</b>.</li>
   <li>Tick the staff who are on duty and the halls in use for this session. <b>The number of staff must equal the number of halls</b>; HIAS tells you if they differ.</li>
-  <li>Click <b>Generate Allocation</b>. HIAS assigns each person the next hall in their rotation.</li>
+  <li>Click <b>Generate Allocation</b>. HIAS assigns everyone at once so that each person moves on to a hall they have not had recently, spreading halls evenly over time.</li>
   <li>Review the list. To change one assignment, click the pencil on that row, choose a hall and, if you like, note the reason. HIAS only offers halls that keep the rules satisfied. <b>Regenerate</b> starts the session over.</li>
   <li>Click <b>Confirm Allocation</b>. HIAS runs all rule checks; if something is wrong it explains what, and nothing is saved until it is fixed.</li>
   <li>Click <b>Export PDF</b> to save the printable allocation sheet for this session.</li>
@@ -124,7 +124,7 @@
 <h2>The rules HIAS checks</h2>
 <table>
   <tr><th style="width:9%">Rule</th><th>Meaning</th></tr>
-  <tr><td>R1</td><td>A staff member does not return to a hall until they have been through the other halls in the rotation.</td></tr>
+  <tr><td>R1</td><td>A staff member does not return to a hall until they have been through the other halls in the rotation. When the people on duty change a lot, this is occasionally impossible for everyone; HIAS then keeps repeats to the minimum and shows them as yellow <b>"Unavoidable repeat"</b> warnings, which do not block confirmation.</td></tr>
   <tr><td>R2</td><td>A hall gets only one invigilator per session.</td></tr>
   <tr><td>R3</td><td>A staff member is in only one hall per session.</td></tr>
   <tr><td>R4</td><td>Sessions are confirmed in rotation order.</td></tr>

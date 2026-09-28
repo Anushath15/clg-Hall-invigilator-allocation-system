@@ -56,7 +56,9 @@ The same UI can be built for a browser with `npm run build:web` (Firebase Hostin
 ### Rotation rules to understand before changing the engine
 
 - `rotation_history` is global (not per batch), so fairness carries across exam series. Only **confirmed** sessions write to it.
-- The next hall is a circular step over the session's hall pool, ordered by `sort_order, id`. The `id` tiebreak keeps the order deterministic.
+- Halls are assigned to all staff of a session together, as a minimum-cost matching (Hungarian algorithm) in `src/shared/assignment.ts`, shared by the desktop engine and the web build. R1 violations carry a dominating penalty, so R1 holds whenever possible; after that, least-visited halls and the natural circular "next hall" (pool ordered by `sort_order, id`) are preferred.
+- When the staff on duty vary, R1 can be impossible to satisfy for everyone. The validator then accepts the allocation if its repeats do not exceed the proven minimum, and reports them as warnings (`minimumUnavoidableRepeats`).
+- `allocation.fairness.test.ts` runs 12 multi-session scenarios (fixed teams, staff taking turns, random duty lists, newcomers, hall closures, edits, batches, restart, a large college) and prints a fairness table.
 - R1 looks back `cycleLength - 1` entries, so a full cycle may restart (regression test T13).
 - A batch's status is derived from its sessions (`refreshCycleStatus`): `draft` until every session is confirmed, then `confirmed`.
 
@@ -68,7 +70,7 @@ Requirements: Node.js 20+ on Windows.
 cd app
 npm install
 npm run dev          # run the desktop app with hot reload (or double-click start-hias-dev.bat)
-npm test             # 60 Vitest unit/integration tests
+npm test             # 72 Vitest tests, including the fairness suite
 npm run typecheck    # TypeScript, main + renderer
 npm run package      # build the Windows installer into app/release/
 npm run icons        # regenerate icon.png / icon.ico from resources/logo-source.webp

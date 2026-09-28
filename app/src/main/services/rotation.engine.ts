@@ -6,6 +6,7 @@
  * Individual-aware: each staff member maintains their own rotation state.
  */
 import { db } from "../db/database"
+import { assignHalls, minimumRepeats, type AssignmentResult } from "../../shared/assignment"
 
 export interface AllocationEntry {
   userId: number
@@ -24,7 +25,7 @@ export async function generateAllocation(
     if (userIds.length !== hallIds.length) {
       throw new Error(`Staff count (${userIds.length}) must equal hall count (${hallIds.length})`)
     }
-    return generateAllocationWithCapacity(sessionId, userIds, hallIds, new Map())
+    return assignOptimally(userIds, hallIds).entries
   }
 
   // Build hall requirements from capacities
@@ -35,6 +36,25 @@ export async function generateAllocation(
   }
 
   return generateAllocationWithCapacity(sessionId, userIds, hallIds, hallRequirements)
+}
+
+// ─── 1:1 allocation: optimal assignment (see assignment.ts) ─────────────────
+
+/** A staff member's confirmed halls, most recent first. */
+function hallHistory(userId: number): number[] {
+  return db.query<any>(
+    "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC",
+    [userId]
+  ).map((r: any) => r.hall_id)
+}
+
+export function assignOptimally(userIds: number[], hallIds: number[]): AssignmentResult {
+  return assignHalls(userIds, hallIds, hallHistory)
+}
+
+/** Minimum number of R1 repeats any assignment of these staff to these halls must contain. */
+export function minimumUnavoidableRepeats(userIds: number[], hallIds: number[]): number {
+  return minimumRepeats(userIds, hallIds, hallHistory)
 }
 
 /**

@@ -1,4 +1,5 @@
 import { db } from "../db/database"
+import { minimumUnavoidableRepeats } from "./rotation.engine"
 
 export interface ValidationEntry {
   userId: number; hallId: number; sessionId: number
@@ -77,6 +78,22 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
         message: `${user?.name} was already assigned Hall ${hall?.hall_code} on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle. Cannot repeat.`,
         userId: e.userId, hallId: e.hallId
       })
+    }
+  }
+
+  // R1 exception: when the staff on duty vary from session to session, it can be
+  // impossible for everyone to avoid a recent hall (e.g. two people whose only
+  // remaining hall is the same one). If this allocation has no more repeats than the
+  // minimum any assignment of these staff to these halls must have, the repeats are
+  // unavoidable: report them as warnings instead of blocking the session forever.
+  const r1Errors = errors.filter(e => e.rule === "R1")
+  if (r1Errors.length > 0 && !hallRequirements) {
+    const minimum = minimumUnavoidableRepeats(entries.map(e => e.userId), entries.map(e => e.hallId))
+    if (r1Errors.length <= minimum) {
+      for (const e of r1Errors) {
+        errors.splice(errors.indexOf(e), 1)
+        warnings.push(`Unavoidable repeat: ${e.message.replace(" Cannot repeat.", "")} No valid alternative exists for the staff on duty in this session.`)
+      }
     }
   }
 
