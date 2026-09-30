@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
-import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn } from "../lib/utils"
+import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn, hallLocation } from "../lib/utils"
 import { exportAllocationPDF } from "../lib/export-allocation-pdf"
 import toast from "react-hot-toast"
 import AllocationMatrixView from "../components/AllocationMatrixView"
@@ -529,9 +529,9 @@ export default function AllocationWorkspacePage() {
                           <div className={vh.isValid ? "text-brand-primary" : "line-through"}>
                             {hallInfo?.hall_code ?? `H${vh.hallId}`}
                           </div>
-                          {hallInfo?.name && (
+                          {hallLocation(hallInfo) && (
                             <div className="text-[9px] font-normal text-brand-textsec mt-0.5 truncate">
-                              {hallInfo.name}
+                              {hallLocation(hallInfo)}
                             </div>
                           )}
                           {!vh.isValid && (

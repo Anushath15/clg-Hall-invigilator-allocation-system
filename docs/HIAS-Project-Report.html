@@ -58,7 +58,7 @@
 
 <h1>3. Features</h1>
 <div class="grid2">
-  <div class="card"><b>Master data</b><br>Departments, halls (code, name, capacity, block, active flag) and staff, including bulk import from Excel with row-by-row error reporting.</div>
+  <div class="card"><b>Master data</b><br>Departments, halls (code, block, floor, capacity, active flag) and staff, including bulk import from Excel with row-by-row error reporting.</div>
   <div class="card"><b>Allocation batches</b><br>A three-step wizard creates an exam series from calendar dates, flags Sundays and public holidays, and sets FN/AN sessions with timings.</div>
   <div class="card"><b>One-click allocation</b><br>Choose the staff and halls for a session by ticking, by searching name or Staff ID, or by uploading an Excel duty list; the rotation engine assigns everyone a hall.</div>
   <div class="card"><b>Rule validation</b><br>Seven rules (R1–R7) are checked before confirmation; violations are explained by name.</div>
@@ -129,7 +129,7 @@
   <tr><th style="width:24%">Table</th><th>Purpose</th><th style="width:34%">Key columns</th></tr>
   <tr><td>departments</td><td>Academic departments</td><td>code (unique), name</td></tr>
   <tr><td>users</td><td>Staff/invigilators and the administrator</td><td>staff_id (unique), name, department_id, role, is_active</td></tr>
-  <tr><td>halls</td><td>Examination halls</td><td>hall_code (unique), name, capacity, block, sort_order, is_active</td></tr>
+  <tr><td>halls</td><td>Examination halls</td><td>hall_code (unique), block, floor, capacity, sort_order, is_active</td></tr>
   <tr><td>exam_cycles</td><td>Allocation batches (exam series)</td><td>name, academic_year, status</td></tr>
   <tr><td>exam_sessions</td><td>One FN/AN session on a date</td><td>cycle_id, exam_date, session_type, rotation_step, timings, status</td></tr>
   <tr><td>allocations</td><td>Staff-to-hall assignments per session</td><td>session_id, user_id, hall_id, generated_hall_id, is_manually_edited, edit_reason; unique per (session, user) and (session, hall)</td></tr>

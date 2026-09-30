@@ -272,7 +272,7 @@ function getSessionAllocationFull(sessionId: number) {
     `SELECT a.id, a.is_manually_edited, a.edit_reason,
             u.id as userId, u.staff_id, u.name as userName, u.designation,
             d.name as deptName, d.code as deptCode,
-            h.id as hallId, h.hall_code, h.name as hallName,
+            h.id as hallId, h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor,
             gh.hall_code as generatedHallCode
      FROM allocations a
      JOIN users u ON a.user_id = u.id
@@ -461,17 +461,18 @@ export const webApi = {
 
   saveHall: async (data: any) => {
     await ensureDb()
-    // Hall Name is optional in the UI; the column is NOT NULL, so fall back to the hall code.
-    const name = (data.name && String(data.name).trim()) || data.hall_code
+    // Halls are identified by code and floor; the NOT NULL name column just mirrors the code.
+    const name = data.hall_code
+    const floor = (data.floor && String(data.floor).trim()) || null
     if (data.id) {
-      webDb.run("UPDATE halls SET hall_code=?,name=?,capacity=?,block=?,is_active=? WHERE id=?",
-        [data.hall_code, name, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
+      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=? WHERE id=?",
+        [data.hall_code, name, floor, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
       writeAuditLog(null, "HALL_STATUS_CHANGE", `Hall ${data.hall_code} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = webDb.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?)",
-      [data.hall_code, name, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
+    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?,?)",
+      [data.hall_code, name, floor, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
     writeAuditLog(null, "CREATE_HALL", `Hall created: ${data.hall_code}`, { id: lastInsertRowid, hall_code: data.hall_code })
     return webDb.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   },
@@ -854,7 +855,7 @@ export const webApi = {
     return webDb.query(
       `SELECT rh.hall_id as hallId, rh.session_id as sessionId, rh.rotation_step as rotationStep,
               rh.global_order as globalOrder, es.exam_date as examDate, es.session_type as sessionType,
-              h.hall_code, h.name as hallName, ec.name as cycleName
+              h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor, ec.name as cycleName
        FROM rotation_history rh
        JOIN exam_sessions es ON rh.session_id = es.id
        JOIN exam_cycles ec ON es.cycle_id = ec.id
@@ -931,7 +932,7 @@ export const webApi = {
     await ensureDb()
     let sql = `SELECT u.staff_id, u.name as staffName, d.name as deptName, d.code as deptCode,
       es.exam_date, es.session_type, ec.academic_year,
-      h.hall_code, h.name as hallName,
+      h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor,
       es.reporting_time, es.exam_start, es.exam_end,
       a.is_manually_edited, ec.name as cycleName
     FROM allocations a
@@ -954,7 +955,7 @@ export const webApi = {
     return webDb.query(
       `SELECT es.exam_date, es.session_type, es.reporting_time, es.exam_start, es.exam_end,
         ec.name as cycleName, ec.academic_year,
-        h.hall_code, h.name as hallName, h.block,
+        h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor, h.block,
         u.staff_id, u.name as staffName, d.name as deptName,
         a.is_manually_edited, a.edit_reason
       FROM allocations a
@@ -980,7 +981,7 @@ export const webApi = {
     const allocations = webDb.query<any>(
       `SELECT a.session_id, a.user_id, a.hall_id, a.is_manually_edited,
               u.staff_id, u.name as staffName, d.code as deptCode,
-              h.hall_code, h.name as hallName
+              h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor
        FROM allocations a
        JOIN exam_sessions es ON a.session_id = es.id
        JOIN users u ON a.user_id = u.id

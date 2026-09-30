@@ -125,7 +125,8 @@ function runMigrations(): void {
   const migrations: Record<string, () => void> = {
     "001_initial_schema": migration001,
     "002_rotation_global_order": migration002,
-    "003_notifications": migration003
+    "003_notifications": migration003,
+    "004_hall_floor": migration004
   }
 
   for (const [name, fn] of Object.entries(migrations)) {
@@ -261,6 +262,13 @@ function migration003(): void {
     is_read INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
   )`)
+}
+
+// Halls record their floor (e.g. "Ground", "1st"). The old hall name is no longer
+// shown; the NOT NULL name column is kept and filled with the hall code.
+function migration004(): void {
+  const cols = query<any>("PRAGMA table_info(halls)")
+  if (!cols.some((c: any) => c.name === "floor")) run(`ALTER TABLE halls ADD COLUMN floor TEXT`)
 }
 
 // ?? Default seed data ?????????????????????????????????????????????????????

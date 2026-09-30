@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Calendar, Clock, MapPin, Building2, Printer } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
-import { formatDate, formatSession } from "../lib/utils"
+import { formatDate, formatSession, hallLocation } from "../lib/utils"
 
 export default function StaffDutyPage() {
   const { user } = useAuthStore()
@@ -52,7 +52,7 @@ export default function StaffDutyPage() {
         <tr><td>Allocation Batch</td><td>${next.cycleName}</td></tr>
       </table>
       <div class="hall-box">${next.hall_code}</div>
-      <p style="text-align:center; font-size:12px; color:#555;">${next.hallName}</p>
+      <p style="text-align:center; font-size:12px; color:#555;">${hallLocation({ block: next.hallBlock, floor: next.hallFloor })}</p>
       ` : `<p style="text-align:center; color:#888;">No upcoming duty assigned.</p>`}
       <div class="sig">
         <div>Signature of Invigilator</div>
@@ -102,7 +102,7 @@ export default function StaffDutyPage() {
               <div>
                 <p className="text-xs text-gray-400">Hall</p>
                 <p className="text-3xl font-black text-brand-light tracking-wide">{next.hall_code}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{next.hallName}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{hallLocation({ block: next.hallBlock, floor: next.hallFloor })}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">

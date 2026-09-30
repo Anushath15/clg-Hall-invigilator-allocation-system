@@ -3,6 +3,7 @@ import { X, Search, Upload, FileSpreadsheet, CheckCircle, AlertTriangle } from "
 import * as XLSX from "xlsx"
 import toast from "react-hot-toast"
 import { readDutyList, type DutyListResult } from "../lib/duty-list"
+import { hallLocation } from "../lib/utils"
 
 interface Props {
   allUsers: any[]
@@ -198,7 +199,7 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
                 <input type="checkbox" checked={selHalls.includes(h.id)} onChange={() => toggleHall(h.id)} className="accent-brand-primary" />
                 <div>
                   <p className="text-sm font-bold text-brand-primary">{h.hall_code}</p>
-                  <p className="text-xs text-brand-textsec truncate">{h.name}</p>
+                  {hallLocation(h) && <p className="text-xs text-brand-textsec truncate">{hallLocation(h)}</p>}
                 </div>
               </label>
             ))}

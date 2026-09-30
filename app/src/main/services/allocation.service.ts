@@ -156,7 +156,7 @@ export function getSessionAllocationFull(sessionId: number) {
     `SELECT a.id, a.is_manually_edited, a.edit_reason,
             u.id as userId, u.staff_id, u.name as userName, u.designation,
             d.name as deptName, d.code as deptCode,
-            h.id as hallId, h.hall_code, h.name as hallName,
+            h.id as hallId, h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor,
             gh.hall_code as generatedHallCode
      FROM allocations a
      JOIN users u ON a.user_id = u.id
@@ -190,7 +190,7 @@ export function getValidHallsFor(userId: number, sessionId: number) {
 export function getStaffDutyHistory(userId: number) {
   return db.query(
     `SELECT es.exam_date, es.session_type, es.reporting_time, es.exam_start, es.exam_end,
-            h.id as hallId, h.hall_code, h.name as hallName,
+            h.id as hallId, h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor,
             ec.name as cycleName, ec.academic_year,
             a.is_manually_edited
      FROM allocations a

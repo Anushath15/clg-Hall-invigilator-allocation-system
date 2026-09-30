@@ -3,7 +3,7 @@
 export function getStaffWiseReport(userId?: number, fromYear?: string, toYear?: string) {
   let sql = `SELECT u.staff_id, u.name as staffName, d.name as deptName, d.code as deptCode,
     es.exam_date, es.session_type, ec.academic_year,
-    h.hall_code, h.name as hallName,
+    h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor,
     es.reporting_time, es.exam_start, es.exam_end,
     a.is_manually_edited, ec.name as cycleName
   FROM allocations a
@@ -23,7 +23,7 @@ export function getStaffWiseReport(userId?: number, fromYear?: string, toYear?: 
 
 export function getDateWiseReport(sessionId: number) {
   return db.query(
-    `SELECT h.hall_code, h.name as hallName, h.capacity,
+    `SELECT h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor, h.capacity,
             u.staff_id, u.name as staffName, u.designation,
             d.name as deptName, d.code as deptCode,
             es.exam_date, es.session_type, es.reporting_time, es.exam_start, es.exam_end,

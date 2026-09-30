@@ -289,6 +289,10 @@ function runMigrations(): void {
         created_at TEXT DEFAULT (datetime('now'))
       )`)
     },
+    "005_hall_floor": () => {
+      const cols = query<any>("PRAGMA table_info(halls)")
+      if (!cols.some((c: any) => c.name === "floor")) run(`ALTER TABLE halls ADD COLUMN floor TEXT`)
+    },
     "004_notifications": () => {
       run(`CREATE TABLE IF NOT EXISTS notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -48,3 +48,11 @@ export function getStatusColor(status: string): string {
   }
   return map[status] ?? "status-badge-pending"
 }
+
+/** Where a hall is, e.g. "Main Block · 1st floor" (halls are identified by code, block and floor). */
+export function hallLocation(h: { block?: string | null; floor?: string | null } | null | undefined): string {
+  if (!h) return ""
+  const floor = h.floor?.trim()
+  const floorText = floor ? (/floor/i.test(floor) ? floor : `${floor} floor`) : ""
+  return [h.block?.trim(), floorText].filter(Boolean).join(" · ")
+}

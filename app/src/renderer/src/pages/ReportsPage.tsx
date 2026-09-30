@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { FileText, Download, BarChart3, Users, Calendar, AlertCircle, Grid } from "lucide-react"
 import { api } from "../lib/api"
-import { formatDate, formatDateWithDay, formatSession, formatTime12h } from "../lib/utils"
+import { formatDate, formatDateWithDay, formatSession, formatTime12h, hallLocation } from "../lib/utils"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import toast from "react-hot-toast"
@@ -15,6 +15,7 @@ const REPORTS = [
 
 // Report cells: short department code (fits the PDF columns) and 12-hour times.
 const dept = (r: any) => r.deptCode ?? r.deptName ?? "—"
+const where = (r: any) => hallLocation({ block: r.hallBlock, floor: r.hallFloor }) || "—"
 const time = (t?: string | null) => (t ? formatTime12h(t) : "—")
 const examTime = (r: any) => (r.exam_start && r.exam_end ? `${formatTime12h(r.exam_start)}–${formatTime12h(r.exam_end)}` : "—")
 
@@ -87,8 +88,8 @@ export default function ReportsPage() {
     } else if (active === "datewise" && Array.isArray(data)) {
       autoTable(doc, {
         startY: 33,
-        head: [["Hall","Hall Name","Capacity","Staff ID","Name","Dept","Designation","Report Time","Exam"]],
-        body: data.map((r: any) => [r.hall_code, r.hallName, r.capacity, r.staff_id, r.staffName, dept(r), r.designation ?? "—", time(r.reporting_time), examTime(r)]),
+        head: [["Hall","Location","Capacity","Staff ID","Name","Dept","Designation","Report Time","Exam"]],
+        body: data.map((r: any) => [r.hall_code, where(r), r.capacity, r.staff_id, r.staffName, dept(r), r.designation ?? "—", time(r.reporting_time), examTime(r)]),
         styles: { fontSize: 8 }, headStyles: { fillColor: [22, 163, 74] }
       })
     } else if (active === "timetable" && data?.sessions && data?.users) {
@@ -133,7 +134,7 @@ export default function ReportsPage() {
 
   const COLS: Record<string, string[]> = {
     staffwise: ["Staff ID","Name","Dept","Date","Session","Hall","Report","Exam","Batch"],
-    datewise: ["Hall","Hall Name","Cap","Staff ID","Name","Dept","Designation","Report","Exam"],
+    datewise: ["Hall","Location","Cap","Staff ID","Name","Dept","Designation","Report","Exam"],
     audit: ["Staff ID","Name","Dept","Date","Session","Assigned Hall","Generated Hall","Edited","Reason"]
   }
 
@@ -258,7 +259,7 @@ export default function ReportsPage() {
               {rows.map((r: any, i: number) => (
                 <tr key={i} className={`hover:bg-gray-50 ${r.is_manually_edited ? "bg-amber-50" : ""}`}>
                   {active === "staffwise" && [r.staff_id,r.staffName,dept(r),formatDate(r.exam_date),r.session_type,r.hall_code,time(r.reporting_time),examTime(r),r.cycleName].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
-                  {active === "datewise" && [r.hall_code,r.hallName,r.capacity,r.staff_id,r.staffName,dept(r),r.designation??'—',time(r.reporting_time),examTime(r)].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
+                  {active === "datewise" && [r.hall_code,where(r),r.capacity,r.staff_id,r.staffName,dept(r),r.designation??'—',time(r.reporting_time),examTime(r)].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
                   {active === "audit" && [r.staff_id,r.staffName,r.deptCode??'—',formatDate(r.exam_date),r.session_type,<b className="text-brand-primary">{r.assignedHall}</b>,r.generatedHall??'—',r.is_manually_edited?<span className="text-amber-600 font-bold">YES</span>:"No",r.edit_reason??'—'].map((v,j) => <td key={j} className="px-3 py-2">{v}</td>)}
                 </tr>
               ))}

@@ -9,13 +9,15 @@
  */
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
-import { formatDateWithDay, formatSession, formatTime12h } from "./utils"
+import { formatDateWithDay, formatSession, formatTime12h, hallLocation } from "./utils"
 
 export interface AllocationExportRow {
   staff_id: string
   userName: string
   deptCode?: string | null
   hall_code: string
+  hallBlock?: string | null
+  hallFloor?: string | null
 }
 
 export interface AllocationExportArgs {
@@ -72,13 +74,14 @@ export function exportAllocationPDF({ cycle, session, allocation, settings = {} 
 
   autoTable(doc, {
     startY: 39,
-    head: [["#", "Staff ID", "Name", "Department", "Assigned Hall"]],
+    head: [["#", "Staff ID", "Name", "Department", "Assigned Hall", "Location"]],
     body: allocation.map((a, idx) => [
       String(idx + 1),
       a.staff_id ?? "—",
       a.userName ?? "—",
       a.deptCode ?? "—",
-      a.hall_code ?? "—"
+      a.hall_code ?? "—",
+      hallLocation({ block: a.hallBlock, floor: a.hallFloor }) || "—"
     ]),
     styles: { fontSize: 9, cellPadding: 3 },
     headStyles: { fillColor: [22, 163, 74] }

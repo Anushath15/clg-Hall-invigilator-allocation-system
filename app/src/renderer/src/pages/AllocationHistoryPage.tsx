@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { History, Download } from "lucide-react"
 import { api } from "../lib/api"
-import { formatDate } from "../lib/utils"
+import { formatDate, hallLocation } from "../lib/utils"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -97,7 +97,7 @@ export default function AllocationHistoryPage() {
             <select className="input-field" value={filters.hallId}
               onChange={e => setFilters(f => ({ ...f, hallId: e.target.value }))}>
               <option value="">— All Halls —</option>
-              {halls.map((h: any) => <option key={h.id} value={h.id}>{h.hall_code} — {h.name}</option>)}
+              {halls.map((h: any) => <option key={h.id} value={h.id}>{h.hall_code}{hallLocation(h) ? ` — ${hallLocation(h)}` : ""}</option>)}
             </select>
           </div>
         </div>

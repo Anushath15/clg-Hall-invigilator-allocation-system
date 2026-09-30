@@ -246,9 +246,15 @@ function HallsTab() {
             <form onSubmit={e => { e.preventDefault(); save() }}>
               <div className="space-y-3">
                 <div><label className="label">Hall Code *</label><input className="input-field" value={form.hall_code ?? ""} onChange={e => setForm({ ...form, hall_code: e.target.value })} placeholder="e.g. H001" /></div>
-                <div><label className="label">Hall Name</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. New Block Room 1" /></div>
+                <div><label className="label">Block / Building</label><input className="input-field" value={form.block ?? ""} onChange={e => setForm({ ...form, block: e.target.value })} placeholder="e.g. Main Block" /></div>
+                <div>
+                  <label className="label">Floor</label>
+                  <input className="input-field" list="hall-floors" value={form.floor ?? ""} onChange={e => setForm({ ...form, floor: e.target.value })} placeholder="e.g. Ground, 1st, 2nd" />
+                  <datalist id="hall-floors">
+                    {["Ground", "1st", "2nd", "3rd", "4th", "5th"].map(f => <option key={f} value={f} />)}
+                  </datalist>
+                </div>
                 <div><label className="label">Capacity</label><input className="input-field" type="number" value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>
-                <div><label className="label">Block / Building</label><input className="input-field" value={form.block ?? ""} onChange={e => setForm({ ...form, block: e.target.value })} /></div>
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
               </div>
               <div className="flex gap-2 mt-5 justify-end">
@@ -263,15 +269,15 @@ function HallsTab() {
       <div className="card p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
-            <tr>{["Order","Hall Code","Name","Block","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
+            <tr>{["Order","Hall Code","Block","Floor","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {halls.map((h: any, i: number) => (
               <tr key={h.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3 text-brand-textsec text-xs">#{i + 1}</td>
                 <td className="px-4 py-3 font-mono text-xs font-bold text-brand-primary">{h.hall_code}</td>
-                <td className="px-4 py-3 font-medium">{h.name}</td>
-                <td className="px-4 py-3 text-brand-textsec">{h.block ?? "—"}</td>
+                <td className="px-4 py-3 text-brand-textsec">{h.block || "—"}</td>
+                <td className="px-4 py-3 font-medium">{h.floor || "—"}</td>
                 <td className="px-4 py-3 text-brand-textsec">{h.capacity}</td>
                 <td className="px-4 py-3">
                   {h.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
