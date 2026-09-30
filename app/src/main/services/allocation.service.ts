@@ -5,20 +5,9 @@ import { validateAllocation, validateSingleEdit, getValidHallsForStaff } from ".
 export async function getOrCreateAllocation(
   sessionId: number,
   userIds: number[],
-  hallIds: number[],
-  hallCapacities?: Map<number, number>
+  hallIds: number[]
 ) {
-  // Build hall requirements if capacities provided
-  let hallRequirements: Map<number, number> | undefined
-  if (hallCapacities && hallCapacities.size > 0) {
-    hallRequirements = new Map()
-    for (const hallId of hallIds) {
-      const capacity = hallCapacities.get(hallId) || 30
-      hallRequirements.set(hallId, Math.max(1, Math.ceil(capacity / 30)))
-    }
-  }
-
-  const entries = await generateAllocation(sessionId, userIds, hallIds, hallCapacities)
+  const entries = await generateAllocation(sessionId, userIds, hallIds)
 
   // Save to allocations table
   db.run("DELETE FROM allocations WHERE session_id = ?", [sessionId])
@@ -32,7 +21,7 @@ export async function getOrCreateAllocation(
   db.run("UPDATE exam_sessions SET status='draft' WHERE id=?", [sessionId])
 
   const validationEntries = entries.map(e => ({ ...e, sessionId }))
-  const validation = validateAllocation(sessionId, validationEntries, hallIds, userIds, hallRequirements)
+  const validation = validateAllocation(sessionId, validationEntries, hallIds, userIds)
   const fullAllocation = getSessionAllocationFull(sessionId)
   return { entries: fullAllocation, validation }
 }
@@ -212,7 +201,7 @@ export function restartRotation() {
       [
         staff.id,
         "Rotation Restarted",
-        "Your entire hall rotation history has been restarted by the admin. Your next assigned hall will begin again from the first hall in the rotation."
+        "Your entire hall rotation history has been restarted by the admin. Your rotation cycle has been reset, so every hall is open to you again from your next duty."
       ]
     )
   }

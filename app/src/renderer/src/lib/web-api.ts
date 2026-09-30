@@ -4,7 +4,7 @@
  */
 
 import bcrypt from "bcryptjs"
-import { assignHalls, minimumRepeats } from "../../../shared/assignment"
+import { assignHalls, minimumRepeats, visitedThisCycle, allocationSeed } from "../../../shared/assignment"
 import * as XLSX from "xlsx"
 import { webDb } from "./web-db"
 
@@ -142,16 +142,9 @@ function validateAllocation(
     }
   }
 
-  // R1 - Circular rotation non-repetition within cycle length
-  const cycleLength = hallIds.length
-  const lookback = Math.max(0, cycleLength - 1)
+  // R1 - No hall twice within the person's current rotation cycle over this session's hall pool
   for (const e of entries) {
-    const recentRows = webDb.query<any>(
-      "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-      [e.userId, lookback]
-    )
-    const usedInCycle = recentRows.map((r: any) => r.hall_id)
-    if (usedInCycle.includes(e.hallId)) {
+    if (visitedThisCycle(hallHistory(e.userId), hallIds).has(e.hallId)) {
       const user = webDb.queryOne<any>("SELECT name FROM users WHERE id = ?", [e.userId])
       const hall = webDb.queryOne<any>("SELECT hall_code FROM halls WHERE id = ?", [e.hallId])
       const prev = webDb.queryOne<any>(
@@ -231,14 +224,7 @@ function validateSingleEdit(
   const hallTaken = currentEntries.find(e => e.hallId === hallId && e.userId !== userId)
   if (hallTaken) return `Hall ${hall.hall_code} is already assigned to another invigilator in this session.`
 
-  const cycleLength = sessionHalls.length > 0 ? sessionHalls.length : 10
-  const lookback = Math.max(0, cycleLength - 1)
-  const recentRows = webDb.query<any>(
-    "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, lookback]
-  )
-  const usedInCycle = recentRows.map((r: any) => r.hall_id)
-  if (usedInCycle.includes(hallId)) {
+  if (visitedThisCycle(hallHistory(userId), cyclePool(sessionHalls)).has(hallId)) {
     const prev = webDb.queryOne<any>(
       `SELECT es.exam_date, es.session_type FROM rotation_history rh
        JOIN exam_sessions es ON rh.session_id = es.id
@@ -262,9 +248,17 @@ function hallHistory(userId: number): number[] {
   ).map((r: any) => r.hall_id)
 }
 
-// Same optimal assignment as the desktop engine (src/main/services/assignment.ts).
+/** The hall pool a rotation cycle is measured over; all active halls if the session has none yet. */
+function cyclePool(sessionHalls: number[]): number[] {
+  if (sessionHalls.length > 0) return sessionHalls
+  return webDb.query<any>("SELECT id FROM halls WHERE is_active = 1").map((r: any) => r.id)
+}
+
+// Same assignment as the desktop engine (src/shared/assignment.ts).
 function generateRotation(sessionId: number, userIds: number[], hallIds: number[]) {
-  return assignHalls(userIds, hallIds, hallHistory).entries
+  const session = webDb.queryOne<any>("SELECT cycle_id, created_at FROM exam_sessions WHERE id = ?", [sessionId])
+  const seed = allocationSeed({ cycleId: session?.cycle_id, sessionId, createdAt: session?.created_at, userIds, hallIds })
+  return assignHalls(userIds, hallIds, hallHistory, seed).entries
 }
 
 function getSessionAllocationFull(sessionId: number) {
@@ -716,14 +710,7 @@ export const webApi = {
     const allocations = webDb.query<any>("SELECT hall_id, user_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])
     const sessionHallIds = Array.from(new Set(allocations.map((a: any) => a.generated_hall_id || a.hall_id))) as number[]
     const occupiedHallIds = allocations.filter((a: any) => a.user_id !== userId).map((a: any) => a.hall_id)
-    const cycleLength = sessionHallIds.length > 0 ? sessionHallIds.length : 10
-    const lookback = Math.max(0, cycleLength - 1)
-
-    const recentRows = webDb.query<any>(
-      "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-      [userId, lookback]
-    )
-    const usedInCycle = new Set(recentRows.map((r: any) => r.hall_id))
+    const usedInCycle = visitedThisCycle(hallHistory(userId), cyclePool(sessionHallIds))
     return sessionHallIds.map(hallId => {
       if (occupiedHallIds.includes(hallId)) return { hallId, isValid: false, reason: "Assigned to another invigilator" }
       if (usedInCycle.has(hallId)) return { hallId, isValid: false, reason: "Already visited in cycle" }
@@ -896,7 +883,7 @@ export const webApi = {
         [
           staff.id,
           "Rotation Restarted",
-          "Your entire hall rotation history has been restarted by the admin. Your next assigned hall will begin again from the first hall in the rotation."
+          "Your entire hall rotation history has been restarted by the admin. Your rotation cycle has been reset, so every hall is open to you again from your next duty."
         ]
       )
     }

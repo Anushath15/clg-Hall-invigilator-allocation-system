@@ -1,12 +1,11 @@
 /**
  * ROTATION ENGINE
- * Core circular hall allocation logic.
- * History is tracked indefinitely ? no cycle resets.
+ * Hall allocation: seeded random draw within each person's rotation cycle (see shared/assignment.ts).
  * Edit-aware: if admin edited a session, that becomes the rotation baseline.
  * Individual-aware: each staff member maintains their own rotation state.
  */
 import { db } from "../db/database"
-import { assignHalls, minimumRepeats, type AssignmentResult } from "../../shared/assignment"
+import { assignHalls, minimumRepeats, visitedThisCycle, allocationSeed, type AssignmentResult } from "../../shared/assignment"
 
 export interface AllocationEntry {
   userId: number
@@ -17,25 +16,14 @@ export interface AllocationEntry {
 export async function generateAllocation(
   sessionId: number,
   userIds: number[],
-  hallIds: number[],
-  hallCapacities?: Map<number, number>
+  hallIds: number[]
 ): Promise<AllocationEntry[]> {
-  // If no capacities provided, assume 1:1 mapping
-  if (!hallCapacities || hallIds.length === userIds.length) {
-    if (userIds.length !== hallIds.length) {
-      throw new Error(`Staff count (${userIds.length}) must equal hall count (${hallIds.length})`)
-    }
-    return assignOptimally(userIds, hallIds).entries
+  if (userIds.length !== hallIds.length) {
+    throw new Error(`Staff count (${userIds.length}) must equal hall count (${hallIds.length})`)
   }
-
-  // Build hall requirements from capacities
-  const hallRequirements = new Map<number, number>()
-  for (const hallId of hallIds) {
-    const capacity = hallCapacities.get(hallId) || 30
-    hallRequirements.set(hallId, Math.max(1, Math.ceil(capacity / 30)))
-  }
-
-  return generateAllocationWithCapacity(sessionId, userIds, hallIds, hallRequirements)
+  const session = db.queryOne<any>("SELECT cycle_id, created_at FROM exam_sessions WHERE id = ?", [sessionId])
+  const seed = allocationSeed({ cycleId: session?.cycle_id, sessionId, createdAt: session?.created_at, userIds, hallIds })
+  return assignOptimally(userIds, hallIds, seed).entries
 }
 
 // ─── 1:1 allocation: optimal assignment (see assignment.ts) ─────────────────
@@ -48,168 +36,18 @@ function hallHistory(userId: number): number[] {
   ).map((r: any) => r.hall_id)
 }
 
-export function assignOptimally(userIds: number[], hallIds: number[]): AssignmentResult {
-  return assignHalls(userIds, hallIds, hallHistory)
+export function assignOptimally(userIds: number[], hallIds: number[], seed = ""): AssignmentResult {
+  return assignHalls(userIds, hallIds, hallHistory, seed)
+}
+
+/** Halls of `pool` this staff member has already had in their current rotation cycle (R1). */
+export function hallsVisitedThisCycle(userId: number, pool: number[]): Set<number> {
+  return visitedThisCycle(hallHistory(userId), pool)
 }
 
 /** Minimum number of R1 repeats any assignment of these staff to these halls must contain. */
 export function minimumUnavoidableRepeats(userIds: number[], hallIds: number[]): number {
   return minimumRepeats(userIds, hallIds, hallHistory)
-}
-
-/**
- * Internal function to generate allocation considering hall capacities
- */
-async function generateAllocationWithCapacity(
-  sessionId: number,
-  userIds: number[],
-  hallIds: number[],
-  hallRequirements: Map<number, number>
-): Promise<AllocationEntry[]> {
-  // Calculate total slots needed
-  let totalSlotsNeeded = 0
-  for (const hallId of hallIds) {
-    totalSlotsNeeded += hallRequirements.get(hallId) || 1
-  }
-
-  // Check if we have enough staff
-  if (userIds.length < totalSlotsNeeded) {
-    throw new Error(
-      `Insufficient Staff: Current hall configuration requires ${totalSlotsNeeded} invigilators, ` +
-      `but only ${userIds.length} eligible staff are selected. ` +
-      `Shortage: ${totalSlotsNeeded - userIds.length}.`
-    )
-  }
-
-  // Check history per staff individually
-  const staffWithHistory: number[] = []
-  const staffWithoutHistory: number[] = []
-
-  for (const userId of userIds) {
-    const hist = db.queryOne<any>(
-      "SELECT id FROM rotation_history WHERE user_id = ? LIMIT 1",
-      [userId]
-    )
-    if (hist) {
-      staffWithHistory.push(userId)
-    } else {
-      staffWithoutHistory.push(userId)
-    }
-  }
-
-  const assignedMap = new Map<number, number>()
-  const assignedHalls = new Map<number, number>() // hallId -> count assigned
-
-  // Initialize hall assignment counts
-  for (const hallId of hallIds) {
-    assignedHalls.set(hallId, 0)
-  }
-
-  // 1. Allocate staff with history first so their circular progression is respected
-  for (const userId of staffWithHistory) {
-    const nextHallId = await computeNextHall(userId, hallIds, assignedHalls, hallRequirements)
-    assignedMap.set(userId, nextHallId)
-    assignedHalls.set(nextHallId, (assignedHalls.get(nextHallId) || 0) + 1)
-  }
-
-  // 2. Allocate new staff without history to first available unoccupied halls
-  for (const userId of staffWithoutHistory) {
-    const nextHallId = await computeNextHall(userId, hallIds, assignedHalls, hallRequirements)
-    assignedMap.set(userId, nextHallId)
-    assignedHalls.set(nextHallId, (assignedHalls.get(nextHallId) || 0) + 1)
-  }
-
-  // Preserve original userIds order in returned entries
-  return userIds.map(userId => ({
-    userId,
-    hallId: assignedMap.get(userId)!,
-    isAutoGenerated: true
-  }))
-}
-
-export function generateFirstAllocation(
-  userIds: number[],
-  hallIds: number[],
-  hallRequirements: Map<number, number> = new Map()
-): AllocationEntry[] {
-  // Initialize hall counts
-  const hallCounts = new Map<number, number>()
-  for (const hallId of hallIds) {
-    hallCounts.set(hallId, 0)
-  }
-
-  const entries: AllocationEntry[] = []
-  let staffIndex = 0
-
-  // Assign staff to halls based on requirements
-  for (let h = 0; h < hallIds.length; h++) {
-    const hallId = hallIds[h]
-    const required = hallRequirements.get(hallId) || 1
-
-    for (let s = 0; s < required && staffIndex < userIds.length; s++) {
-      entries.push({
-        userId: userIds[staffIndex],
-        hallId,
-        isAutoGenerated: true
-      })
-      hallCounts.set(hallId, (hallCounts.get(hallId) || 0) + 1)
-      staffIndex++
-    }
-  }
-
-  return entries
-}
-
-async function computeNextHall(
-  userId: number,
-  hallIds: number[],
-  assignedHalls: Map<number, number>,
-  hallRequirements: Map<number, number>
-): Promise<number> {
-  // BUG 3 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
-  const lastRecord = db.queryOne<any>(
-    "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT 1",
-    [userId]
-  )
-
-  if (!lastRecord) {
-    // No history: find first hall that hasn't reached its capacity requirement
-    for (const hallId of hallIds) {
-      const currentCount = assignedHalls.get(hallId) || 0
-      const required = hallRequirements.get(hallId) || 1
-      if (currentCount < required) {
-        return hallId
-      }
-    }
-    // All halls at capacity - return first hall (shouldn't happen if validation passed)
-    return hallIds[0]
-  }
-
-  const lastHallIndex = hallIds.indexOf(lastRecord.hall_id)
-  if (lastHallIndex === -1) {
-    // Last hall not in current pool ? fallback to first hall that hasn't reached capacity
-    for (const hallId of hallIds) {
-      const currentCount = assignedHalls.get(hallId) || 0
-      const required = hallRequirements.get(hallId) || 1
-      if (currentCount < required) {
-        return hallId
-      }
-    }
-    return hallIds[0]
-  }
-
-  // Try circular +1, +2, ..., skip if hall has reached its capacity requirement
-  for (let attempt = 1; attempt <= hallIds.length; attempt++) {
-    const candidate = hallIds[(lastHallIndex + attempt) % hallIds.length]
-    const currentCount = assignedHalls.get(candidate) || 0
-    const required = hallRequirements.get(candidate) || 1
-    if (currentCount < required) {
-      return candidate
-    }
-  }
-
-  // All halls at capacity - should not happen
-  return hallIds[0]
 }
 
 export async function commitToHistory(
@@ -230,7 +68,7 @@ export async function commitToHistory(
 
     if (existing) {
       db.run(
-        `UPDATE rotation_history 
+        `UPDATE rotation_history
          SET hall_id = ?, rotation_step = ?, recorded_at = datetime('now')
          WHERE id = ?`,
         [e.hallId, rotationStep, existing.id]

@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest"
 import initSqlJs from "sql.js"
+import { assignHalls, allocationSeed, visitedThisCycle } from "../shared/assignment"
 
 let db: any
 
@@ -34,36 +35,14 @@ function seedBaseData() {
   run("INSERT INTO exam_cycles(name,academic_year) VALUES('Test Cycle','2026-27')")
 }
 
-function computeNextHall(userId: number, hallIds: number[], alreadyAssigned: Set<number>): number {
-  const lastRecord = one("SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order,0) DESC, id DESC LIMIT 1", [userId])
-  if (!lastRecord) {
-    const firstFree = hallIds.find(h => !alreadyAssigned.has(h))
-    return firstFree !== undefined ? firstFree : hallIds[0]
-  }
-  const lastIdx = hallIds.indexOf(lastRecord.hall_id)
-  if (lastIdx === -1) {
-    return hallIds.find(h => !alreadyAssigned.has(h)) ?? hallIds[0]
-  }
-  for (let a = 1; a <= hallIds.length; a++) {
-    const c = hallIds[(lastIdx + a) % hallIds.length]
-    if (!alreadyAssigned.has(c)) return c
-  }
-  return hallIds[0]
-}
+/** A staff member's confirmed halls in this test database, most recent first. */
+const historyOf = (userId: number): number[] =>
+  q("SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order,0) DESC, id DESC", [userId]).map(r => r.hall_id as number)
 
-function generateRotation(userIds: number[], hallIds: number[]): Map<number, number> {
-  if (userIds.length !== hallIds.length) throw new Error("Staff count must equal hall count")
-  const withHistory: number[] = [], withoutHistory: number[] = []
-  for (const uid of userIds) {
-    one("SELECT id FROM rotation_history WHERE user_id = ? LIMIT 1", [uid]) ? withHistory.push(uid) : withoutHistory.push(uid)
-  }
-  const assignedMap = new Map<number, number>()
-  const assignedHalls = new Set<number>()
-  for (const uid of [...withHistory, ...withoutHistory]) {
-    const hall = computeNextHall(uid, hallIds, assignedHalls)
-    assignedMap.set(uid, hall); assignedHalls.add(hall)
-  }
-  return assignedMap
+/** The shared engine (src/shared/assignment.ts) run against this test database. */
+function generateRotation(userIds: number[], hallIds: number[], sessionId = 0): Map<number, number> {
+  const seed = allocationSeed({ sessionId, userIds, hallIds })
+  return new Map(assignHalls(userIds, hallIds, historyOf, seed).entries.map(e => [e.userId, e.hallId]))
 }
 
 function confirmSession(sessionId: number, assignedMap: Map<number, number>, step: number) {
@@ -108,43 +87,36 @@ describe("Round-Robin Engine", () => {
     confirmSession(s1, assigned, 1)
   })
 
-  it("Session 2: circular advance — each staff moves to next hall", () => {
+  it("Session 2: nobody repeats their Session 1 hall", () => {
     const { halls, users, cycle } = getIds()
     const s1 = createSession(cycle, 1)
-    const s1map = new Map([[users[0],halls[0]],[users[1],halls[1]],[users[2],halls[2]]])
-    confirmSession(s1, s1map, 1)
+    confirmSession(s1, new Map([[users[0],halls[0]],[users[1],halls[1]],[users[2],halls[2]]]), 1)
 
     const s2 = createSession(cycle, 2)
-    const s2map = generateRotation(users, halls)
-    expect(s2map.get(users[0])).toBe(halls[1]) // H1→H2
-    expect(s2map.get(users[1])).toBe(halls[2]) // H2→H3
-    expect(s2map.get(users[2])).toBe(halls[0]) // H3→H1 wrap
+    const s2map = generateRotation(users, halls, s2)
+    for (let i = 0; i < 3; i++) expect(s2map.get(users[i])).not.toBe(halls[i])
     expect(new Set(s2map.values()).size).toBe(3)
   })
 
-  it("Session 3: rotation continues from session 2", () => {
+  it("Sessions 1-3 form one full cycle: every staff member has every hall exactly once", () => {
     const { halls, users, cycle } = getIds()
     const s1 = createSession(cycle, 1)
     confirmSession(s1, new Map([[users[0],halls[0]],[users[1],halls[1]],[users[2],halls[2]]]), 1)
-    const s2 = createSession(cycle, 2)
-    confirmSession(s2, generateRotation(users, halls), 2)
-    const s3 = createSession(cycle, 3)
-    const s3map = generateRotation(users, halls)
-    expect(s3map.get(users[0])).toBe(halls[2])
-    expect(s3map.get(users[1])).toBe(halls[0])
-    expect(s3map.get(users[2])).toBe(halls[1])
-    expect(new Set(s3map.values()).size).toBe(3)
+    const s2 = createSession(cycle, 2); confirmSession(s2, generateRotation(users, halls, s2), 2)
+    const s3 = createSession(cycle, 3); confirmSession(s3, generateRotation(users, halls, s3), 3)
+    for (const u of users) expect([...historyOf(u)].sort()).toEqual([...halls].sort())
   })
 
-  it("Full cycle wrap: after N sessions, staff returns to original hall", () => {
+  it("Full cycle wrap: after N sessions the cycle resets, and nobody gets their last hall again", () => {
     const { halls, users, cycle } = getIds()
     const s1 = createSession(cycle, 1)
     confirmSession(s1, new Map([[users[0],halls[0]],[users[1],halls[1]],[users[2],halls[2]]]), 1)
-    const s2 = createSession(cycle, 2); confirmSession(s2, generateRotation(users, halls), 2)
-    const s3 = createSession(cycle, 3); confirmSession(s3, generateRotation(users, halls), 3)
+    const s2 = createSession(cycle, 2); confirmSession(s2, generateRotation(users, halls, s2), 2)
+    const s3 = createSession(cycle, 3); confirmSession(s3, generateRotation(users, halls, s3), 3)
+    for (const u of users) expect(visitedThisCycle(historyOf(u), halls).size).toBe(0)
     const s4 = createSession(cycle, 4)
-    const s4map = generateRotation(users, halls)
-    expect(s4map.get(users[0])).toBe(halls[0])
+    const s4map = generateRotation(users, halls, s4)
+    for (const u of users) expect(s4map.get(u)).not.toBe(historyOf(u)[0])
     expect(new Set(s4map.values()).size).toBe(3)
   })
 
@@ -154,14 +126,14 @@ describe("Round-Robin Engine", () => {
     confirmSession(s1, new Map([[users[0],halls[0]]]), 1) // only user 0 has history
 
     const s2 = createSession(cycle, 2)
-    const assigned = generateRotation(users, halls)
-    expect(assigned.get(users[0])).toBe(halls[1]) // advances from H1→H2
+    const assigned = generateRotation(users, halls, s2)
+    expect(assigned.get(users[0])).not.toBe(halls[0]) // no repeat within the cycle
     expect(new Set(assigned.values()).size).toBe(3)
   })
 
   it("Throws when staff count != hall count", () => {
     const { users } = getIds()
-    expect(() => generateRotation(users, [1, 2])).toThrow("Staff count must equal hall count")
+    expect(() => generateRotation(users, [1, 2])).toThrow(/must equal hall count/)
   })
 })
 
@@ -208,13 +180,13 @@ describe("Validation Rules", () => {
     const s1 = createSession(cycle, 1)
     confirmSession(s1, new Map([[users[0],halls[0]],[users[1],halls[1]],[users[2],halls[2]]]), 1)
     const s2 = createSession(cycle, 2)
-    const s2map = generateRotation(users, halls)
+    const s2map = generateRotation(users, halls, s2)
     expect(s2map.get(users[0])).not.toBe(halls[0])
     confirmSession(s2, s2map, 2)
     const s3 = createSession(cycle, 3)
-    const s3map = generateRotation(users, halls)
+    const s3map = generateRotation(users, halls, s3)
     expect(s3map.get(users[0])).not.toBe(halls[0])
-    expect(s3map.get(users[0])).not.toBe(halls[1])
+    expect(s3map.get(users[0])).not.toBe(s2map.get(users[0]))
   })
 })
 

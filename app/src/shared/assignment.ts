@@ -3,22 +3,30 @@
  * Shared by the desktop engine (rotation.engine.ts) and the web build (web-api.ts),
  * which each supply the staff members' hall histories.
  *
- * Assigning halls one staff member at a time ("next hall after your last one; if
- * taken, keep going round") breaks down as soon as the staff on duty change from
- * session to session (more staff than halls, the normal case): two people want the
- * same next hall and the loser is pushed into a hall they had recently, which R1
- * then rejects. Instead, all staff of the session are assigned together by solving
- * a minimum-cost perfect matching (Hungarian algorithm) over this cost:
+ * ROTATION CYCLE (R1): each person works through the session's hall pool as a
+ * "lottery draw". Scanning their history oldest to newest (halls outside the pool
+ * ignored), every hall they visit is crossed off; once the whole pool is crossed off
+ * the cycle is complete and starts again. A hall already crossed off in the current
+ * cycle is an R1 repeat. See visitedThisCycle().
  *
- *   R1_PENALTY + recency   if the hall is among the person's last (n - 1) halls (R1),
- *                          more for more recent visits
- * + visits * (n + 1)       how often they have already had this hall (least-used first)
- * + distance               circular steps from their last hall (their natural "next")
+ * All staff of the session are assigned together by solving a minimum-cost perfect
+ * matching (Hungarian algorithm), so one invigilator per hall and one hall per
+ * invigilator (R2/R3) hold by construction. The cost of giving a person a hall is:
  *
- * R1_PENALTY dominates, so R1 is never broken when any valid assignment exists, and
- * the number of unavoidable repeats is minimal when none does (then the repeated hall
- * is the one visited longest ago). With a fixed team the cheapest choice is always
- * "+1", which is the classic perfect rotation.
+ *   R1_PENALTY + (their last hall ? LAST_HALL_PENALTY : 0) + draw
+ *                                   if the hall is already used in their cycle (R1)
+ *   visits * VISIT_STEP + (their last hall ? BACK_TO_BACK : 0) + draw   otherwise
+ *
+ * `draw` is a pseudo-random number in [0, 1) per (person, hall), derived from a seed
+ * for this generation (batch, session, selected staff and halls; see allocationSeed),
+ * so regenerating the same draft gives the same result while different sessions get
+ * independent draws. Its sum over a session is < n, below every other term, so it only
+ * decides among otherwise equal choices: which hall comes next is a random draw, not
+ * "the next hall in sequence".
+ *
+ * R1_PENALTY dominates, so R1 is never broken when any valid assignment exists, and the
+ * number of unavoidable repeats is minimal when none does. A forced repeat is drawn at
+ * random from the halls already used in the cycle, avoiding the person's last hall.
  */
 
 export interface HallAssignment {
@@ -36,47 +44,109 @@ export interface AssignmentResult {
 /** A staff member's confirmed halls, most recent first. */
 export type HallHistory = (userId: number) => number[]
 
-// Must exceed the largest possible sum of all other costs in a session (recency,
-// visits and distance for every person), so one extra repeat is never traded for them.
+// Must exceed the largest possible sum of all other costs in a session, so one extra
+// repeat is never traded for them.
 const R1_PENALTY = 1_000_000_000
-// Among unavoidable repeats, prefer the hall visited longest ago.
-const RECENCY_PENALTY = 1_000
+// Among unavoidable repeats, never repeat the hall the person just had if another
+// repeat would do.
+const LAST_HALL_PENALTY = 1_000_000
 
-export function assignHalls(userIds: number[], hallIds: number[], historyOf: HallHistory): AssignmentResult {
+/**
+ * Halls of `pool` the person has already visited in their current rotation cycle.
+ * `history` is most recent first. Visits are replayed oldest to newest; when every hall
+ * of the pool has been visited the cycle is complete and the set resets.
+ */
+export function visitedThisCycle(history: number[], pool: number[]): Set<number> {
+  const inPool = new Set(pool)
+  const visited = new Set<number>()
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (!inPool.has(history[i])) continue
+    visited.add(history[i])
+    if (visited.size === inPool.size) visited.clear()
+  }
+  return visited
+}
+
+/** Seed for one generation: same batch, session and selection => same draw. */
+export function allocationSeed(p: { cycleId?: number | null; sessionId: number; createdAt?: string | null; userIds: number[]; hallIds: number[] }): string {
+  const sorted = (a: number[]) => [...a].sort((x, y) => x - y).join(",")
+  return `${p.cycleId ?? ""}|${p.sessionId}|${p.createdAt ?? ""}|${sorted(p.userIds)}|${sorted(p.hallIds)}`
+}
+
+export function assignHalls(userIds: number[], hallIds: number[], historyOf: HallHistory, seed = ""): AssignmentResult {
   if (userIds.length !== hallIds.length) {
     throw new Error(`Staff count (${userIds.length}) must equal hall count (${hallIds.length})`)
   }
   const n = hallIds.length
   if (n === 0) return { entries: [], unavoidableRepeats: 0 }
+  // Sum of all draws < n < BACK_TO_BACK < VISIT_STEP.
+  const BACK_TO_BACK = n + 1
+  const VISIT_STEP = 2 * (n + 1)
 
-  const cost: number[][] = userIds.map(userId => {
-    const history = historyOf(userId)
-    const recent = history.slice(0, Math.max(0, n - 1))
+  const histories = userIds.map(userId => historyOf(userId))
+  const visitedSets = histories.map(history => visitedThisCycle(history, hallIds))
+  const cost: number[][] = userIds.map((userId, i) => {
+    const history = histories[i]
+    const last = history[0]
     const visits = new Map<number, number>()
     for (const h of history) visits.set(h, (visits.get(h) ?? 0) + 1)
-    const lastIndex = history.length ? hallIds.indexOf(history[0]) : -1
-    return hallIds.map((hallId, j) => {
-      // Staff new to this pool start from the first hall onwards.
-      const distance = lastIndex === -1 ? j : ((j - lastIndex + n) % n || n)
-      const age = recent.indexOf(hallId) // 0 = their very last hall
-      const r1 = age === -1 ? 0 : R1_PENALTY + (recent.length - age) * RECENCY_PENALTY
-      return r1 + (visits.get(hallId) ?? 0) * (n + 1) + distance
+    return hallIds.map(hallId => {
+      const draw = pairDraw(seed, userId, hallId)
+      if (visitedSets[i].has(hallId)) return R1_PENALTY + (hallId === last ? LAST_HALL_PENALTY : 0) + draw
+      return (visits.get(hallId) ?? 0) * VISIT_STEP + (hallId === last ? BACK_TO_BACK : 0) + draw
     })
   })
 
   const match = hungarian(cost)
-  let unavoidableRepeats = 0
-  const entries = userIds.map((userId, i) => {
-    if (cost[i][match[i]] >= R1_PENALTY) unavoidableRepeats++
-    return { userId, hallId: hallIds[match[i]], isAutoGenerated: true }
-  })
+  const entries = userIds.map((userId, i) => ({ userId, hallId: hallIds[match[i]], isAutoGenerated: true }))
+  const unavoidableRepeats = entries.filter((e, i) => visitedSets[i].has(e.hallId)).length
+
+  // Guard: the matching must be a permutation with the fewest possible repeats.
+  if (new Set(entries.map(e => e.hallId)).size !== n || new Set(entries.map(e => e.userId)).size !== n) {
+    throw new Error("Allocation engine produced a duplicate hall or staff assignment (R2/R3).")
+  }
+  const minimum = n - maxValidMatching(visitedSets, hallIds)
+  if (unavoidableRepeats > minimum) {
+    throw new Error(`Allocation engine produced ${unavoidableRepeats} R1 repeat(s); the minimum possible is ${minimum}.`)
+  }
   return { entries, unavoidableRepeats }
 }
 
 /** Minimum number of R1 repeats any assignment of these staff to these halls must contain. */
 export function minimumRepeats(userIds: number[], hallIds: number[], historyOf: HallHistory): number {
   if (userIds.length !== hallIds.length || userIds.length === 0) return 0
-  return assignHalls(userIds, hallIds, historyOf).unavoidableRepeats
+  const visitedSets = userIds.map(userId => visitedThisCycle(historyOf(userId), hallIds))
+  return userIds.length - maxValidMatching(visitedSets, hallIds)
+}
+
+/** Largest number of people that can get a hall not yet used in their cycle (augmenting paths). */
+function maxValidMatching(visitedSets: Set<number>[], hallIds: number[]): number {
+  const owner = new Array<number>(hallIds.length).fill(-1)
+  const tryAssign = (i: number, seen: boolean[]): boolean => {
+    for (let j = 0; j < hallIds.length; j++) {
+      if (seen[j] || visitedSets[i].has(hallIds[j])) continue
+      seen[j] = true
+      if (owner[j] === -1 || tryAssign(owner[j], seen)) { owner[j] = i; return true }
+    }
+    return false
+  }
+  let matched = 0
+  for (let i = 0; i < visitedSets.length; i++) if (tryAssign(i, new Array(hallIds.length).fill(false))) matched++
+  return matched
+}
+
+/** Pseudo-random number in [0, 1) for one (person, hall) pair of a generation (cyrb53 hash). */
+function pairDraw(seed: string, userId: number, hallId: number): number {
+  const str = `${seed}#${userId}#${hallId}`
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)) / 2 ** 53
 }
 
 /**

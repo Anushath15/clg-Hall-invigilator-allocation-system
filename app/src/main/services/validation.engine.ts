@@ -1,5 +1,11 @@
 import { db } from "../db/database"
-import { minimumUnavoidableRepeats } from "./rotation.engine"
+import { minimumUnavoidableRepeats, hallsVisitedThisCycle } from "./rotation.engine"
+
+/** The hall pool a rotation cycle is measured over; all active halls if the session has none yet. */
+function cyclePool(sessionHalls: number[]): number[] {
+  if (sessionHalls.length > 0) return sessionHalls
+  return db.query<any>("SELECT id FROM halls WHERE is_active = 1").map((r: any) => r.id)
+}
 
 export interface ValidationEntry {
   userId: number; hallId: number; sessionId: number
@@ -53,17 +59,9 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
     }
   }
 
-  // BUG 2 fix: Rotation cycle length ALWAYS equals current session's hall pool size
-  const cycleLength = hallIds.length
-  const lookback = Math.max(0, cycleLength - 1)
+  // R1 - No hall twice within the person's current rotation cycle over this session's hall pool
   for (const e of entries) {
-    // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
-    const recentRows = db.query<any>(
-      "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-      [e.userId, lookback]
-    )
-    const usedInCycle = recentRows.map((r: any) => r.hall_id)
-    if (usedInCycle.includes(e.hallId)) {
+    if (hallsVisitedThisCycle(e.userId, hallIds).has(e.hallId)) {
       const user = db.queryOne<any>("SELECT name FROM users WHERE id = ?", [e.userId])
       const hall = db.queryOne<any>("SELECT hall_code FROM halls WHERE id = ?", [e.hallId])
       const prev = db.queryOne<any>(
@@ -150,16 +148,7 @@ export function validateSingleEdit(
   const hallTaken = currentEntries.find(e => e.hallId === hallId && e.userId !== userId)
   if (hallTaken) return { rule: "R2", message: `Hall ${hall.hall_code} is already assigned to another invigilator in this session.`, hallId }
 
-  // BUG 2 fix: Use session hall pool size for cycleLength
-  const cycleLength = sessionHalls.length > 0 ? sessionHalls.length : 10
-  const lookback = Math.max(0, cycleLength - 1)
-  // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
-  const recentRows = db.query<any>(
-    "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, lookback]
-  )
-  const usedInCycle = recentRows.map((r: any) => r.hall_id)
-  if (usedInCycle.includes(hallId)) {
+  if (hallsVisitedThisCycle(userId, cyclePool(sessionHalls)).has(hallId)) {
     const prev = db.queryOne<any>(
       `SELECT es.exam_date, es.session_type FROM rotation_history rh
        JOIN exam_sessions es ON rh.session_id = es.id
@@ -182,15 +171,7 @@ export function getValidHallsForStaff(
   sessionHallIds: number[],
   occupiedHallIds: number[]
 ): { hallId: number; isValid: boolean; reason?: string }[] {
-  // BUG 2 fix: Use sessionHallIds.length for cycle length
-  const cycleLength = sessionHallIds.length > 0 ? sessionHallIds.length : 10
-  const lookback = Math.max(0, cycleLength - 1)
-  // BUG 6 fix: Order chronologically by global_order DESC, recorded_at DESC, id DESC
-  const recentRows = db.query<any>(
-    "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC LIMIT ?",
-    [userId, lookback]
-  )
-  const usedInCycle = new Set(recentRows.map((r: any) => r.hall_id))
+  const usedInCycle = hallsVisitedThisCycle(userId, cyclePool(sessionHallIds))
   return sessionHallIds.map(hallId => {
     if (occupiedHallIds.includes(hallId)) return { hallId, isValid: false, reason: "Assigned to another invigilator" }
     if (usedInCycle.has(hallId)) return { hallId, isValid: false, reason: "Already visited in cycle" }

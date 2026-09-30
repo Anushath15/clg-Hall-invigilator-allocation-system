@@ -263,7 +263,7 @@ export default function SettingsPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-red-900 text-base">Restart Rotation</h3>
                   <p className="text-sm text-red-700 mt-1 leading-relaxed">
-                    Permanently clear the entire rotation history across all sessions. All staff will begin again from the first hall in the rotation, and all active staff members will be sent a notification.
+                    Permanently clear the entire rotation history across all sessions. Every staff member starts a fresh rotation cycle with all halls open to them again, and all active staff members will be sent a notification.
                   </p>
                   <div className="mt-3 p-3 bg-red-100/70 rounded-lg border border-red-200 text-xs text-red-800">
                     <strong>Warning:</strong> This action cannot be reversed. You will be prompted to type <strong>RESTART</strong>{IS_DESKTOP ? "" : " and confirm your password"} before rotation history is cleared.
@@ -304,7 +304,7 @@ export default function SettingsPage() {
 
             <div className="p-6 space-y-4">
               <p className="text-sm text-brand-textsec leading-relaxed">
-                This will wipe the entire rotation history for all staff members. Your next assigned hall will begin again from the first hall in the rotation.
+                This will wipe the entire rotation history for all staff members. Every staff member starts a fresh rotation cycle with all halls open to them again.
               </p>
               <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs">
                 To confirm, type <span className="font-mono font-bold">RESTART</span> in the field below:
