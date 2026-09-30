@@ -12,7 +12,7 @@ An offline Windows desktop application for St. Xavier's Catholic College of Engi
 
 - **Master data:** departments, halls and staff, with bulk staff import from Excel and row-by-row error reporting.
 - **Allocation batches:** a wizard turns calendar dates into FN/AN sessions with timings; Sundays and public holidays are flagged.
-- **One-click allocation:** pick the staff and halls for a session; the rotation engine assigns everyone a hall.
+- **One-click allocation:** pick the staff and halls for a session (tick them, search by name or Staff ID, or upload an Excel duty list); the rotation engine assigns everyone a hall.
 - **Validation (R1â€“R7):** no early hall repeats, no double-booked halls or staff, active staff and halls only, staff count equals hall count, rotation order.
 - **Controlled edits:** manual changes offer only rule-safe halls and are recorded as "Admin Edited".
 - **Reports:** session allocation sheet, staff-wise duties, date-wise hall sheet, complete timetable grid and rotation audit, all exportable to PDF with the college letterhead.

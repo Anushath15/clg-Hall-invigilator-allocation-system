@@ -10,6 +10,7 @@ import RotationHistoryTimeline from "../components/RotationHistoryTimeline"
 import Tooltip from "../components/Tooltip"
 import EditSessionScheduleModal from "../components/EditSessionScheduleModal"
 import AddSessionModal from "../components/AddSessionModal"
+import StaffHallSelector from "../components/StaffHallSelector"
 
 export default function AllocationWorkspacePage() {
   const { cycleId, sessionId: paramSessionId } = useParams()
@@ -485,7 +486,7 @@ export default function AllocationWorkspacePage() {
 
       {/* Staff & Hall Selector Modal */}
       {showSelector && (
-        <SelectorModal
+        <StaffHallSelector
           allUsers={allUsers}
           allHalls={allHalls}
           onConfirm={(uIds: number[], hIds: number[]) => { setShowSelector(false); handleGenerate(uIds, hIds) }}
@@ -588,97 +589,6 @@ export default function AllocationWorkspacePage() {
           }}
         />
       )}
-    </div>
-  )
-}
-
-function SelectorModal({ allUsers, allHalls, onConfirm, onClose }: any) {
-  const [selUsers, setSelUsers] = useState<number[]>([])
-  const [selHalls, setSelHalls] = useState<number[]>([])
-  const byDept = allUsers.reduce((acc: any, u: any) => {
-    const k = u.department_name ?? "Other"
-    ;(acc[k] = acc[k] ?? []).push(u)
-    return acc
-  }, {})
-
-  const toggleUser = (id: number) => setSelUsers(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
-  const toggleHall = (id: number) => setSelHalls(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
-  const toggleAllDept = (users: any[]) => {
-    const allSelected = users.every((u: any) => selUsers.includes(u.id))
-    if (allSelected) setSelUsers(p => p.filter(id => !users.map((u: any) => u.id).includes(id)))
-    else setSelUsers(p => [...new Set([...p, ...users.map((u: any) => u.id)])])
-  }
-
-  const canSubmit = selUsers.length > 0 && selUsers.length === selHalls.length
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-border">
-          <h3 className="text-base font-semibold">Select Invigilators & Halls</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="flex flex-1 overflow-hidden">
-          {/* Staff list */}
-          <div className="flex-1 overflow-y-auto p-4 border-r border-brand-border">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-brand-textmain">
-                Invigilators <span className="text-brand-primary">({selUsers.length} selected)</span>
-              </p>
-            </div>
-            {Object.entries(byDept).map(([dept, users]: any) => (
-              <div key={dept} className="mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs font-bold text-brand-textsec uppercase tracking-wider">{dept}</p>
-                  <button onClick={() => toggleAllDept(users)}
-                    className="text-xs text-brand-primary hover:underline">
-                    {users.every((u: any) => selUsers.includes(u.id)) ? "Deselect all" : "Select all"}
-                  </button>
-                </div>
-                {users.map((u: any) => (
-                  <label key={u.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input type="checkbox" checked={selUsers.includes(u.id)} onChange={() => toggleUser(u.id)} className="accent-brand-primary" />
-                    <div>
-                      <p className="text-sm font-medium text-brand-textmain">{u.name}</p>
-                      <p className="text-xs text-brand-textsec">{u.staff_id} · {u.designation ?? "—"}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            ))}
-          </div>
-          {/* Halls list */}
-          <div className="w-56 overflow-y-auto p-4">
-            <p className="text-sm font-semibold text-brand-textmain mb-3">
-              Halls <span className="text-brand-primary">({selHalls.length} selected)</span>
-            </p>
-            <button onClick={() => setSelHalls(allHalls.map((h: any) => h.id))}
-              className="text-xs text-brand-primary hover:underline mb-3 block">Select all halls</button>
-            {allHalls.map((h: any) => (
-              <label key={h.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer mb-1">
-                <input type="checkbox" checked={selHalls.includes(h.id)} onChange={() => toggleHall(h.id)} className="accent-brand-primary" />
-                <div>
-                  <p className="text-sm font-bold text-brand-primary">{h.hall_code}</p>
-                  <p className="text-xs text-brand-textsec truncate">{h.name}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center justify-between px-6 py-4 border-t border-brand-border bg-gray-50">
-          <div className="text-sm text-brand-textsec">
-            {selUsers.length > 0 && selUsers.length !== selHalls.length && (
-              <span className="text-amber-600">⚠ Select {selUsers.length} halls to match {selUsers.length} staff</span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="btn-secondary">Cancel</button>
-            <button onClick={() => onConfirm(selUsers, selHalls)} disabled={!canSubmit} className="btn-primary">
-              Generate Allocation
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

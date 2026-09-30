@@ -114,13 +114,27 @@
 <p>Open a batch to reach its <b>Allocation Workspace</b>. Each session appears as a tab (for example <i>02 Nov 2026 FN</i>).</p>
 <ol class="steps">
   <li>Select a session tab and click <b>Select Staff &amp; Generate</b>.</li>
-  <li>Tick the staff who are on duty and the halls in use for this session. <b>The number of staff must equal the number of halls</b>; HIAS tells you if they differ.</li>
+  <li>Choose the staff who are on duty and the halls in use for this session. <b>The number of staff must equal the number of halls</b>; HIAS tells you if they differ. You can:
+    <ul>
+      <li>tick people one by one, or use <b>Select all</b> for a department;</li>
+      <li>type part of a <b>name or Staff ID</b> in the search box to find someone quickly;</li>
+      <li>click <b>Upload Excel</b> to select everyone on a duty list at once (see below).</li>
+    </ul></li>
   <li>Click <b>Generate Allocation</b>. HIAS assigns everyone at once so that each person moves on to a hall they have not had recently, spreading halls evenly over time.</li>
   <li>Review the list. To change one assignment, click the pencil on that row, choose a hall and, if you like, note the reason. HIAS only offers halls that keep the rules satisfied. <b>Regenerate</b> starts the session over.</li>
   <li>Click <b>Confirm Allocation</b>. HIAS runs all rule checks; if something is wrong it explains what, and nothing is saved until it is fixed.</li>
   <li>Click <b>Export PDF</b> to save the printable allocation sheet for this session.</li>
 </ol>
 <figure><img src="images/allocation.png" alt="Allocation workspace"><figcaption>A confirmed session. Rows you changed by hand are marked "Admin Edited" instead of "Auto-generated".</figcaption></figure>
+<h2>Uploading a duty list from Excel</h2>
+<p>Instead of ticking people one by one, upload an Excel (<code>.xlsx</code>, <code>.xls</code>) or <code>.csv</code> file listing the invigilators on duty:</p>
+<ol class="steps">
+  <li>In the selection window, click <b>Download template</b>. It is an Excel sheet of all active staff with the columns <b>Staff ID</b>, <b>Name</b>, <b>Department</b> and <b>Hall</b>.</li>
+  <li>Delete the rows of people who are not on duty. Optionally type a hall code (for example <code>H101</code>) in the Hall column to choose which halls are open. Save the file.</li>
+  <li>Click <b>Upload Excel</b> and choose the file. Everyone listed is selected (and the halls, if a Hall column is filled in); anything already ticked is replaced.</li>
+  <li>Check the summary. Any row that could not be used is listed with the reason, for example an unknown Staff ID, a name shared by two people, or a person listed twice.</li>
+</ol>
+<p>Your own duty list works too, as long as its first row has a <b>Staff ID</b> column (or a <b>Name</b> column). A sheet with no headings is read as a list of Staff IDs in the first column. The Hall column only decides <b>which halls are used</b>; HIAS still decides who goes to which hall, so the rotation stays fair.</p>
 <div class="warn"><b>Why confirming matters.</b> The rotation only moves forward when a session is <b>confirmed</b>. Always confirm sessions in date order, so each session continues the rotation from the one before it.</div>
 
 <h2>The rules HIAS checks</h2>
