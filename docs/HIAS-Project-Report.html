@@ -142,18 +142,20 @@
 <h1>7. Allocation algorithm and validation rules</h1>
 <h2>Rotation algorithm</h2>
 <ol>
-  <li>The halls selected for a session form an ordered <b>hall pool</b> (ordered by sort order, then id, so the order is always deterministic).</li>
+  <li>The halls selected for a session form its <b>hall pool</b>.</li>
   <li>For each selected staff member, HIAS reads their confirmed hall history from <code>rotation_history</code>.</li>
-  <li>Every (staff, hall) pair gets a cost: a very large penalty if the hall is among the person's last <i>n&nbsp;−&nbsp;1</i> halls (rule R1, larger for more recent visits), plus how often they have already had that hall, plus the circular distance from their last hall (so the natural "next hall" is preferred).</li>
-  <li>All staff of the session are assigned <b>together</b> by finding the minimum-cost perfect matching (the <b>Hungarian algorithm</b>, O(n³)). Because the R1 penalty outweighs everything else, no rule is broken whenever a valid assignment exists, and with a fixed team the result is the classic perfect rotation (everyone moves one hall on).</li>
-  <li>When the staff on duty vary, a repeat can be mathematically unavoidable (for example, two people whose only remaining hall is the same one). The algorithm then uses the minimum possible number of repeats, choosing the hall visited longest ago.</li>
+  <li>From that history HIAS works out each person's <b>current rotation cycle</b>: replaying their visits from oldest to newest, every hall of the pool they visit is crossed off, and once every hall of the pool has been crossed off the cycle is complete and starts again. Halls not yet crossed off are the ones still open to them.</li>
+  <li>Every (staff, hall) pair gets a cost made of four parts: a very large penalty if the hall is already crossed off in the person's current cycle (rule R1); how often they have had that hall in total, so less-visited halls are preferred; a small penalty if it is the hall they had last time, so nobody gets the same hall twice in a row when a new cycle starts; and a <b>random draw</b> between 0 and 1, which is smaller than every other part and so only decides between otherwise equal choices.</li>
+  <li>All staff of the session are assigned <b>together</b> by finding the minimum-cost perfect matching (the <b>Hungarian algorithm</b>, O(n³)). Because the R1 penalty outweighs everything else, no rule is broken whenever a valid assignment exists. Which of their open halls each person gets is decided by the random draw, so assignments do not follow a fixed "next hall" sequence, and every cycle is drawn afresh.</li>
+  <li><b>Seeded draw.</b> The random draw is seeded from the batch, the session (its id and creation time) and the selected staff and halls. Regenerating the same draft without changing the selection gives exactly the same result, whatever order the staff and halls were ticked in; a different session, batch or selection gives an independent order.</li>
+  <li><b>Unavoidable repeats.</b> When the staff on duty vary, a repeat can be mathematically unavoidable (for example, two people whose only open hall is the same one). The algorithm then uses the minimum possible number of repeats, and the repeated hall is drawn at random from the halls the person has already had in the current cycle, avoiding the one they had most recently. A final check refuses any result that double-books a hall or a person, or has more repeats than the minimum.</li>
   <li>The result is saved as a <b>draft</b>. Only when the administrator <b>confirms</b> it is it written to <code>rotation_history</code>, inside a transaction, which moves the rotation forward.</li>
 </ol>
 <p>Because the rotation history is global rather than per batch, fairness carries over from one exam series to the next. An administrator can reset it deliberately (Restart Rotation), for example at the start of an academic year.</p>
 <h2>Validation rules</h2>
 <table>
   <tr><th style="width:9%">Rule</th><th>Check</th></tr>
-  <tr><td>R1</td><td>No repeated hall: a staff member may not return to a hall used within their last <i>n&nbsp;−&nbsp;1</i> confirmed sessions, where <i>n</i> is the pool size (so a full cycle may restart).</td></tr>
+  <tr><td>R1</td><td>No repeated hall within a cycle: a staff member may not return to a hall of the session's pool until they have had every hall of that pool once; the cycle then resets and every hall is open again. Halls outside the session's pool are ignored.</td></tr>
   <tr><td>R2</td><td>A hall has at most one invigilator in a session.</td></tr>
   <tr><td>R3</td><td>A staff member has at most one hall in a session.</td></tr>
   <tr><td>R4</td><td>Rotation integrity: a session follows the last confirmed session in step order.</td></tr>
@@ -167,9 +169,9 @@
 
 <h1>8. Testing and quality</h1>
 <h2>Automated tests</h2>
-<p><b>89 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
+<p><b>101 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
 <ul>
-  <li>The rotation algorithm: first allocation, circular wrap-around, staff who join later, pools smaller than the total number of halls, ordering across batches.</li>
+  <li>The rotation algorithm: rotation cycles (no hall repeats until every hall of the pool has been visited, then the cycle resets), the seeded random draw (the same selection gives the same draft; different sessions give different orders), staff who join later, pools smaller than the total number of halls, and reading history in the correct order across batches.</li>
   <li>Every validation rule, including a regression test for a full-cycle restart that an earlier version wrongly blocked.</li>
   <li>The allocation lifecycle: generate, edit, confirm, delete draft sessions, permanent staff deletion, rotation restart, and batch status updates.</li>
   <li>A <b>fairness suite</b> of 29 multi-session scenarios run through the real engine, validator and database (below).</li>
@@ -179,38 +181,41 @@
 <table>
   <tr><th>Scenario</th><th>Sessions confirmed</th><th>Unavoidable repeats</th><th>Same hall twice in a row</th><th>Hall spread</th></tr>
   <tr><td>Fixed team: 6 staff, 6 halls (also 2, 3, 5 and 9)</td><td>36 / 36</td><td>0</td><td>0</td><td>0 (every hall exactly 6 times)</td></tr>
-  <tr><td>10 staff taking turns in 6 halls</td><td>60 / 60</td><td>0</td><td>0</td><td>0</td></tr>
-  <tr><td>Random duty list: 6 of 12 staff each session</td><td>120 / 120</td><td>162 of 720 duties</td><td>0</td><td>3</td></tr>
-  <tr><td>Random duty list: 8 of 15 staff (3 runs)</td><td>240 / 240</td><td>402 of 1,920</td><td>1</td><td>2</td></tr>
+  <tr><td>10 staff taking turns in 6 halls</td><td>60 / 60</td><td>4–11 of 360 duties (limit 4.6%)</td><td>0–1</td><td>0–2 (limit 3)</td></tr>
+  <tr><td>Random duty list: 6 of 12 staff each session</td><td>120 / 120</td><td>10 of 720 duties</td><td>1</td><td>1</td></tr>
+  <tr><td>Random duty list: 8 of 15 staff (3 runs)</td><td>240 / 240</td><td>19 of 1,920</td><td>0</td><td>1</td></tr>
   <tr><td>New staff join half-way</td><td>24 / 24</td><td>0</td><td>0</td><td>0</td></tr>
-  <tr><td>A hall closes for 10 sessions and reopens</td><td>28 / 28</td><td>15</td><td>0</td><td>2</td></tr>
+  <tr><td>A hall closes for 10 sessions and reopens</td><td>28 / 28</td><td>10</td><td>0</td><td>2</td></tr>
   <tr><td>Manual swap by the administrator</td><td>12 / 12</td><td>0</td><td>0</td><td>0</td></tr>
   <tr><td>Rotation continues across two batches</td><td>12 / 12</td><td>0</td><td>0</td><td>0</td></tr>
   <tr><td>Restart rotation part-way</td><td>16 / 16</td><td>0</td><td>0</td><td>0</td></tr>
   <tr><td>Same team morning and afternoon every day</td><td>20 / 20</td><td>0</td><td>0</td><td>0</td></tr>
-  <tr><td>Large college: 30 of 60 staff, 30 halls</td><td>60 / 60</td><td>24 of 1,800</td><td>0</td><td>2 (15 ms per session)</td></tr>
+  <tr><td>Large college: 30 of 60 staff, 30 halls</td><td>60 / 60</td><td>0–4 of 1,800</td><td>0</td><td>1–2 (6–22 ms per session)</td></tr>
 </table>
+<p>With 10 staff taking turns in 6 halls, a few repeats are unavoidable. This is inherent to the staff/hall ratio, not a defect: each person's cycle is drawn independently, so the halls the six people on duty still need do not always line up into a repeat-free assignment. The engine then makes the minimum number of repeats and warns the administrator. Over 20 independent draws the worst case was 11 of 360 duties (3.1%); the test allows up to 4.6%, and a hall spread of up to 3, the same limit used for random duty lists.</p>
 <p>A second set of 17 scenarios covers messier situations, edge cases and attempts to break the rules. All pass:</p>
 <table>
   <tr><th>Scenario</th><th>Result</th></tr>
   <tr><td>A different number of halls each day (3 to 8)</td><td>60 / 60 confirmed; hall counts within 2 on the halls open every day</td></tr>
-  <tr><td>A different set of halls each session (5 of 8)</td><td>80 / 80 confirmed; 10 unavoidable repeats in 400 duties</td></tr>
-  <tr><td>A hall added permanently; a teacher on long leave returns</td><td>All confirmed; newcomers and returners slot in within 1–2</td></tr>
+  <tr><td>A different set of halls each session (5 of 8)</td><td>80 / 80 confirmed in every run; 12–30 unavoidable repeats in 400 duties; hall spread 2–4</td></tr>
+  <tr><td>A hall added permanently; a teacher on long leave returns</td><td>All confirmed; newcomers and returners slot in within 1–3</td></tr>
   <tr><td>A single hall</td><td>All confirmed, no false warnings</td></tr>
   <tr><td>Regenerating a draft several times</td><td>Identical result every time; nothing recorded until confirmed</td></tr>
   <tr><td>Ticking staff and halls in a different order</td><td>Same person gets the same hall</td></tr>
   <tr><td>Confirming sessions out of order; mismatched counts; inactive staff or hall</td><td>Refused with R4, R7, R5 and R6</td></tr>
-  <tr><td>History built so that a repeat is forced</td><td>Exactly one repeat (the minimum), in the hall visited longest ago; confirmed with a warning</td></tr>
+  <tr><td>History built so that a repeat is forced</td><td>Exactly one repeat (the minimum), drawn at random from the halls already used in the person's current cycle, avoiding their most recent hall; confirmed with a warning</td></tr>
   <tr><td>Manual edit onto an occupied hall or a hall outside the session</td><td>Refused; nothing changes</td></tr>
-  <tr><td>Deleting a draft part-way</td><td>Rotation unaffected; the next session gets exactly the deleted draft's halls</td></tr>
+  <tr><td>Deleting a draft part-way</td><td>The deleted draft leaves nothing in the rotation history; the next session is valid, and after 10 sessions everyone has had every hall exactly twice</td></tr>
   <tr><td>300 sessions with a fixed team</td><td>Every hall exactly 50 times each, no repeats</td></tr>
-  <tr><td>Two batches running side by side; 20 newcomers starting together</td><td>Perfect rotation</td></tr>
+  <tr><td>Two batches running side by side; 20 newcomers starting together</td><td>No repeats; everyone has every hall exactly 4 times (batches) or twice (newcomers)</td></tr>
   <tr><td>Very large college: 100 of 150 staff, 100 halls</td><td>All confirmed, about 0.1 s per session</td></tr>
 </table>
-<p>With a stable team, or staff taking turns in order, the rotation is perfect. With a random duty list every session still confirms, but some repeats are unavoidable; they are kept to the proven minimum and the hall counts of each person stay within 2–3 of each other. How many duties each person gets depends on who the administrator puts on duty, which the engine does not choose.</p>
+<p class="small">Figures given as a range (10 staff taking turns, large college, a different set of halls each session) are the lowest and highest values over 20 independent runs, each with a different random draw and, where the duty list is random, a different duty list. All other figures are from a single run with a fixed seed, not a measured worst case.</p>
+<p>With a stable team, every person has every hall exactly once per cycle, in a randomly drawn order, with no repeats. When staff take turns or the duty list is random, every session still confirms, but a few repeats can be unavoidable; they are kept to the proven minimum and each person's hall counts stay within 1–4 of each other. How many duties each person gets depends on who the administrator puts on duty, which the engine does not choose.</p>
 <p>TypeScript runs in strict mode and the whole code base type-checks without errors (<code>npm run typecheck</code>).</p>
 <h2>End-to-end verification</h2>
 <p>The packaged Windows application was driven automatically against a separate test data folder with sample data (3 departments, 6 halls, 8 staff, one batch of 4 sessions). The run checked:</p>
+<p class="small">This run predates the change to the random-draw rotation algorithm (Section 7); read it as a historical record of the packaged-app workflow, not as a measurement of current allocation behaviour.</p>
 <table>
   <tr><th>Check</th><th style="width:24%">Result</th></tr>
   <tr><td>Generate and confirm four sessions</td><td>Passed, 0 rule violations</td></tr>
