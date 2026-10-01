@@ -234,6 +234,19 @@ try {
     if (p.header !== "%PDF-" || p.bytes < 2000) throw new Error(JSON.stringify(p));
     return p.name + " (" + p.bytes + " bytes)"`))
 
+  await step("Copy the previous session's selection into the next session (ticks only; nothing is generated)", () => ev(`
+    const cycle = (await api.getCycles())[0]; const [s1, s2] = await api.getSessions(cycle.id);
+    await go("#/cycles"); await go("#/allocation/" + cycle.id + "/" + s2.id); await click("Select Staff & Generate");
+    await until(() => byText(".fixed.inset-0 button", "Copy previous session"), "copy button");
+    await click("Copy previous session", ".fixed.inset-0 button");
+    await until(() => document.querySelector(".fixed.inset-0")?.innerText.includes("Copied from"), "copy summary");
+    const m = document.querySelector(".fixed.inset-0"); const ticked = m.querySelectorAll("input[type=checkbox]:checked").length;
+    const source = (await api.getSessionAllocation(s1.id)).length;
+    if (ticked !== source * 2) throw new Error("ticked " + ticked + ", expected " + source + " staff + " + source + " halls");
+    if ((await api.getSessionAllocation(s2.id)).length !== 0) throw new Error("copying must not create an allocation");
+    [...m.querySelectorAll("button")].find(b => b.innerText.trim() === "Cancel").click(); await sleep(300);
+    return source + " staff and " + source + " halls ticked from the previous session; nothing generated or saved"`))
+
   await step("Allocation history lists the confirmed session", () => ev(`
     await go("#/history"); await click("Search Records");
     await until(() => document.querySelectorAll("main tbody tr").length >= 6, "history rows");

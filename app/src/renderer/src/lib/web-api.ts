@@ -683,6 +683,19 @@ export const webApi = {
     return { success: true, swappedWithUserId: plan.partnerUserId }
   },
 
+  // Same as the desktop (allocation.service.ts getSessionSelections).
+  getSessionSelections: async () => {
+    await ensureDb()
+    return webDb.query<any>(
+      `SELECT es.id, es.cycle_id as cycleId, ec.name as cycleName, es.exam_date, es.session_type, es.status, COUNT(a.id) as staffCount
+       FROM exam_sessions es
+       JOIN exam_cycles ec ON es.cycle_id = ec.id
+       JOIN allocations a ON a.session_id = es.id
+       GROUP BY es.id
+       ORDER BY es.exam_date DESC, CASE es.session_type WHEN 'FN' THEN 1 ELSE 0 END, es.id DESC`
+    )
+  },
+
   getValidHalls: async (userId: number, sessionId: number) => {
     await ensureDb()
     const allocations = webDb.query<any>("SELECT hall_id, user_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])

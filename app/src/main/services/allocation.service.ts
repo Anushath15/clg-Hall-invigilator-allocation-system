@@ -216,6 +216,18 @@ export function getValidHallsFor(userId: number, sessionId: number) {
   return getValidHallsForStaff(userId, sessionId, sessionHalls, entries)
 }
 
+/** Sessions whose staff/hall selection can be copied in the selector (they have an allocation), newest first. */
+export function getSessionSelections() {
+  return db.query(
+    `SELECT es.id, es.cycle_id as cycleId, ec.name as cycleName, es.exam_date, es.session_type, es.status, COUNT(a.id) as staffCount
+     FROM exam_sessions es
+     JOIN exam_cycles ec ON es.cycle_id = ec.id
+     JOIN allocations a ON a.session_id = es.id
+     GROUP BY es.id
+     ORDER BY es.exam_date DESC, CASE es.session_type WHEN 'FN' THEN 1 ELSE 0 END, es.id DESC`
+  )
+}
+
 export function getStaffDutyHistory(userId: number): StaffDutyRow[] {
   return db.query<StaffDutyRow>(STAFF_DUTY_HISTORY_SQL, [userId])
 }

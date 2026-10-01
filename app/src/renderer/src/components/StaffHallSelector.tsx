@@ -1,12 +1,15 @@
-import { useMemo, useRef, useState } from "react"
-import { X, Search, Upload, FileSpreadsheet, CheckCircle, AlertTriangle } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { X, Search, Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Copy } from "lucide-react"
 import * as XLSX from "xlsx"
 import toast from "react-hot-toast"
 import { readDutyList, type DutyListResult } from "../lib/duty-list"
-import { hallLocation } from "../lib/utils"
+import { formatDateWithDay, hallLocation } from "../lib/utils"
 import { matchesSearch } from "../lib/search"
+import { api } from "../lib/api"
+import { previousSelectionSource, selectionSourceGroups, selectionFromAllocation, type SelectionSource, type SessionRef } from "../../../shared/copy-selection"
 
 interface Props {
+  session: SessionRef
   allUsers: any[]
   allHalls: any[]
   onConfirm: (userIds: number[], hallIds: number[]) => void
@@ -15,15 +18,17 @@ interface Props {
 
 /**
  * "Select Invigilators & Halls" for one session: tick staff one by one, search them
- * by name or Staff ID (halls by hall code or block), or upload an Excel/CSV duty list to
- * select them all at once.
+ * by name or Staff ID (halls by hall code or block), upload an Excel/CSV duty list to
+ * select them all at once, or copy the selection of another session (shared/copy-selection.ts).
  */
-export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClose }: Props) {
+export default function StaffHallSelector({ session, allUsers, allHalls, onConfirm, onClose }: Props) {
   const [selUsers, setSelUsers] = useState<number[]>([])
   const [selHalls, setSelHalls] = useState<number[]>([])
   const [query, setQuery] = useState("")
   const [hallQuery, setHallQuery] = useState("")
   const [upload, setUpload] = useState<{ file: string; result: DutyListResult } | null>(null)
+  const [sources, setSources] = useState<SelectionSource[]>([])
+  const [copied, setCopied] = useState<{ label: string; staff: number; halls: number; inactiveStaff: number; inactiveHalls: number } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const q = query.trim().toLowerCase()
@@ -35,6 +40,28 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
     ;(acc[k] = acc[k] ?? []).push(u)
     return acc
   }, {}), [visibleUsers])
+
+  useEffect(() => { api.getSessionSelections().then(setSources).catch(() => setSources([])) }, [])
+  const previous = useMemo(() => previousSelectionSource(sources, session), [sources, session])
+  const groups = useMemo(() => selectionSourceGroups(sources, session), [sources, session])
+  const sourceLabel = (s: SelectionSource) => s.id === session.id ? "this session's current draft"
+    : `${formatDateWithDay(s.exam_date)} · ${s.session_type}${s.cycleId === session.cycle_id ? "" : ` (${s.cycleName})`}`
+
+  // Copies only which staff and halls are ticked, never who had which hall: Generate Allocation
+  // runs the rotation afresh on them. Like an uploaded duty list, the copy replaces the ticks.
+  async function copyFrom(s: SelectionSource) {
+    try {
+      const rows = await api.getSessionAllocation(s.id)
+      const sel = selectionFromAllocation(rows, allUsers.map(u => u.id), allHalls.map(h => h.id))
+      if (sel.userIds.length === 0) { toast.error("None of the staff from that session are active any more."); return }
+      setSelUsers(sel.userIds); setSelHalls(sel.hallIds); setQuery(""); setHallQuery(""); setUpload(null)
+      setCopied({ label: sourceLabel(s), staff: sel.userIds.length, halls: sel.hallIds.length, inactiveStaff: sel.inactiveStaff, inactiveHalls: sel.inactiveHalls })
+    } catch (e: any) {
+      toast.error(`Could not copy the selection: ${e?.message ?? e}`)
+    }
+  }
+  const skipped = copied ? copied.inactiveStaff + copied.inactiveHalls : 0
+  const skippedNote = copied && skipped > 0 ? `${[copied.inactiveStaff && `${copied.inactiveStaff} staff`, copied.inactiveHalls && `${copied.inactiveHalls} hall${copied.inactiveHalls === 1 ? "" : "s"}`].filter(Boolean).join(" and ")} from that session ${skipped === 1 ? "is" : "are"} no longer active and ${skipped === 1 ? "was" : "were"} not copied.` : ""
 
   const toggleUser = (id: number) => setSelUsers(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   const toggleHall = (id: number) => setSelHalls(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
@@ -64,7 +91,7 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
         setQuery("")
         toast.success(`${result.userIds.length} invigilator(s) selected from the file.`)
       }
-      setUpload({ file: file.name, result })
+      setUpload({ file: file.name, result }); setCopied(null)
     } catch (e: any) {
       toast.error(`Could not read the file: ${e?.message ?? e}`)
     } finally {
@@ -126,7 +153,40 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
             title="An Excel sheet of all active staff: delete the rows not on duty (optionally fill in Hall), save, then upload it">
             <FileSpreadsheet className="w-4 h-4" /> Download template
           </button>
+          <button onClick={() => previous && copyFrom(previous)} disabled={!previous} className="btn-secondary flex items-center gap-2"
+            title={previous ? `Tick the same staff and halls as ${sourceLabel(previous)}` : "No earlier session has a selection to copy"}>
+            <Copy className="w-4 h-4" /> Copy previous session
+          </button>
+          <select value="" disabled={!groups.draft && groups.batches.length === 0}
+            onChange={e => { const s = sources.find(x => x.id === Number(e.target.value)); if (s) copyFrom(s) }}
+            className="input-field w-auto" title="Tick the same staff and halls as a particular session">
+            <option value="">Copy from a session…</option>
+            {groups.draft && (
+              <optgroup label="This session"><option value={groups.draft.id}>This session (current draft)</option></optgroup>
+            )}
+            {groups.batches.map(b => (
+              <optgroup key={b.cycleId} label={b.cycleId === session.cycle_id ? `${b.cycleName} (this batch)` : b.cycleName}>
+                {b.sessions.map(s => (
+                  <option key={s.id} value={s.id}>{formatDateWithDay(s.exam_date)} · {s.session_type} ({s.staffCount} staff, {s.staffCount} halls)</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
+
+        {/* Copy summary */}
+        {copied && (
+          <div className={`mx-6 mt-3 p-3 rounded-xl border text-sm ${skipped ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"}`}>
+            <div className="flex items-start justify-between gap-2">
+              <p className={`font-medium flex items-center gap-2 ${skipped ? "text-amber-800" : "text-green-700"}`}>
+                {skipped ? <AlertTriangle className="w-4 h-4 flex-shrink-0" /> : <CheckCircle className="w-4 h-4 flex-shrink-0" />}
+                Copied from {copied.label}: {copied.staff} staff and {copied.halls} halls ticked. Generate Allocation draws their halls afresh.
+              </p>
+              <button onClick={() => setCopied(null)} className="p-0.5 rounded hover:bg-black/5 text-gray-400"><X className="w-3.5 h-3.5" /></button>
+            </div>
+            {skippedNote && <p className="mt-1 ml-6 text-xs text-amber-700">{skippedNote}</p>}
+          </div>
+        )}
 
         {/* Upload summary */}
         {upload && (

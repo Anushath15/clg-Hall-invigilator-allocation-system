@@ -36,6 +36,7 @@ const api = {
   getSessionAllocation: (sessionId: number) => ipcRenderer.invoke("allocation:getSession", sessionId),
   editAllocation:       (sessionId: number, userId: number, hallId: number, reason?: string) => ipcRenderer.invoke("allocation:edit", sessionId, userId, hallId, reason),
   getValidHalls:        (userId: number, sessionId: number) => ipcRenderer.invoke("allocation:getValidHalls", userId, sessionId),
+  getSessionSelections: () => ipcRenderer.invoke("allocation:sessionSelections"),
   confirmAllocation:    (sessionId: number) => ipcRenderer.invoke("allocation:confirm", sessionId),
   publishAllocation:    (sessionId: number) => ipcRenderer.invoke("allocation:publish", sessionId),
   getStaffDutyHistory:  (userId: number) => ipcRenderer.invoke("allocation:staffDutyHistory", userId),

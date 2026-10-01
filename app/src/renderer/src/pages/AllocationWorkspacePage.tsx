@@ -494,6 +494,7 @@ export default function AllocationWorkspacePage() {
       {/* Staff & Hall Selector Modal */}
       {showSelector && (
         <StaffHallSelector
+          session={activeSession}
           allUsers={allUsers}
           allHalls={allHalls}
           onConfirm={(uIds: number[], hIds: number[]) => { setShowSelector(false); handleGenerate(uIds, hIds) }}

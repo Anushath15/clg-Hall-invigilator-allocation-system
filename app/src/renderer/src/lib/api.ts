@@ -1,5 +1,6 @@
 import { webApi } from "./web-api"
 import type { StaffDutyRow } from "../../../shared/staff-duty"
+import type { SelectionSource } from "../../../shared/copy-selection"
 
 // Typed bridge: uses window.api in Electron desktop, or webApi in web browser / Firebase Hosting
 declare global {
@@ -74,6 +75,7 @@ export const api = apiBridge as {
   getSessionAllocation: (sessionId: number) => Promise<any[]>
   editAllocation: (sessionId: number, userId: number, hallId: number, reason?: string) => Promise<any>
   getValidHalls: (userId: number, sessionId: number) => Promise<any[]>
+  getSessionSelections: () => Promise<SelectionSource[]>
   confirmAllocation: (sessionId: number) => Promise<any>
   publishAllocation: (sessionId: number) => Promise<any>
   getStaffDutyHistory: (userId: number) => Promise<StaffDutyRow[]>

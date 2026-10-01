@@ -1,6 +1,6 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
-import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, publishAllocation, getSessionAllocationFull, getValidHallsFor, getStaffDutyHistory, restartRotation, getNotifications, getUnreadCount, markNotificationRead, markAllRead } from "../services/allocation.service"
+import { getOrCreateAllocation, editAllocationEntry, confirmAllocation, publishAllocation, getSessionAllocationFull, getValidHallsFor, getSessionSelections, getStaffDutyHistory, restartRotation, getNotifications, getUnreadCount, markNotificationRead, markAllRead } from "../services/allocation.service"
 
 export function registerAllocationHandlers() {
   ipcMain.handle("allocation:generate", async (_, sessionId, userIds, hallIds) =>
@@ -9,6 +9,7 @@ export function registerAllocationHandlers() {
   ipcMain.handle("allocation:edit", async (_, sessionId, userId, hallId, reason) =>
     editAllocationEntry(sessionId, userId, hallId, reason))
   ipcMain.handle("allocation:getValidHalls", async (_, userId, sessionId) => getValidHallsFor(userId, sessionId))
+  ipcMain.handle("allocation:sessionSelections", async () => getSessionSelections())
   ipcMain.handle("allocation:confirm", async (_, sessionId) => confirmAllocation(sessionId))
   ipcMain.handle("allocation:publish", async (_, sessionId) => publishAllocation(sessionId))
   ipcMain.handle("allocation:staffDutyHistory", async (_, userId) => getStaffDutyHistory(userId))
