@@ -4,6 +4,7 @@ import * as XLSX from "xlsx"
 import toast from "react-hot-toast"
 import { readDutyList, type DutyListResult } from "../lib/duty-list"
 import { hallLocation } from "../lib/utils"
+import { matchesSearch } from "../lib/search"
 
 interface Props {
   allUsers: any[]
@@ -14,19 +15,21 @@ interface Props {
 
 /**
  * "Select Invigilators & Halls" for one session: tick staff one by one, search them
- * by name or Staff ID, or upload an Excel/CSV duty list to select them all at once.
+ * by name or Staff ID (halls by hall code or block), or upload an Excel/CSV duty list to
+ * select them all at once.
  */
 export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClose }: Props) {
   const [selUsers, setSelUsers] = useState<number[]>([])
   const [selHalls, setSelHalls] = useState<number[]>([])
   const [query, setQuery] = useState("")
+  const [hallQuery, setHallQuery] = useState("")
   const [upload, setUpload] = useState<{ file: string; result: DutyListResult } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const q = query.trim().toLowerCase()
-  const visibleUsers = useMemo(() => q
-    ? allUsers.filter(u => u.name?.toLowerCase().includes(q) || String(u.staff_id ?? "").toLowerCase().includes(q))
-    : allUsers, [allUsers, q])
+  const visibleUsers = useMemo(() => allUsers.filter(u => matchesSearch(q, u.name, u.staff_id)), [allUsers, q])
+  const hq = hallQuery.trim().toLowerCase()
+  const visibleHalls = useMemo(() => allHalls.filter(h => matchesSearch(hq, h.hall_code, h.block)), [allHalls, hq])
   const byDept = useMemo(() => visibleUsers.reduce((acc: Record<string, any[]>, u) => {
     const k = u.department_name ?? "Other"
     ;(acc[k] = acc[k] ?? []).push(u)
@@ -41,6 +44,11 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
     if (ids.every(id => selUsers.includes(id))) setSelUsers(p => p.filter(id => !ids.includes(id)))
     else setSelUsers(p => [...new Set([...p, ...ids])])
   }
+  const toggleShownHalls = () => {
+    const ids = visibleHalls.map(h => h.id)
+    if (ids.every(id => selHalls.includes(id))) setSelHalls(p => p.filter(id => !ids.includes(id)))
+    else setSelHalls(p => [...new Set([...p, ...ids])])
+  }
 
   async function handleFile(file: File) {
     try {
@@ -52,7 +60,7 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
       } else {
         // The file replaces the current selection, so the duty list is exactly what was uploaded.
         setSelUsers(result.userIds)
-        if (result.hasHallColumn) setSelHalls(result.hallIds)
+        if (result.hasHallColumn) { setSelHalls(result.hallIds); setHallQuery("") }
         setQuery("")
         toast.success(`${result.userIds.length} invigilator(s) selected from the file.`)
       }
@@ -164,9 +172,9 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
             )}
             {Object.entries(byDept).map(([dept, users]) => (
               <div key={dept} className="mb-4">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between gap-2 mb-1">
                   <p className="text-xs font-bold text-brand-textsec uppercase tracking-wider">{dept}</p>
-                  <button onClick={() => toggleAll(users)} className="text-xs text-brand-primary hover:underline">
+                  <button onClick={() => toggleAll(users)} className="text-xs text-brand-primary hover:underline whitespace-nowrap flex-shrink-0">
                     {users.every(u => selUsers.includes(u.id)) ? "Deselect all" : "Select all"}
                   </button>
                 </div>
@@ -184,17 +192,41 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
           </div>
 
           {/* Halls list */}
-          <div className="w-60 overflow-y-auto p-4">
+          <div className="w-80 overflow-y-auto p-4">
+            <div className="relative mb-3">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={hallQuery}
+                onChange={e => setHallQuery(e.target.value)}
+                placeholder="Search halls by code or block"
+                className="input-field pl-9 pr-8"
+              />
+              {hallQuery && (
+                <button onClick={() => setHallQuery("")} title="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 text-gray-400">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             <p className="text-sm font-semibold text-brand-textmain mb-2">
               Halls <span className="text-brand-primary">({selHalls.length} selected)</span>
+              {hq && <span className="text-brand-textsec font-normal"> · showing {visibleHalls.length} of {allHalls.length}</span>}
             </p>
-            <div className="flex gap-3 mb-3">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
               <button onClick={() => setSelHalls(allHalls.map(h => h.id))} className="text-xs text-brand-primary hover:underline">Select all halls</button>
+              {hq && visibleHalls.length > 0 && (
+                <button onClick={toggleShownHalls} className="text-xs text-brand-primary hover:underline">
+                  {visibleHalls.every(h => selHalls.includes(h.id)) ? "Deselect shown" : "Select shown"}
+                </button>
+              )}
               {selHalls.length > 0 && (
                 <button onClick={() => setSelHalls([])} className="text-xs text-red-500 hover:underline">Clear</button>
               )}
             </div>
-            {allHalls.map(h => (
+            {visibleHalls.length === 0 && (
+              <p className="text-sm text-brand-textsec text-center py-10">No halls match "{hallQuery}".</p>
+            )}
+            {visibleHalls.map(h => (
               <label key={h.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer mb-1">
                 <input type="checkbox" checked={selHalls.includes(h.id)} onChange={() => toggleHall(h.id)} className="accent-brand-primary" />
                 <div className="min-w-0">

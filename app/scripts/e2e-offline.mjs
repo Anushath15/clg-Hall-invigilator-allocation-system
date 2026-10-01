@@ -160,7 +160,7 @@ try {
     await go("#/master?tab=halls");
     await click("Add Hall"); await fill("Hall Code", "H001"); await fill("Block / Building", "Main Block"); await fill("Floor", "1st"); await click("Save");
     await until(() => body().includes("H001"), "hall row");
-    for (let i = 2; i <= 6; i++) await api.saveHall({ hall_code: "H00" + i, block: "Main Block", floor: "2nd", capacity: 30, is_active: true });
+    for (let i = 2; i <= 6; i++) await api.saveHall({ hall_code: "H00" + i, block: i === 6 ? "Annexe" : "Main Block", floor: "2nd", capacity: 30, is_active: true });
     return (await api.getHalls()).length + " halls"`))
 
   await step("Add a staff member (form)", () => ev(`
@@ -185,13 +185,20 @@ try {
     if (sessions.length !== 6) throw new Error(sessions.length + " sessions");
     return "batch with " + sessions.length + " sessions"`))
 
-  await step("Select staff and halls, generate the allocation", () => ev(`
+  await step("Select staff and halls (hall search by code and block), generate the allocation", () => ev(`
     await click("Select Staff & Generate");
     await until(() => byText(".fixed.inset-0 button", "Select all halls"), "staff/hall selector");
+    // Hall search: by hall code, by block (any case), no match, then cleared.
+    const hallSearch = await until(() => [...document.querySelectorAll(".fixed.inset-0 input")].find(i => (i.placeholder || "").startsWith("Search halls")), "hall search box");
+    const shownHalls = () => [...document.querySelectorAll(".fixed.inset-0 label")].map(l => l.innerText.trim()).filter(t => /^H00[0-9]/.test(t)).map(t => t.slice(0, 4));
+    setValue(hallSearch, "h003"); await sleep(150); if (shownHalls().join() !== "H003") throw new Error("hall code search: " + shownHalls());
+    setValue(hallSearch, "ANNEXE"); await sleep(150); if (shownHalls().join() !== "H006") throw new Error("block search: " + shownHalls());
+    setValue(hallSearch, "zzz"); await sleep(150); if (shownHalls().length || !body().includes('No halls match "zzz"')) throw new Error("no-match state");
+    setValue(hallSearch, ""); await sleep(150); if (shownHalls().length !== 6) throw new Error("cleared search: " + shownHalls());
     for (const b of [...document.querySelectorAll(".fixed.inset-0 button")].filter(b => visible(b) && b.innerText.trim() === "Select all")) { b.click(); await sleep(100) } // every department
     await click("Select all halls"); await click("Generate Allocation");
     await until(() => body().includes("All 7 validation rules passed"), "validation passed");
-    return document.querySelectorAll("main tbody tr").length + " assignments, all 7 rules passed"`))
+    return "hall search: code, block and no-match ok; " + document.querySelectorAll("main tbody tr").length + " assignments, all 7 rules passed"`))
 
   await step("A manual edit swaps two invigilators' halls (R1 checked for both); the dialog offers the swaps", () => ev(`
     const cycle = (await api.getCycles())[0]; const s = (await api.getSessions(cycle.id))[0];
