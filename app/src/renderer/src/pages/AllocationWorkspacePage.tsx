@@ -106,7 +106,9 @@ export default function AllocationWorkspacePage() {
   }, [cycleId, paramSessionId])
 
   useEffect(() => { loadCycle() }, [loadCycle])
-  useEffect(() => { if (activeSession) loadAllocation() }, [activeSession])
+  // Reload (and clear the validation result) only when switching to another session; a
+  // refreshed copy of the same session (e.g. after generating) must keep the result visible.
+  useEffect(() => { if (activeSession) loadAllocation() }, [activeSession?.id])
   // Read-only: only supplies the college name/short name printed on the exported PDF.
   useEffect(() => { api.getSettings().then((s: any) => setSettings(s ?? {})) }, [])
 
@@ -202,7 +204,7 @@ export default function AllocationWorkspacePage() {
 
   const statusActions: Record<string, React.ReactNode> = {
     pending: allocation.length > 0 ? (
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button onClick={handleDeleteDraftSession} disabled={loading} className="btn-secondary text-red-600 hover:bg-red-50 flex items-center gap-2">
           <Trash2 className="w-4 h-4" /> Delete Draft
         </button>
@@ -221,7 +223,7 @@ export default function AllocationWorkspacePage() {
       </button>
     ),
     draft: (
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button onClick={handleDeleteDraftSession} disabled={loading} className="btn-secondary text-red-600 hover:bg-red-50 flex items-center gap-2">
           <Trash2 className="w-4 h-4" /> Delete Draft
         </button>
@@ -319,7 +321,7 @@ export default function AllocationWorkspacePage() {
             <>
               {/* Duplicate Session Error Banner */}
               {isActiveSessionDuplicate && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-2xl flex items-center justify-between shadow-xs">
+                <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
                       <AlertTriangle className="w-5 h-5" />
@@ -353,7 +355,7 @@ export default function AllocationWorkspacePage() {
               )}
 
               {/* Session info bar */}
-              <div className="card mb-4 flex items-center justify-between py-3">
+              <div className="card mb-4 flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="flex items-center gap-6 text-sm flex-wrap">
                   <div>
                     <span className="text-brand-textsec">Date: </span>
@@ -383,7 +385,7 @@ export default function AllocationWorkspacePage() {
                     Edit Schedule & Timings
                   </button>
                 </div>
-                <div className="flex-shrink-0">{statusActions[effectiveStatus] ?? statusActions[activeSession.status]}</div>
+                <div className="min-w-0">{statusActions[effectiveStatus] ?? statusActions[activeSession.status]}</div>
               </div>
 
               {/* Validation banners */}
@@ -429,7 +431,7 @@ export default function AllocationWorkspacePage() {
 
               {/* Allocation table */}
               {allocation.length > 0 ? (
-                <div className="card p-0 overflow-hidden">
+                <div className="card p-0 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-brand-border">
                       <tr>
@@ -445,18 +447,18 @@ export default function AllocationWorkspacePage() {
                           <td className="px-4 py-3 font-medium">{a.userName}</td>
                           <td className="px-4 py-3 text-brand-textsec text-xs">{a.deptCode ?? "—"}</td>
                           <td className="px-4 py-3">
-                            <span className={cn("inline-flex items-center gap-2 font-bold px-3 py-1 rounded-lg text-xs",
+                            <span className={cn("inline-flex items-center gap-2 font-bold px-3 py-1 rounded-lg text-xs whitespace-nowrap",
                               a.is_manually_edited ? "bg-amber-100 text-amber-700" : "bg-brand-verylight text-brand-primary")}>
                               {a.hall_code}
                               {!!a.is_manually_edited && <span className="font-normal text-amber-500">(edited)</span>}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 whitespace-nowrap">
                             {a.is_manually_edited
                               ? <span className="text-xs text-amber-600 font-medium">Admin Edited</span>
                               : <span className="text-xs text-green-600">Auto-generated</span>}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
                             {activeSession.status !== "published" && (
                               <button onClick={() => openEdit(a)}
                                 className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec" title="Edit hall assignment">

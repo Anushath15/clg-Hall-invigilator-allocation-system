@@ -2,11 +2,12 @@
 import { api } from "../lib/api"
 import { formatDate, cn } from "../lib/utils"
 import { History } from "lucide-react"
+import type { StaffDutyRow } from "../../../shared/staff-duty"
 
 interface Props { userId: number; userName: string; highlightHallId?: number }
 
 export default function RotationHistoryTimeline({ userId, userName, highlightHallId }: Props) {
-  const [history, setHistory] = useState<any[]>([])
+  const [history, setHistory] = useState<StaffDutyRow[]>([])
 
   useEffect(() => {
     api.getStaffDutyHistory(userId).then(h => setHistory(h.slice(0, 20)))
@@ -24,10 +25,10 @@ export default function RotationHistoryTimeline({ userId, userName, highlightHal
       <p className="text-xs font-semibold text-brand-textsec uppercase tracking-wider mb-2">
         {userName} — Last {history.length} Assignments
       </p>
-      {history.map((h: any, i: number) => (
+      {history.map((h, i) => (
         <div key={i} className={cn(
           "flex items-center justify-between px-3 py-1.5 rounded-lg text-xs border",
-          highlightHallId && h.hall_id === highlightHallId
+          highlightHallId && h.hallId === highlightHallId
             ? "bg-red-50 border-red-200 text-red-700"
             : "bg-gray-50 border-transparent text-brand-textmain"
         )}>
@@ -36,7 +37,7 @@ export default function RotationHistoryTimeline({ userId, userName, highlightHal
           </span>
           <span className={cn(
             "font-bold px-2 py-0.5 rounded",
-            highlightHallId && h.hall_id === highlightHallId
+            highlightHallId && h.hallId === highlightHallId
               ? "bg-red-100 text-red-700"
               : "bg-brand-verylight text-brand-primary"
           )}>

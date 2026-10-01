@@ -22,7 +22,7 @@ export default function ExamCyclesPage() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-brand-textmain">Allocation Batches</h1>
           <p className="text-brand-textsec mt-1">Create and manage exam allocation batches</p>

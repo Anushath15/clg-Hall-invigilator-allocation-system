@@ -197,9 +197,9 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
             {allHalls.map(h => (
               <label key={h.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer mb-1">
                 <input type="checkbox" checked={selHalls.includes(h.id)} onChange={() => toggleHall(h.id)} className="accent-brand-primary" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-bold text-brand-primary">{h.hall_code}</p>
-                  {hallLocation(h) && <p className="text-xs text-brand-textsec truncate">{hallLocation(h)}</p>}
+                  {hallLocation(h) && <p className="text-xs text-brand-textsec truncate" title={hallLocation(h)}>{hallLocation(h)}</p>}
                 </div>
               </label>
             ))}

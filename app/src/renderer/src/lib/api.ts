@@ -1,4 +1,5 @@
 import { webApi } from "./web-api"
+import type { StaffDutyRow } from "../../../shared/staff-duty"
 
 // Typed bridge: uses window.api in Electron desktop, or webApi in web browser / Firebase Hosting
 declare global {
@@ -13,6 +14,12 @@ const apiBridge = new Proxy({}, {
       }
       if (prop in window.api) {
         return window.api[prop]
+      }
+      // Desktop: never fall back to the web implementation (it keeps a separate browser database).
+      return async () => {
+        const msg = `API method "${prop}" is not available in the desktop app.`
+        console.error(`[HIAS] ${msg}`)
+        throw new Error(msg)
       }
     }
     // Web browser / Firebase Hosting fallback
@@ -29,7 +36,7 @@ const apiBridge = new Proxy({}, {
 })
 
 export const api = apiBridge as {
-  // Auth
+  // Auth. Desktop: only getLocalAdmin (no login); the rest exist in the web build only.
   login: (staffId: string, password: string) => Promise<any>
   logout: () => Promise<any>
   getLocalAdmin: () => Promise<any>
@@ -69,7 +76,7 @@ export const api = apiBridge as {
   getValidHalls: (userId: number, sessionId: number) => Promise<any[]>
   confirmAllocation: (sessionId: number) => Promise<any>
   publishAllocation: (sessionId: number) => Promise<any>
-  getStaffDutyHistory: (userId: number) => Promise<any[]>
+  getStaffDutyHistory: (userId: number) => Promise<StaffDutyRow[]>
   getAllocationHistory: (filters: any) => Promise<any[]>
   restartRotation: () => Promise<any>
   getNotifications: (userId: number) => Promise<any[]>

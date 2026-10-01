@@ -5,6 +5,8 @@
 
 import bcrypt from "bcryptjs"
 import { assignHalls, minimumRepeats, visitedThisCycle, allocationSeed } from "../../../shared/assignment"
+import { importStaffFromSheet } from "../../../shared/staff-import"
+import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../../shared/staff-duty"
 import * as XLSX from "xlsx"
 import { webDb } from "./web-db"
 
@@ -15,83 +17,6 @@ async function ensureDb() {
   await webDb.initWebDatabase()
 }
 
-// Column names accepted in the staff import sheet, matched case-insensitively
-// against the header row so "Staff ID", "staff id" and "staff_id" all work.
-const STAFF_ID_ALIASES = ["staff id", "staff_id", "staffid", "id"]
-const NAME_ALIASES = ["name", "staff name", "full name"]
-const DEPARTMENT_ALIASES = ["department", "department code", "dept", "dept code", "department_code"]
-
-function findColumn(headers: string[], aliases: string[]) {
-  return headers.find(h => aliases.includes(h.trim().toLowerCase()))
-}
-
-// Mirrors the Electron main-process version in master.ipc.ts: checks the header row first so a
-// whole-file problem ("no Department column at all") is reported once, up front, rather than as
-// N confusing per-row errors. Only once all three required columns are confirmed present does it
-// walk the data rows, collecting a specific reason for every row it skips (missing field, unknown
-// department, duplicate staff ID) so the UI can show exactly what to fix instead of a bare count.
-function importStaffFromSheet(
-  sheet: XLSX.WorkSheet,
-  findDepartment: (code: string) => { id: number } | undefined,
-  findExistingStaff: (staffId: string) => { id: number } | undefined,
-  insertStaff: (staffId: string, name: string, email: string | null, designation: string | null, deptId: number) => void
-) {
-  const headerRow = ((XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] as any[]) || []).map(h => String(h ?? "").trim())
-  const staffIdCol = findColumn(headerRow, STAFF_ID_ALIASES)
-  const nameCol = findColumn(headerRow, NAME_ALIASES)
-  const deptCol = findColumn(headerRow, DEPARTMENT_ALIASES)
-
-  const missingColumns: string[] = []
-  if (!staffIdCol) missingColumns.push("Staff ID")
-  if (!nameCol) missingColumns.push("Name")
-  if (!deptCol) missingColumns.push("Department")
-  if (missingColumns.length) {
-    return {
-      success: false,
-      error: `This Excel file is missing required column(s): ${missingColumns.join(", ")}. The first row must have a column for Staff ID, Name and Department.`,
-      missingColumns
-    }
-  }
-
-  const rows: any[] = XLSX.utils.sheet_to_json(sheet)
-  if (rows.length === 0) {
-    return { success: false, error: "This Excel file has no data rows below the header." }
-  }
-
-  let inserted = 0
-  const issues: { row: number; reason: string }[] = []
-  rows.forEach((row, idx) => {
-    const excelRow = idx + 2 // +1 for 0-index, +1 for the header row
-    const staffId = String(row[staffIdCol!] ?? "").trim()
-    const name = String(row[nameCol!] ?? "").trim()
-    const deptCode = String(row[deptCol!] ?? "").trim()
-
-    const missing: string[] = []
-    if (!staffId) missing.push("Staff ID")
-    if (!name) missing.push("Name")
-    if (!deptCode) missing.push("Department")
-    if (missing.length) {
-      issues.push({ row: excelRow, reason: `Missing ${missing.join(", ")}` })
-      return
-    }
-
-    const dept = findDepartment(deptCode)
-    if (!dept) {
-      issues.push({ row: excelRow, reason: `Department "${deptCode}" does not match any existing department (check Master Data → Departments).` })
-      return
-    }
-
-    if (findExistingStaff(staffId)) {
-      issues.push({ row: excelRow, reason: `Staff ID "${staffId}" already exists — skipped.` })
-      return
-    }
-
-    insertStaff(staffId, name, row["Email"] ?? null, row["Designation"] ?? null, dept.id)
-    inserted++
-  })
-
-  return { success: true, inserted, skipped: issues.length, issues }
-}
 
 // -------------------------------------------------------------
 // Validation Engine
@@ -274,7 +199,7 @@ function getSessionAllocationFull(sessionId: number) {
      LEFT JOIN departments d ON u.department_id = d.id
      LEFT JOIN halls gh ON a.generated_hall_id = gh.id
      WHERE a.session_id = ?
-     ORDER BY d.code, u.name`,
+     ORDER BY d.code COLLATE NOCASE, u.name`,
     [sessionId]
   )
 }
@@ -345,14 +270,18 @@ export const webApi = {
     return webDb.query("SELECT * FROM departments ORDER BY name")
   },
 
+  // Same rules as the desktop (master.service.ts): codes are saved as typed, but "CSE" and
+  // "cse" are the same department, so a second one is refused.
   saveDepartment: async (data: any) => {
     await ensureDb()
+    const clash = webDb.queryOne<any>("SELECT code FROM departments WHERE code = ? COLLATE NOCASE AND id != ?", [data.code, data.id ?? 0])
+    if (clash) return { success: false, error: `A department with code "${clash.code}" already exists (codes are not case-sensitive).` }
     if (data.id) {
       webDb.run("UPDATE departments SET code=?,name=?,is_active=? WHERE id=?", [data.code, data.name, data.is_active ? 1 : 0, data.id])
-      return webDb.queryOne("SELECT * FROM departments WHERE id=?", [data.id])
+      return { success: true, department: webDb.queryOne("SELECT * FROM departments WHERE id=?", [data.id]) }
     }
     const { lastInsertRowid } = webDb.run("INSERT INTO departments(code,name) VALUES(?,?)", [data.code, data.name])
-    return webDb.queryOne("SELECT * FROM departments WHERE id=?", [lastInsertRowid])
+    return { success: true, department: webDb.queryOne("SELECT * FROM departments WHERE id=?", [lastInsertRowid]) }
   },
 
   deleteDepartment: async (id: number) => {
@@ -372,7 +301,7 @@ export const webApi = {
     if (filters?.role) { sql += ` AND u.role=?`; params.push(filters.role) }
     if (filters?.is_active !== undefined) { sql += ` AND u.is_active=?`; params.push(filters.is_active ? 1 : 0) }
     if (filters?.department_id) { sql += ` AND u.department_id=?`; params.push(filters.department_id) }
-    sql += ` ORDER BY d.code, u.name`
+    sql += ` ORDER BY d.code COLLATE NOCASE, u.name`
     return webDb.query(sql, params)
   },
 
@@ -429,7 +358,8 @@ export const webApi = {
 
       return importStaffFromSheet(
         wb.Sheets[wb.SheetNames[0]],
-        (code) => webDb.queryOne<any>("SELECT id FROM departments WHERE code=? COLLATE NOCASE OR name=? COLLATE NOCASE", [code, code]),
+        // By code or name, ignoring case; a code match wins over a name match.
+        (code) => webDb.queryOne<any>("SELECT id FROM departments WHERE code = ? COLLATE NOCASE OR name = ? COLLATE NOCASE ORDER BY (code = ? COLLATE NOCASE) DESC, id LIMIT 1", [code, code, code]),
         (staffId) => webDb.queryOne<any>("SELECT id FROM users WHERE staff_id=?", [staffId]),
         (staffId, name, email, designation, deptId) =>
           webDb.run(
@@ -837,20 +767,10 @@ export const webApi = {
     return { success: true }
   },
 
-  getStaffDutyHistory: async (userId: number) => {
+  // Same query and fields as the desktop (shared/staff-duty.ts).
+  getStaffDutyHistory: async (userId: number): Promise<StaffDutyRow[]> => {
     await ensureDb()
-    return webDb.query(
-      `SELECT rh.hall_id as hallId, rh.session_id as sessionId, rh.rotation_step as rotationStep,
-              rh.global_order as globalOrder, es.exam_date as examDate, es.session_type as sessionType,
-              h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor, ec.name as cycleName
-       FROM rotation_history rh
-       JOIN exam_sessions es ON rh.session_id = es.id
-       JOIN exam_cycles ec ON es.cycle_id = ec.id
-       JOIN halls h ON rh.hall_id = h.id
-       WHERE rh.user_id = ?
-       ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC`,
-      [userId]
-    )
+    return webDb.query<StaffDutyRow>(STAFF_DUTY_HISTORY_SQL, [userId])
   },
 
   getAllocationHistory: async (filters: any) => {

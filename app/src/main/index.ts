@@ -22,8 +22,10 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    minWidth: 1100,
-    minHeight: 700,
+    // Small enough to snap to half of a 1080p screen at 125% scaling (768px wide), and to
+    // fit the ~672px of usable height on a 1080p laptop at 150%.
+    minWidth: 760,
+    minHeight: 600,
     show: false,
     autoHideMenuBar: true,
     icon: join(__dirname, '../../resources/icon.png'),
@@ -55,8 +57,9 @@ function createWindow(): void {
     }
   }, 1200)
 
+  // No new windows inside the app; only ordinary web/mail links go to the system browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: "deny" }
   })
 
@@ -81,7 +84,7 @@ app.whenReady().then(async () => {
     app.setAppUserModelId("in.edu.sxcce.eias")
 
     // Init DB and seed defaults
-    await initDatabase()
+    await initDatabase({ appVersion: app.getVersion() })
     await ensureDefaultAdmin()
 
     // Register all IPC handlers

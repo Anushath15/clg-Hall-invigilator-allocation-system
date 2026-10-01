@@ -1,69 +1,29 @@
-import bcrypt from "bcryptjs"
 import { db } from "../db/database"
 
-export interface LoginResult {
+// The offline desktop app has no login and no passwords: it always runs as the local
+// administrator, a fixed identity (ADMIN001) used for audit records. The security boundary
+// is the Windows account and physical access to the computer.
+
+export interface LocalAdminResult {
   success: boolean
   user?: { id: number; name: string; staff_id: string; role: "admin" | "staff"; department_id?: number }
   error?: string
 }
 
-export async function login(staffId: string, password: string): Promise<LoginResult> {
-  const user = db.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
-  if (!user) return { success: false, error: "Invalid Staff ID or password." }
-  if (!user.is_active) return { success: false, error: "Account is inactive. Please contact administrator." }
-
-  if (!user.password_hash) {
-    const hash = await bcrypt.hash(password, 12)
-    db.run("UPDATE users SET password_hash = ? WHERE id = ?", [hash, user.id])
-    return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
-  }
-
-  const valid = await bcrypt.compare(password, user.password_hash)
-  if (!valid) return { success: false, error: "Invalid Staff ID or password." }
-  try {
-    db.run(
-      "INSERT INTO audit_log(user_id, action, description, payload, created_at) VALUES(?,?,?,?,datetime('now'))",
-      [user.id, "LOGIN", `User ${user.staff_id} logged in`, JSON.stringify({ role: user.role })]
-    )
-  } catch (e) {
-    // Ignore audit failure
-  }
-  return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
-}
-
-// The offline desktop app has no login screen: it always runs as the local admin.
 // ensureDefaultAdmin() runs at startup, so an admin account always exists.
-export function getLocalAdmin(): LoginResult {
+export function getLocalAdmin(): LocalAdminResult {
   const user = db.queryOne<any>("SELECT * FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1")
   if (!user) return { success: false, error: "No active administrator account found." }
   return { success: true, user: { id: user.id, name: user.name, staff_id: user.staff_id, role: user.role, department_id: user.department_id } }
 }
 
-export async function verifyPassword(staffId: string, password: string): Promise<boolean> {
-  const user = db.queryOne<any>("SELECT * FROM users WHERE staff_id = ?", [staffId])
-  if (!user || !user.is_active || !user.password_hash) return false
-  return await bcrypt.compare(password, user.password_hash)
-}
-
-export async function changePassword(userId: number, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
-  const user = db.queryOne<any>("SELECT * FROM users WHERE id = ?", [userId])
-  if (!user) return { success: false, error: "User not found." }
-  if (user.password_hash) {
-    const valid = await bcrypt.compare(oldPassword, user.password_hash)
-    if (!valid) return { success: false, error: "Current password is incorrect." }
-  }
-  const hash = await bcrypt.hash(newPassword, 12)
-  db.run("UPDATE users SET password_hash = ? WHERE id = ?", [hash, userId])
-  return { success: true }
-}
-
+/** Creates the local administrator identity on a fresh database (without any password). */
 export async function ensureDefaultAdmin(): Promise<void> {
   const adminExists = db.queryOne<any>("SELECT id FROM users WHERE role = 'admin'")
   if (!adminExists) {
-    const hash = await bcrypt.hash("admin123", 12)
     db.run(
-      "INSERT INTO users(staff_id, name, role, password_hash, is_active) VALUES(?,?,?,?,?)",
-      ["ADMIN001", "System Administrator", "admin", hash, 1]
+      "INSERT INTO users(staff_id, name, role, is_active) VALUES(?,?,?,?)",
+      ["ADMIN001", "System Administrator", "admin", 1]
     )
   }
 }

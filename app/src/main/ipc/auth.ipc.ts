@@ -1,20 +1,11 @@
 import { ipcMain, dialog } from "electron"
-import path from "path"
-import fs from "fs"
 import { app } from "electron"
-import { login, changePassword, verifyPassword, getLocalAdmin } from "../services/auth.service"
-
-function getDbPath(): string {
-  const base = app.isPackaged ? app.getPath("userData") : process.cwd()
-  return path.join(base, "eias.db")
-}
+import { getLocalAdmin } from "../services/auth.service"
+import { backupDatabase, restoreDatabase } from "../services/backup.service"
 
 export function registerAuthHandlers() {
-  ipcMain.handle("auth:login", async (_, staffId, password) => login(staffId, password))
-  ipcMain.handle("auth:logout", async () => ({ success: true }))
+  // The only "auth" call: which local administrator the app runs as (no login, no passwords).
   ipcMain.handle("auth:getLocalAdmin", async () => getLocalAdmin())
-  ipcMain.handle("auth:verifyPassword", async (_, staffId, password) => verifyPassword(staffId, password))
-  ipcMain.handle("auth:changePassword", async (_, userId, oldPw, newPw) => changePassword(userId, oldPw, newPw))
 
   ipcMain.handle("dialog:openFile", async (_, filters) => {
     const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: filters ?? [] })
@@ -30,32 +21,15 @@ export function registerAuthHandlers() {
   })
 
   // Backup: copy eias.db to chosen destination
-  ipcMain.handle("backup:database", async (_, destPath: string) => {
-    try {
-      const src = getDbPath()
-      if (!fs.existsSync(src)) return { success: false, error: "Database file not found." }
-      fs.copyFileSync(src, destPath)
-      return { success: true }
-    } catch (e: any) {
-      return { success: false, error: e.message }
-    }
-  })
+  ipcMain.handle("backup:database", async (_, destPath: string) => backupDatabase(destPath))
 
-  // Restore: replace eias.db from chosen file
+  // Restore: check the chosen file, keep a safety copy of the current data, replace eias.db
   ipcMain.handle("restore:database", async (_, srcPath: string) => {
-    try {
-      if (!fs.existsSync(srcPath)) return { success: false, error: "Backup file not found." }
-      const dest = getDbPath()
-      // Make a safety copy first
-      if (fs.existsSync(dest)) fs.copyFileSync(dest, dest + ".bak")
-      fs.copyFileSync(srcPath, dest)
-      // The open database lives in memory and is written back to disk after every
-      // change, so any action before a manual restart would overwrite the restored
-      // file. Restart right away (after the UI has shown its message) to load it.
-      setTimeout(() => { app.relaunch(); app.exit(0) }, 1500)
-      return { success: true }
-    } catch (e: any) {
-      return { success: false, error: e.message }
-    }
+    const result = await restoreDatabase(srcPath)
+    // The open database lives in memory and is written back to disk after every
+    // change, so any action before a manual restart would overwrite the restored
+    // file. Restart right away (after the UI has shown its message) to load it.
+    if (result.success) setTimeout(() => { app.relaunch(); app.exit(0) }, 1500)
+    return result
   })
 }

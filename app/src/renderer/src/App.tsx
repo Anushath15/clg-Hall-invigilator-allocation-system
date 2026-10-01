@@ -58,14 +58,19 @@ export default function App() {
     return <div className="min-h-screen flex items-center justify-center p-8 text-red-600">{session}</div>
   }
 
+  // Desktop: the local admin is always signed in, so no route checks authentication or
+  // leads to a login screen, and the staff self-service pages (with their own logout)
+  // exist only in the web build.
+  const adminLayout = IS_DESKTOP ? <AdminLayout /> : <RequireAdmin><AdminLayout /></RequireAdmin>
   return (
     <Router>
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       <Routes>
+        {/* Kept on desktop only so old links and shortcuts land on the dashboard. */}
         <Route path="/login" element={IS_DESKTOP ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
 
         {/* Admin routes */}
-        <Route path="/" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
+        <Route path="/" element={adminLayout}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="master" element={<MasterDataPage />} />
@@ -76,13 +81,15 @@ export default function App() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* Staff routes */}
-        <Route path="/staff" element={<RequireAuth><StaffLayout /></RequireAuth>}>
-          <Route index element={<Navigate to="/staff/duty" replace />} />
-          <Route path="duty" element={<StaffDutyPage />} />
-        </Route>
+        {/* Staff self-service (web build only) */}
+        {!IS_DESKTOP && (
+          <Route path="/staff" element={<RequireAuth><StaffLayout /></RequireAuth>}>
+            <Route index element={<Navigate to="/staff/duty" replace />} />
+            <Route path="duty" element={<StaffDutyPage />} />
+          </Route>
+        )}
 
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to={IS_DESKTOP ? "/dashboard" : "/login"} replace />} />
       </Routes>
     </Router>
   )

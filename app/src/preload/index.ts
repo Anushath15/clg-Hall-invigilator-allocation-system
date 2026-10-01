@@ -1,12 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron"
 
 const api = {
-  // Auth
-  login:           (staffId: string, password: string) => ipcRenderer.invoke("auth:login", staffId, password),
-  logout:          () => ipcRenderer.invoke("auth:logout"),
+  // No login in the desktop app: it always runs as the local administrator.
   getLocalAdmin:   () => ipcRenderer.invoke("auth:getLocalAdmin"),
-  verifyPassword:  (staffId: string, password: string) => ipcRenderer.invoke("auth:verifyPassword", staffId, password),
-  changePassword:  (userId: number, oldPw: string, newPw: string) => ipcRenderer.invoke("auth:changePassword", userId, oldPw, newPw),
   // Departments
   getDepartments:  () => ipcRenderer.invoke("master:getDepartments"),
   saveDepartment:  (data: any) => ipcRenderer.invoke("master:saveDepartment", data),

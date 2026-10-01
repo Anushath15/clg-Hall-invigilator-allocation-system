@@ -13,8 +13,11 @@ let SQL: SqlJsStatic
 let _db: Database
 let _isInMemory = false
 let _inTransaction = false
+let _dbPath: string | null = null
 
-function getDbPath(): string {
+/** The database file: %APPDATA%\eias\eias.db in the installed app, ./eias.db in development. */
+export function getDbPath(): string {
+  if (_dbPath) return _dbPath
   const base = app && typeof app.getPath === "function"
     ? (app.isPackaged ? app.getPath("userData") : process.cwd())
     : process.cwd()
@@ -28,9 +31,15 @@ function persistDb(): void {
   fs.writeFileSync(getDbPath(), Buffer.from(data))
 }
 
-export async function initDatabase(options?: { inMemory?: boolean }): Promise<void> {
+/**
+ * Opens the local database (creating it if it does not exist), runs pending migrations
+ * and fills in missing default settings. Existing data is never removed.
+ * `path` overrides the default file (tests); `appVersion` is shown in Settings.
+ */
+export async function initDatabase(options?: { inMemory?: boolean; path?: string; appVersion?: string }): Promise<void> {
   SQL = await initSqlJs()
   _isInMemory = !!options?.inMemory
+  _dbPath = options?.path ?? null
 
   if (_isInMemory) {
     _db = new SQL.Database()
@@ -45,7 +54,7 @@ export async function initDatabase(options?: { inMemory?: boolean }): Promise<vo
   }
 
   runMigrations()
-  seedDefaults()
+  seedDefaults(options?.appVersion)
   persistDb()
 }
 
@@ -126,7 +135,8 @@ function runMigrations(): void {
     "001_initial_schema": migration001,
     "002_rotation_global_order": migration002,
     "003_notifications": migration003,
-    "004_hall_floor": migration004
+    "004_hall_floor": migration004,
+    "005_notification_session": migration005
   }
 
   for (const [name, fn] of Object.entries(migrations)) {
@@ -271,9 +281,16 @@ function migration004(): void {
   if (!cols.some((c: any) => c.name === "floor")) run(`ALTER TABLE halls ADD COLUMN floor TEXT`)
 }
 
+// Publishing records which session a duty notification is about; the table created by
+// migration 003 lacked the column, so publish notifications were never saved on desktop.
+function migration005(): void {
+  const cols = query<any>("PRAGMA table_info(notifications)")
+  if (!cols.some((c: any) => c.name === "session_id")) run(`ALTER TABLE notifications ADD COLUMN session_id INTEGER`)
+}
+
 // ?? Default seed data ?????????????????????????????????????????????????????
 
-function seedDefaults(): void {
+function seedDefaults(appVersion?: string): void {
   const defaults: [string, string][] = [
     ["college.name", "St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil"],
     ["college.short_name", "SXCCE"],
@@ -283,12 +300,14 @@ function seedDefaults(): void {
     ["session.an_reporting_time", "13:30"],
     ["session.an_start_time", "14:00"],
     ["session.an_end_time", "17:00"],
-    ["app.version", "1.0.0"]
+    ["app.version", "1.1.0"]
   ]
   for (const [key, value] of defaults) {
     const existing = queryOne("SELECT key FROM settings WHERE key = ?", [key])
     if (!existing) run("INSERT INTO settings(key, value) VALUES(?,?)", [key, value])
   }
+  // The version shown in Settings follows the installed app, not the one that created the file.
+  if (appVersion) run("UPDATE settings SET value = ? WHERE key = 'app.version'", [appVersion])
 }
 
 // ?? Export db helper ??????????????????????????????????????????????????????

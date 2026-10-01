@@ -3,10 +3,11 @@ import { Calendar, Clock, MapPin, Building2, Printer } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import { formatDate, formatSession, hallLocation } from "../lib/utils"
+import { splitStaffDuties, type StaffDutyRow } from "../../../shared/staff-duty"
 
 export default function StaffDutyPage() {
   const { user } = useAuthStore()
-  const [duties, setDuties] = useState<any[]>([])
+  const [duties, setDuties] = useState<StaffDutyRow[]>([])
   const [settings, setSettings] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -14,10 +15,10 @@ export default function StaffDutyPage() {
     api.getSettings().then(setSettings)
   }, [user])
 
-  const today = new Date().toISOString().split("T")[0]
-  const upcoming = duties.filter(d => d.exam_date >= today)
-  const past = duties.filter(d => d.exam_date < today)
-  const next = upcoming[0]
+  // Local date, not UTC: in IST the UTC date lags until 05:30, which kept yesterday's duty "upcoming".
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+  const { next, upcoming, past } = splitStaffDuties(duties, today)
 
   function printDutySlip() {
     const win = window.open("", "_blank", "width=800,height=600")
@@ -81,9 +82,12 @@ export default function StaffDutyPage() {
       {/* Next upcoming duty */}
       {next ? (
         <div className="bg-brand-sidebar rounded-2xl p-6 text-white shadow-xl">
-          <div className="mb-1">
-            <p className="text-brand-light text-xs font-semibold uppercase tracking-wider">Next Upcoming Duty</p>
-            <p className="text-gray-400 text-xs mt-0.5">{next.cycleName}</p>
+          <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-brand-light text-xs font-semibold uppercase tracking-wider">Next Upcoming Duty</p>
+              <p className="text-gray-400 text-xs mt-0.5">{next.cycleName}</p>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-white/10 text-brand-light text-xs font-semibold capitalize">{next.status}</span>
           </div>
           <div className="grid grid-cols-2 gap-5 mt-5">
             <div className="flex items-start gap-3">
@@ -129,7 +133,7 @@ export default function StaffDutyPage() {
         <div className="card">
           <h2 className="text-sm font-semibold text-brand-textmain mb-3">Upcoming Duties ({upcoming.length - 1} more)</h2>
           <div className="space-y-2">
-            {upcoming.slice(1).map((d: any, i: number) => (
+            {upcoming.slice(1).map((d, i) => (
               <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-brand-verylight border border-brand-light">
                 <div className="flex items-center gap-3">
                   <Calendar className="w-4 h-4 text-brand-primary" />
@@ -157,7 +161,7 @@ export default function StaffDutyPage() {
                 <th key={h} className="text-left py-2 text-xs font-semibold text-brand-textsec uppercase tracking-wider pr-4">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-brand-border">
-              {past.map((d: any, i: number) => (
+              {past.map((d, i) => (
                 <tr key={i} className="hover:bg-gray-50">
                   <td className="py-2.5 pr-4 font-medium">{formatDate(d.exam_date)}</td>
                   <td className="py-2.5 pr-4">{d.session_type}</td>

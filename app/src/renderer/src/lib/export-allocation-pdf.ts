@@ -33,7 +33,8 @@ export interface AllocationExportArgs {
   settings?: Record<string, string>
 }
 
-export function exportAllocationPDF({ cycle, session, allocation, settings = {} }: AllocationExportArgs): void {
+/** The session allocation PDF, built entirely in memory (no network, no file access). */
+export function buildAllocationPDF({ cycle, session, allocation, settings = {} }: AllocationExportArgs): jsPDF {
   const collegeName =
     settings["college.name"] ?? "St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil"
   const shortName = settings["college.short_name"] ?? "SXCCE"
@@ -93,5 +94,9 @@ export function exportAllocationPDF({ cycle, session, allocation, settings = {} 
   doc.text(`Total invigilators: ${allocation.length}`, 14, finalY + 8)
   doc.setTextColor(0)
 
-  doc.save(`HIAS-Allocation-${session.exam_date ?? "session"}-${session.session_type}.pdf`)
+  return doc
+}
+
+export function exportAllocationPDF(args: AllocationExportArgs): void {
+  buildAllocationPDF(args).save(`HIAS-Allocation-${args.session.exam_date ?? "session"}-${args.session.session_type}.pdf`)
 }

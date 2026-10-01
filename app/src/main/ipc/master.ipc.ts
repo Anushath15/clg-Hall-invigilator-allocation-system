@@ -1,99 +1,14 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
 import * as XLSX from "xlsx"
-import bcrypt from "bcryptjs"
 import { hardDeleteUser } from "../services/allocation.service"
-
-// Column names accepted in the staff import sheet, matched case-insensitively
-// against the header row so "Staff ID", "staff id" and "staff_id" all work.
-const STAFF_ID_ALIASES = ["staff id", "staff_id", "staffid", "id"]
-const NAME_ALIASES = ["name", "staff name", "full name"]
-const DEPARTMENT_ALIASES = ["department", "department code", "dept", "dept code", "department_code"]
-
-function findColumn(headers: string[], aliases: string[]) {
-  return headers.find(h => aliases.includes(h.trim().toLowerCase()))
-}
-
-// Shared by the Electron (sql.js via db) and browser (webDb) import handlers: reads the
-// sheet's header row first so a whole-file problem ("no Department column at all") is
-// reported once, up front, rather than as N confusing per-row errors. Only after all three
-// required columns are confirmed present does it walk the data rows, collecting a specific
-// reason for every row it skips (missing field, unknown department, duplicate staff ID) so
-// the UI can show the person exactly what to fix instead of a bare "3 skipped".
-function importStaffFromSheet(
-  sheet: XLSX.WorkSheet,
-  findDepartment: (code: string) => { id: number } | undefined,
-  findExistingStaff: (staffId: string) => { id: number } | undefined,
-  insertStaff: (staffId: string, name: string, email: string | null, designation: string | null, deptId: number) => void
-) {
-  const headerRow = ((XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] as any[]) || []).map(h => String(h ?? "").trim())
-  const staffIdCol = findColumn(headerRow, STAFF_ID_ALIASES)
-  const nameCol = findColumn(headerRow, NAME_ALIASES)
-  const deptCol = findColumn(headerRow, DEPARTMENT_ALIASES)
-
-  const missingColumns: string[] = []
-  if (!staffIdCol) missingColumns.push("Staff ID")
-  if (!nameCol) missingColumns.push("Name")
-  if (!deptCol) missingColumns.push("Department")
-  if (missingColumns.length) {
-    return {
-      success: false,
-      error: `This Excel file is missing required column(s): ${missingColumns.join(", ")}. The first row must have a column for Staff ID, Name and Department.`,
-      missingColumns
-    }
-  }
-
-  const rows: any[] = XLSX.utils.sheet_to_json(sheet)
-  if (rows.length === 0) {
-    return { success: false, error: "This Excel file has no data rows below the header." }
-  }
-
-  let inserted = 0
-  const issues: { row: number; reason: string }[] = []
-  rows.forEach((row, idx) => {
-    const excelRow = idx + 2 // +1 for 0-index, +1 for the header row
-    const staffId = String(row[staffIdCol!] ?? "").trim()
-    const name = String(row[nameCol!] ?? "").trim()
-    const deptCode = String(row[deptCol!] ?? "").trim()
-
-    const missing: string[] = []
-    if (!staffId) missing.push("Staff ID")
-    if (!name) missing.push("Name")
-    if (!deptCode) missing.push("Department")
-    if (missing.length) {
-      issues.push({ row: excelRow, reason: `Missing ${missing.join(", ")}` })
-      return
-    }
-
-    const dept = findDepartment(deptCode)
-    if (!dept) {
-      issues.push({ row: excelRow, reason: `Department "${deptCode}" does not match any existing department (check Master Data → Departments).` })
-      return
-    }
-
-    if (findExistingStaff(staffId)) {
-      issues.push({ row: excelRow, reason: `Staff ID "${staffId}" already exists — skipped.` })
-      return
-    }
-
-    insertStaff(staffId, name, row["Email"] ?? null, row["Designation"] ?? null, dept.id)
-    inserted++
-  })
-
-  return { success: true, inserted, skipped: issues.length, issues }
-}
+import { saveDepartment, findDepartmentByCodeOrName, listUsers, USER_COLUMNS } from "../services/master.service"
+import { importStaffFromSheet } from "../../shared/staff-import"
 
 export function registerMasterHandlers() {
   // DEPARTMENTS
   ipcMain.handle("master:getDepartments", () => db.query("SELECT * FROM departments ORDER BY name"))
-  ipcMain.handle("master:saveDepartment", async (_, data) => {
-    if (data.id) {
-      db.run("UPDATE departments SET code=?,name=?,is_active=? WHERE id=?", [data.code, data.name, data.is_active ? 1 : 0, data.id])
-      return db.queryOne("SELECT * FROM departments WHERE id=?", [data.id])
-    }
-    const { lastInsertRowid } = db.run("INSERT INTO departments(code,name) VALUES(?,?)", [data.code, data.name])
-    return db.queryOne("SELECT * FROM departments WHERE id=?", [lastInsertRowid])
-  })
+  ipcMain.handle("master:saveDepartment", async (_, data) => saveDepartment(data))
   ipcMain.handle("master:deleteDepartment", async (_, id) => {
     const inUse = db.queryOne("SELECT id FROM users WHERE department_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: staff assigned to this department." }
@@ -101,31 +16,21 @@ export function registerMasterHandlers() {
   })
 
   // USERS
-  ipcMain.handle("master:getUsers", async (_, filters) => {
-    let sql = `SELECT u.*, d.name as department_name, d.code as department_code
-               FROM users u LEFT JOIN departments d ON u.department_id=d.id WHERE 1=1`
-    const params: any[] = []
-    if (filters?.role) { sql += ` AND u.role=?`; params.push(filters.role) }
-    if (filters?.is_active !== undefined) { sql += ` AND u.is_active=?`; params.push(filters.is_active ? 1 : 0) }
-    if (filters?.department_id) { sql += ` AND u.department_id=?`; params.push(filters.department_id) }
-    sql += ` ORDER BY d.code, u.name`
-    return db.query(sql, params)
-  })
+  ipcMain.handle("master:getUsers", async (_, filters) => listUsers(filters))
+  // Staff are data records only: they never sign in to the desktop app, so no passwords.
   ipcMain.handle("master:saveUser", async (_, data) => {
-    const hash = data.password ? await bcrypt.hash(data.password, 12) : null
     if (data.id) {
-      let sql = `UPDATE users SET staff_id=?,name=?,email=?,designation=?,role=?,department_id=?,is_active=?,updated_at=datetime('now')`
-      const params: any[] = [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, data.is_active?1:0]
-      if (hash) { sql += `,password_hash=?`; params.push(hash) }
-      sql += ` WHERE id=?`; params.push(data.id)
-      db.run(sql, params)
-      return db.queryOne("SELECT * FROM users WHERE id=?", [data.id])
+      db.run(
+        `UPDATE users SET staff_id=?,name=?,email=?,designation=?,role=?,department_id=?,is_active=?,updated_at=datetime('now') WHERE id=?`,
+        [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, data.is_active?1:0, data.id]
+      )
+      return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [data.id])
     }
     const { lastInsertRowid } = db.run(
-      "INSERT INTO users(staff_id,name,email,designation,role,department_id,is_active,password_hash) VALUES(?,?,?,?,?,?,?,?)",
-      [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, 1, hash]
+      "INSERT INTO users(staff_id,name,email,designation,role,department_id,is_active) VALUES(?,?,?,?,?,?,?)",
+      [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, 1]
     )
-    return db.queryOne("SELECT * FROM users WHERE id=?", [lastInsertRowid])
+    return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [lastInsertRowid])
   })
   ipcMain.handle("master:deleteUser", async (_, id) => {
     db.run("UPDATE users SET is_active=0 WHERE id=?", [id]); return { success: true }
@@ -135,8 +40,7 @@ export function registerMasterHandlers() {
     try {
       const wb = XLSX.readFile(filePath)
       const sheet = wb.Sheets[wb.SheetNames[0]]
-      return importStaffFromSheet(sheet, (code) =>
-        db.queryOne<any>("SELECT id FROM departments WHERE code=? COLLATE NOCASE OR name=? COLLATE NOCASE", [code, code]),
+      return importStaffFromSheet(sheet, findDepartmentByCodeOrName,
         (staffId) => db.queryOne<any>("SELECT id FROM users WHERE staff_id=?", [staffId]),
         (staffId, name, email, designation, deptId) =>
           db.run(

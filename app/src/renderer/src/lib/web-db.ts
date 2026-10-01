@@ -324,7 +324,7 @@ function seedDefaults(): void {
     ["session.an_reporting_time", "13:30"],
     ["session.an_start_time", "14:00"],
     ["session.an_end_time", "17:00"],
-    ["app.version", "1.0.0"]
+    ["app.version", "1.1.0"]
   ]
   for (const [key, value] of defaults) {
     const existing = queryOne("SELECT key FROM settings WHERE key = ?", [key])

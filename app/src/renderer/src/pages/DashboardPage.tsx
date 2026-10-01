@@ -20,7 +20,7 @@ function StatCard({ icon: Icon, label, value, color, sub, onClick }: { icon: any
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
         <Icon className="w-6 h-6" />
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="text-2xl font-bold text-brand-textmain">{value}</p>
         <p className="text-sm text-brand-textsec">{label}</p>
         {sub && <p className="text-xs text-brand-textsec mt-0.5">{sub}</p>}
@@ -68,7 +68,7 @@ export default function DashboardPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-brand-textmain">Dashboard</h1>
           <p className="text-brand-textsec mt-1">
@@ -84,7 +84,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-5 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
         <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" onClick={() => navigate("/master?tab=staff")} />
         <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" onClick={() => navigate("/master?tab=halls")} />
         <StatCard icon={Calendar}     label="Allocation Batches"    value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" onClick={() => navigate("/cycles")} />
@@ -93,9 +93,9 @@ export default function DashboardPage() {
         <StatCard icon={AlertCircle}  label="Pending Allocations"   value={stats?.pendingAllocations ?? 0} color="bg-red-50 text-red-500" />
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Recent cycles */}
-        <div className="col-span-3 card">
+        <div className="lg:col-span-3 card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-brand-textmain">Recent Allocation Batches</h2>
             <button onClick={() => navigate("/cycles")} className="text-xs text-brand-primary flex items-center gap-1 hover:underline">
@@ -134,7 +134,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Activity feed */}
-        <div className="col-span-2 card">
+        <div className="lg:col-span-2 card">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="w-4 h-4 text-brand-primary" />
             <h2 className="text-sm font-semibold text-brand-textmain">Recent Activity</h2>

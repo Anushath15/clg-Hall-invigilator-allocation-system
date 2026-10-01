@@ -87,13 +87,13 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold text-brand-textmain mb-2">Settings</h1>
       <p className="text-brand-textsec mb-6">Configure college profile, session defaults, and system options</p>
 
-      <div className="flex gap-6">
-        {/* Sidebar */}
-        <div className="w-48 flex-shrink-0">
-          <nav className="space-y-1">
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Section menu: a column beside the content, or a row above it in narrow windows */}
+        <div className="lg:w-48 flex-shrink-0">
+          <nav className="flex flex-wrap gap-1 lg:block lg:space-y-1">
             {SECTIONS.map(s => (
               <button key={s} onClick={() => setActive(s)}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`lg:w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   active === s
                     ? (s === "Restart Rotation" ? "bg-red-600 text-white" : "bg-brand-primary text-white")
                     : (s === "Restart Rotation" ? "text-red-600 hover:bg-red-50" : "text-brand-textsec hover:bg-gray-100")
@@ -103,7 +103,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 max-w-2xl">
+        <div className="flex-1 min-w-0 max-w-2xl">
 
           {/* College Profile */}
           {active === "College Profile" && (

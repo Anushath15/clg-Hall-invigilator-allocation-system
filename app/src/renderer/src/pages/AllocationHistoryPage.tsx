@@ -66,7 +66,7 @@ export default function AllocationHistoryPage() {
       {/* Filter panel */}
       <div className="card mb-5">
         <h2 className="text-sm font-semibold text-brand-textmain mb-4">Filter Records</h2>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="label">By Allocation Batch</label>
             <select className="input-field" value={filters.cycleId}
@@ -119,7 +119,7 @@ export default function AllocationHistoryPage() {
       {history.length > 0 && (
         <div>
           <p className="text-sm text-brand-textsec mb-2">{history.length} records found · {history.filter(r => r.is_manually_edited).length} admin-edited</p>
-          <div className="card p-0 overflow-hidden">
+          <div className="card p-0 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-brand-border">
                 <tr>{["Staff ID","Name","Dept","Date","Session","Hall","Batch","Type"].map(h =>

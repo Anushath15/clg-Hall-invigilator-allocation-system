@@ -9,6 +9,10 @@ import { cn } from "../lib/utils"
 
 const TABS = ["staff", "halls", "departments"]
 
+// Staff IDs are free text (typed or imported), so digit runs compare as numbers
+// (STF2 before STF10) and case is ignored.
+const staffIdOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
+
 export default function MasterDataPage() {
   const [params, setParams] = useSearchParams()
   const activeTab = params.get("tab") ?? "staff"
@@ -44,7 +48,11 @@ function StaffTab() {
   const [hardDeleteTarget, setHardDeleteTarget] = useState<any>(null)
   const [importResult, setImportResult] = useState<any>(null)
 
-  const load = async () => { setUsers(await api.getUsers({ role: "staff" })); setDepts(await api.getDepartments()) }
+  const load = async () => {
+    const staff = await api.getUsers({ role: "staff" })
+    setUsers(staff.sort((a, b) => staffIdOrder.compare(a.staff_id, b.staff_id)))
+    setDepts(await api.getDepartments())
+  }
   useEffect(() => { load() }, [])
 
   async function importExcel() {
@@ -70,7 +78,7 @@ function StaffTab() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <p className="text-sm text-brand-textsec">{users.length} staff members</p>
         <div className="flex gap-2">
           <button onClick={importExcel} className="btn-secondary flex items-center gap-2"><Upload className="w-4 h-4" /> Import Excel</button>
@@ -108,7 +116,7 @@ function StaffTab() {
         </div>
       )}
 
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
             <tr>{["Staff ID","Name","Department","Designation","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
@@ -124,7 +132,7 @@ function StaffTab() {
                   {u.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><XCircle className="w-3.5 h-3.5" /> Inactive</span>}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right whitespace-nowrap">
                   <button onClick={() => setForm(u)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
                   {u.is_active ? (
                     <button onClick={() => remove(u.id)} title="Deactivate" className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
@@ -234,7 +242,7 @@ function HallsTab() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <p className="text-sm text-brand-textsec">{halls.length} halls · Ordered by rotation sequence (top = first in rotation)</p>
         <button onClick={() => setForm({ is_active: true })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
       </div>
@@ -266,7 +274,7 @@ function HallsTab() {
         </div>
       )}
 
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
             <tr>{["Order","Hall Code","Block","Floor","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
@@ -283,7 +291,7 @@ function HallsTab() {
                   {h.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><XCircle className="w-3.5 h-3.5" /> Inactive</span>}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right whitespace-nowrap">
                   <button onClick={() => setForm(h)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
                   <button onClick={() => remove(h.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </td>
@@ -309,7 +317,11 @@ function DepartmentsTab() {
   async function save() {
     if (!form?.code || !form?.name) return toast.error("Code and Name are required.")
     setLoading(true)
-    try { await api.saveDepartment(form); toast.success("Saved!"); setForm(null); load() } finally { setLoading(false) }
+    try {
+      const r = await api.saveDepartment(form)
+      if (r?.success === false) return toast.error(r.error)
+      toast.success("Saved!"); setForm(null); load()
+    } finally { setLoading(false) }
   }
 
   async function remove(id: number) {
@@ -319,7 +331,7 @@ function DepartmentsTab() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <p className="text-sm text-brand-textsec">{depts.length} departments</p>
         <button onClick={() => setForm({ is_active: true })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Department</button>
       </div>
@@ -329,7 +341,7 @@ function DepartmentsTab() {
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Department" : "Add Department"}</h3>
             <form onSubmit={e => { e.preventDefault(); save() }}>
               <div className="space-y-3">
-                <div><label className="label">Code *</label><input className="input-field" value={form.code ?? ""} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="e.g. CSE" /></div>
+                <div><label className="label">Code *</label><input className="input-field" value={form.code ?? ""} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="e.g. CSE" /></div>
                 <div><label className="label">Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Computer Science & Engineering" /></div>
               </div>
               <div className="flex gap-2 mt-5 justify-end">
@@ -340,7 +352,7 @@ function DepartmentsTab() {
           </div>
         </div>
       )}
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
             <tr>{["Code","Department Name",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
@@ -350,7 +362,7 @@ function DepartmentsTab() {
               <tr key={d.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3 font-mono font-bold text-brand-primary text-xs">{d.code}</td>
                 <td className="px-4 py-3 font-medium">{d.name}</td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right whitespace-nowrap">
                   <button onClick={() => setForm(d)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
                   <button onClick={() => remove(d.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </td>

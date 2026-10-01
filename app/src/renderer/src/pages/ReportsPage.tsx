@@ -144,7 +144,7 @@ export default function ReportsPage() {
       <p className="text-brand-textsec mb-6">Generate and export allocation reports with your college letterhead</p>
 
       {/* Report type selector */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {REPORTS.map(r => (
           <button key={r.id} onClick={() => { setActive(r.id); setData(null) }}
             className={`card flex items-start gap-3 text-left transition-all p-4 ${active === r.id ? "border-brand-primary ring-2 ring-brand-light" : "hover:border-brand-primary"}`}>

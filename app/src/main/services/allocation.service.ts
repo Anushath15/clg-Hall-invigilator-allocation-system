@@ -1,6 +1,7 @@
 import { db, writeAuditLog } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, validateSingleEdit, getValidHallsForStaff } from "./validation.engine"
+import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../shared/staff-duty"
 
 export async function getOrCreateAllocation(
   sessionId: number,
@@ -153,7 +154,7 @@ export function getSessionAllocationFull(sessionId: number) {
      LEFT JOIN departments d ON u.department_id = d.id
      LEFT JOIN halls gh ON a.generated_hall_id = gh.id
      WHERE a.session_id = ?
-     ORDER BY d.code, u.name`,
+     ORDER BY d.code COLLATE NOCASE, u.name`,
     [sessionId]
   )
 }
@@ -176,20 +177,8 @@ export function getValidHallsFor(userId: number, sessionId: number) {
   return getValidHallsForStaff(userId, sessionId, sessionHalls, occupied)
 }
 
-export function getStaffDutyHistory(userId: number) {
-  return db.query(
-    `SELECT es.exam_date, es.session_type, es.reporting_time, es.exam_start, es.exam_end,
-            h.id as hallId, h.hall_code, h.name as hallName, h.block as hallBlock, h.floor as hallFloor,
-            ec.name as cycleName, ec.academic_year,
-            a.is_manually_edited
-     FROM allocations a
-     JOIN exam_sessions es ON a.session_id = es.id
-     JOIN halls h ON a.hall_id = h.id
-     JOIN exam_cycles ec ON es.cycle_id = ec.id
-     WHERE a.user_id = ? AND es.status IN ('confirmed','published')
-     ORDER BY es.exam_date DESC, es.session_type ASC`,
-    [userId]
-  )
+export function getStaffDutyHistory(userId: number): StaffDutyRow[] {
+  return db.query<StaffDutyRow>(STAFF_DUTY_HISTORY_SQL, [userId])
 }
 
 export function restartRotation() {
@@ -259,8 +248,8 @@ export function deleteSession(id: number) {
 
 // Deleting an entire batch (exam cycle) is a deliberate, explicit action distinct from
 // deleteSession above: unlike removing one session from an in-progress workflow, this is
-// meant to work even on a confirmed/published batch (the UI gates it behind a password
-// re-confirmation instead). It removes the batch's rotation_history too, so any fairness
+// meant to work even on a confirmed/published batch (the UI gates it behind a typed DELETE
+// confirmation instead; the web build also asks for the password). It removes the batch's rotation_history too, so any fairness
 // effect that batch had on future allocations is fully undone along with it — the rotation
 // engine only ever reads the *latest* remaining entry per staff member and the running
 // MAX(global_order), neither of which requires the deleted step numbers to be contiguous.
