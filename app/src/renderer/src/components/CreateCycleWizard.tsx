@@ -6,6 +6,7 @@ import { addDays, format } from "date-fns"
 import { cn, formatFullDate, formatTime12h } from "../lib/utils"
 import RealCalendar from "./RealCalendar"
 import { getHoliday, getExamDateStatus } from "../lib/holidays"
+import { useCollegeName } from "../hooks/useCollegeName"
 
 interface Props {
   onClose: () => void
@@ -26,6 +27,7 @@ interface DateSessionConfig {
 }
 
 export default function CreateCycleWizard({ onClose, onCreated }: Props) {
+  const collegeName = useCollegeName()
   const [step, setStep] = useState<Step>("info")
   const [cycleName, setCycleName] = useState("")
   const [academicYear, setAcademicYear] = useState(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`)
@@ -241,13 +243,13 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-brand-border bg-white">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-brand-light text-brand-primary flex items-center justify-center">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-brand-light text-brand-primary flex items-center justify-center flex-shrink-0">
               <CalendarIcon className="w-4 h-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-bold text-brand-textmain">New Allocation Batch</h2>
-              <p className="text-xs text-brand-textsec">St. Xavier&apos;s Catholic College of Engineering — Allocation Batch Setup</p>
+              <p className="text-xs text-brand-textsec truncate">{collegeName} — Allocation Batch Setup</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">

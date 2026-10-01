@@ -5,10 +5,12 @@ import { useAuthStore } from "../store/auth.store"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import NotificationBell from "./NotificationBell"
+import { useCollegeName } from "../hooks/useCollegeName"
 
 export default function StaffLayout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const collegeName = useCollegeName()
   async function handleLogout() {
     await api.logout(); logout(); navigate("/login"); toast.success("Logged out")
   }
@@ -19,7 +21,7 @@ export default function StaffLayout() {
           <HiasLogo className="w-9 h-9" />
           <div>
             <h1 className="text-sm font-bold">Hall Invigilator Allocation System</h1>
-            <p className="text-xs text-gray-400">St. Xavier&apos;s Catholic College of Engineering, Nagercoil</p>
+            <p className="text-xs text-gray-400">{collegeName}</p>
           </div>
         </div>
         <div className="flex items-center gap-4">

@@ -18,7 +18,7 @@ export function formatFullDate(date: string): string {
   try { return format(parseISO(date), "EEEE, dd MMMM yyyy") } catch { return date }
 }
 
-export function formatTime12h(time24: string): string {
+export function formatTime12h(time24: string | null | undefined): string {
   if (!time24) return ""
   const parts = time24.split(":")
   if (parts.length < 2) return time24

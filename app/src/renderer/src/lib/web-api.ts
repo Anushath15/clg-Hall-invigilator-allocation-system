@@ -274,6 +274,7 @@ export const webApi = {
   // "cse" are the same department, so a second one is refused.
   saveDepartment: async (data: any) => {
     await ensureDb()
+    if (!String(data?.code ?? "").trim() || !String(data?.name ?? "").trim()) return { success: false, error: "Code and Name are required." }
     const clash = webDb.queryOne<any>("SELECT code FROM departments WHERE code = ? COLLATE NOCASE AND id != ?", [data.code, data.id ?? 0])
     if (clash) return { success: false, error: `A department with code "${clash.code}" already exists (codes are not case-sensitive).` }
     if (data.id) {
@@ -596,6 +597,12 @@ export const webApi = {
   // Allocation
   generateAllocation: async (sessionId: number, userIds: number[], hallIds: number[]) => {
     await ensureDb()
+    // Same guards as the desktop (allocation.service.ts getOrCreateAllocation).
+    const session = webDb.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
+    if (!session) throw new Error("Exam session not found.")
+    if (session.status === "confirmed" || session.status === "published") throw new Error("This session is already confirmed. It cannot be regenerated.")
+    if (new Set(userIds).size !== userIds.length) throw new Error("The same staff member is selected more than once.")
+    if (new Set(hallIds).size !== hallIds.length) throw new Error("The same hall is selected more than once.")
     const entries = generateRotation(sessionId, userIds, hallIds)
 
     webDb.run("DELETE FROM allocations WHERE session_id = ?", [sessionId])
@@ -621,7 +628,11 @@ export const webApi = {
 
   editAllocation: async (sessionId: number, userId: number, newHallId: number, editReason?: string) => {
     await ensureDb()
+    const session = webDb.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
+    if (!session) return { success: false, error: "Exam session not found." }
+    if (session.status === "confirmed" || session.status === "published") return { success: false, error: "This session is confirmed; its allocation can no longer be edited." }
     const current = webDb.query<any>("SELECT user_id, hall_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])
+    if (current.find((r: any) => r.user_id === userId)?.hall_id === newHallId) return { success: false, error: "That is already the assigned hall." }
     const currentEntries = current.map((r: any) => ({ userId: r.user_id, hallId: r.hall_id, sessionId }))
     const sessionHallPool = Array.from(new Set(current.map((r: any) => r.generated_hall_id || r.hall_id))) as number[]
     const error = validateSingleEdit(userId, newHallId, sessionId, currentEntries, sessionHallPool)
@@ -853,7 +864,7 @@ export const webApi = {
     if (userId) { sql += ` AND a.user_id = ?`; params.push(userId) }
     if (fromYear) { sql += ` AND ec.academic_year >= ?`; params.push(fromYear) }
     if (toYear) { sql += ` AND ec.academic_year <= ?`; params.push(toYear) }
-    sql += ` ORDER BY u.name, es.exam_date, es.session_type`
+    sql += ` ORDER BY u.name, es.exam_date, CASE es.session_type WHEN 'FN' THEN 0 ELSE 1 END`
     return webDb.query(sql, params)
   },
 

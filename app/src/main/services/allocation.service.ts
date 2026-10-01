@@ -8,6 +8,14 @@ export async function getOrCreateAllocation(
   userIds: number[],
   hallIds: number[]
 ) {
+  // A confirmed session's halls are already in the rotation history; regenerating it would
+  // leave allocations and history out of step. (The UI never offers it; refuse it here too.)
+  const session = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
+  if (!session) throw new Error("Exam session not found.")
+  if (session.status === "confirmed" || session.status === "published") throw new Error("This session is already confirmed. It cannot be regenerated.")
+  if (new Set(userIds).size !== userIds.length) throw new Error("The same staff member is selected more than once.")
+  if (new Set(hallIds).size !== hallIds.length) throw new Error("The same hall is selected more than once.")
+
   const entries = await generateAllocation(sessionId, userIds, hallIds)
 
   // Save to allocations table
@@ -28,7 +36,15 @@ export async function getOrCreateAllocation(
 }
 
 export function editAllocationEntry(sessionId: number, userId: number, newHallId: number, editReason?: string) {
+  const session = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
+  if (!session) return { success: false, error: { rule: "SESSION", message: "Exam session not found." } }
+  if (session.status === "confirmed" || session.status === "published") {
+    return { success: false, error: { rule: "LOCKED", message: "This session is confirmed; its allocation can no longer be edited." } }
+  }
   const current = db.query<any>("SELECT user_id, hall_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])
+  if (current.find((r: any) => r.user_id === userId)?.hall_id === newHallId) {
+    return { success: false, error: { rule: "NO_CHANGE", message: "That is already the assigned hall." } }
+  }
   const currentEntries = current.map((r: any) => ({ userId: r.user_id, hallId: r.hall_id, sessionId }))
   // BUG 5 fix: Extract session's declared hall pool
   const sessionHallPool = Array.from(new Set(current.map((r: any) => r.generated_hall_id || r.hall_id))) as number[]

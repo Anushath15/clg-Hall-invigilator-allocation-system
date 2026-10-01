@@ -121,7 +121,14 @@ describe("Offline desktop", () => {
     const refused = editAllocationEntry(1, rows[0].userId, rows[1].hallId)
     expect(refused.success).toBe(false)
     expect(refused.error?.rule).toBe("R2")
+    expect(editAllocationEntry(1, rows[0].userId, rows[0].hallId).error?.rule).toBe("NO_CHANGE") // no fake "Admin Edited"
+    await expect(getOrCreateAllocation(1, [userIds[0], userIds[0], userIds[1], userIds[2]], hallIds)).rejects.toThrow(/selected more than once/)
     expect((await confirmAllocation(1)).success).toBe(true)
+    // A confirmed session is locked: no regeneration or edit can put allocations and history out of step.
+    await expect(getOrCreateAllocation(1, userIds, [...hallIds].reverse())).rejects.toThrow(/already confirmed/)
+    expect(editAllocationEntry(1, rows[0].userId, rows[1].hallId).error?.rule).toBe("LOCKED")
+    expect(db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = 1")?.status).toBe("confirmed")
+    expect(getSessionAllocationFull(1).map((r: any) => r.hallId)).toEqual(rows.map(r => r.hallId))
     expect(publishAllocation(1)).toMatchObject({ success: true })
     expect(count("notifications", "session_id = 1")).toBe(4) // one duty notice per assigned staff member
     // The next session respects the rotation (no one repeats their session 1 hall).

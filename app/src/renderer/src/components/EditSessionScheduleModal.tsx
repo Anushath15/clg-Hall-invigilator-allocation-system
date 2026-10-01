@@ -156,7 +156,7 @@ export default function EditSessionScheduleModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-brand-border bg-white">
           <div className="flex items-center gap-2.5">
@@ -178,7 +178,7 @@ export default function EditSessionScheduleModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSave} className="p-6 space-y-5 flex-1 overflow-y-auto">
+        <form onSubmit={handleSave} className="p-6 space-y-5 flex-1 min-h-0 overflow-y-auto">
           {/* Unresolved existing duplicate banner */}
           {isCurrentlyDuplicate && (
             <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-800 flex items-start gap-2.5 shadow-xs">

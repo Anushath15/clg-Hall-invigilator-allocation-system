@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Calendar, Clock, MapPin, Building2, Printer } from "lucide-react"
 import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
-import { formatDate, formatSession, hallLocation } from "../lib/utils"
+import { formatDate, formatSession, formatTime12h, hallLocation } from "../lib/utils"
 import { splitStaffDuties, type StaffDutyRow } from "../../../shared/staff-duty"
 
 export default function StaffDutyPage() {
@@ -48,8 +48,8 @@ export default function StaffDutyPage() {
         <tr><td>Staff ID</td><td>${user?.staff_id}</td></tr>
         <tr><td>Exam Date</td><td>${formatDate(next.exam_date)}</td></tr>
         <tr><td>Session</td><td>${formatSession(next.session_type)}</td></tr>
-        <tr><td>Reporting Time</td><td>${next.reporting_time}</td></tr>
-        <tr><td>Exam Time</td><td>${next.exam_start} – ${next.exam_end}</td></tr>
+        <tr><td>Reporting Time</td><td>${formatTime12h(next.reporting_time)}</td></tr>
+        <tr><td>Exam Time</td><td>${formatTime12h(next.exam_start)} – ${formatTime12h(next.exam_end)}</td></tr>
         <tr><td>Allocation Batch</td><td>${next.cycleName}</td></tr>
       </table>
       <div class="hall-box">${next.hall_code}</div>
@@ -113,9 +113,9 @@ export default function StaffDutyPage() {
               <Clock className="w-5 h-5 text-brand-light mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs text-gray-400">Reporting Time</p>
-                <p className="font-bold text-lg">{next.reporting_time}</p>
+                <p className="font-bold text-lg">{formatTime12h(next.reporting_time)}</p>
                 <p className="text-xs text-gray-400 mt-1">Exam Duration</p>
-                <p className="font-medium text-sm">{next.exam_start} – {next.exam_end}</p>
+                <p className="font-medium text-sm">{formatTime12h(next.exam_start)} – {formatTime12h(next.exam_end)}</p>
               </div>
             </div>
           </div>
@@ -166,8 +166,8 @@ export default function StaffDutyPage() {
                   <td className="py-2.5 pr-4 font-medium">{formatDate(d.exam_date)}</td>
                   <td className="py-2.5 pr-4">{d.session_type}</td>
                   <td className="py-2.5 pr-4 font-bold text-brand-primary">{d.hall_code}</td>
-                  <td className="py-2.5 pr-4 text-brand-textsec">{d.reporting_time}</td>
-                  <td className="py-2.5 pr-4 text-brand-textsec">{d.exam_start} – {d.exam_end}</td>
+                  <td className="py-2.5 pr-4 text-brand-textsec">{formatTime12h(d.reporting_time)}</td>
+                  <td className="py-2.5 pr-4 text-brand-textsec">{formatTime12h(d.exam_start)} – {formatTime12h(d.exam_end)}</td>
                   <td className="py-2.5 text-brand-textsec text-xs">{d.cycleName}</td>
                 </tr>
               ))}

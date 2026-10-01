@@ -10,6 +10,7 @@ import { db } from "../db/database"
 export interface DepartmentInput { id?: number; code: string; name: string; is_active?: boolean }
 
 export function saveDepartment(data: DepartmentInput): { success: boolean; error?: string; department?: any } {
+  if (!String(data?.code ?? "").trim() || !String(data?.name ?? "").trim()) return { success: false, error: "Code and Name are required." }
   const clash = db.queryOne<any>("SELECT code FROM departments WHERE code = ? COLLATE NOCASE AND id != ?", [data.code, data.id ?? 0])
   if (clash) return { success: false, error: `A department with code "${clash.code}" already exists (codes are not case-sensitive).` }
   if (data.id) {

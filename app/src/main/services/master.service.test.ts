@@ -42,6 +42,13 @@ describe("Department codes", () => {
     expect(codes()).toEqual(["CSE", "ece"])
   })
 
+  it("a missing or blank code or name is refused with a message, and nothing is saved", () => {
+    for (const bad of [{}, { code: "  ", name: "Blank code" }, { code: "CSE", name: " " }, { code: "CSE" }] as any[]) {
+      expect(saveDepartment(bad)).toEqual({ success: false, error: "Code and Name are required." })
+    }
+    expect(codes()).toEqual([])
+  })
+
   it("editing may change the case of a department's own code, but not take another's", () => {
     const cse = saveDepartment({ code: "CSE", name: "Computer Science" }).department
     const ece = saveDepartment({ code: "ECE", name: "Electronics" }).department

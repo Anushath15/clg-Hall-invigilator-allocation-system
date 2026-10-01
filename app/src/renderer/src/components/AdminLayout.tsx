@@ -18,7 +18,9 @@ function readCollapsed(): boolean {
 }
 
 // Below 1024px the sidebar is icon-only automatically; the saved preference applies again when wider.
-const NARROW_QUERY = "(max-width: 1023px)"
+// The exact opposite of Tailwind's lg (min-width: 1024px): with display scaling the width can be
+// fractional (1023.2px at 125%), which "(max-width: 1023px)" would miss.
+const NARROW_QUERY = "not all and (min-width: 1024px)"
 function useNarrowWindow() {
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches)
   useEffect(() => {

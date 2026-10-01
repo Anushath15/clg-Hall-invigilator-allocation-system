@@ -167,7 +167,7 @@ export default function AllocationWorkspacePage() {
   async function applyEdit(hallId: number) {
     const r = await api.editAllocation(activeSession.id, editEntry.userId, hallId)
     if (r.success) { toast.success("Hall updated!"); setEditEntry(null); loadAllocation() }
-    else toast.error(r.error?.message ?? "Invalid assignment.")
+    else toast.error(r.error?.message ?? (typeof r.error === "string" ? r.error : "Invalid assignment."))
   }
 
   async function handleConfirm() {

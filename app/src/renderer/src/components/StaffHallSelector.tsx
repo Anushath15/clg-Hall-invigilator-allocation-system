@@ -88,7 +88,7 @@ export default function StaffHallSelector({ allUsers, allHalls, onConfirm, onClo
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-brand-border">
           <h3 className="text-base font-semibold">Select Invigilators & Halls</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} title="Close" className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Toolbar: search + Excel duty list */}

@@ -17,7 +17,7 @@ export function getStaffWiseReport(userId?: number, fromYear?: string, toYear?: 
   if (userId) { sql += ` AND a.user_id = ?`; params.push(userId) }
   if (fromYear) { sql += ` AND ec.academic_year >= ?`; params.push(fromYear) }
   if (toYear) { sql += ` AND ec.academic_year <= ?`; params.push(toYear) }
-  sql += ` ORDER BY u.name, es.exam_date, es.session_type`
+  sql += ` ORDER BY u.name, es.exam_date, CASE es.session_type WHEN 'FN' THEN 0 ELSE 1 END`
   return db.query(sql, params)
 }
 
@@ -70,6 +70,6 @@ export function getRotationAuditReport(cycleId: number) {
      JOIN exam_sessions es ON a.session_id = es.id
      LEFT JOIN departments d ON u.department_id = d.id
      WHERE es.cycle_id = ?
-     ORDER BY es.exam_date, es.session_type, u.name`, [cycleId]
+     ORDER BY es.exam_date, CASE es.session_type WHEN 'FN' THEN 0 ELSE 1 END, u.name`, [cycleId]
   )
 }

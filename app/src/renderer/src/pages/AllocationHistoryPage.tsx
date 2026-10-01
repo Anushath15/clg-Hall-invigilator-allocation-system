@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { History, Download } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, hallLocation } from "../lib/utils"
+import { useCollegeName } from "../hooks/useCollegeName"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -11,6 +12,7 @@ export default function AllocationHistoryPage() {
   const [halls, setHalls] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [filters, setFilters] = useState({ cycleId: "", userId: "", hallId: "", sessionId: "" })
+  const collegeName = useCollegeName()
   const [history, setHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -41,7 +43,7 @@ export default function AllocationHistoryPage() {
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape" })
     doc.setFontSize(13)
-    doc.text("St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil", 14, 14)
+    doc.text(collegeName, 14, 14)
     doc.setFontSize(10)
     doc.text("Allocation History Report", 14, 21)
     doc.setFontSize(8)

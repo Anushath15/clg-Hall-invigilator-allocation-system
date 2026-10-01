@@ -249,6 +249,32 @@ try {
     await until(() => document.querySelector("aside")?.innerText.includes("E2E-TEST"), "sidebar short name");
     return "college short name saved and shown in the sidebar"`))
 
+  await step("The college name from Settings appears on the Dashboard, the batch wizard and the History PDF", () => ev(`
+    const name = "E2E Test College of Engineering";
+    await go("#/settings"); await fill("College Full Name", name); await click("Save Profile");
+    await go("#/dashboard"); await until(() => document.querySelector("main")?.innerText.includes(name), "college name on the Dashboard");
+    await go("#/cycles"); await click("New Allocation Batch");
+    await until(() => document.querySelector(".fixed.inset-0")?.innerText.includes(name), "college name in the batch wizard");
+    [...document.querySelectorAll(".fixed.inset-0 button")].find(b => b.innerText.trim() === "Cancel").click(); await sleep(300);
+    capturePdfs(); await go("#/history"); await click("Search Records"); await until(() => document.querySelectorAll("main tbody tr").length > 0, "history rows");
+    const n = pdfs().length; await click("Export PDF"); await until(() => pdfs().length > n, "History PDF");
+    const text = new TextDecoder("latin1").decode(await (await fetch(pdfs()[pdfs().length - 1].href)).arrayBuffer());
+    if (!text.includes(name)) throw new Error("the History PDF does not carry the college name from Settings");
+    return "shown on the Dashboard and in the wizard; printed on the History PDF"`))
+
+  await step("The sidebar turns icon-only exactly where the page layouts switch to narrow (1024px)", async () => {
+    // With display scaling the width can be fractional (1023.2px at 125%); both must agree there too.
+    const seen = []
+    for (const w of [1366, 1024, 1023, 1022, 960, 1366]) {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: 800, deviceScaleFactor: 1, mobile: false })
+      const r = await ev(`await sleep(400); return { w: visualViewport.width, lg: matchMedia("(min-width: 1024px)").matches, sidebar: Math.round(document.querySelector("aside").getBoundingClientRect().width) }`)
+      seen.push(`${Math.round(r.w * 10) / 10}px ${r.sidebar === 64 ? "icons" : "full"}`)
+      if ((r.sidebar === 64) === r.lg) throw new Error(`at ${r.w}px the sidebar is ${r.sidebar}px but the page layout is ${r.lg ? "wide" : "narrow"}`)
+    }
+    await cdp.send("Emulation.clearDeviceMetricsOverride")
+    return seen.join(", ")
+  })
+
   await step("Back up the database to a local file", async () => {
     const r = await ev(`return await api.backupDatabase(${js(backupFile)})`)
     assert(r.success, JSON.stringify(r))

@@ -4,6 +4,7 @@ import { Users, Building2, Calendar, CheckCircle, Clock, AlertCircle, Plus, Arro
 import { api } from "../lib/api"
 import { formatDate } from "../lib/utils"
 import { useAuthStore } from "../store/auth.store"
+import { useCollegeName } from "../hooks/useCollegeName"
 
 interface Stats {
   totalStaff: number; totalHalls: number; totalCycles: number
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const collegeName = useCollegeName()
 
   useEffect(() => {
     api.getDashboardStats().then(setStats)
@@ -74,9 +76,7 @@ export default function DashboardPage() {
           <p className="text-brand-textsec mt-1">
             Welcome back, <span className="font-medium text-brand-primary">{user?.name}</span> · {today}
           </p>
-          <p className="text-brand-textsec text-sm mt-0.5">
-            St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil
-          </p>
+          <p className="text-brand-textsec text-sm mt-0.5">{collegeName}</p>
         </div>
         <button onClick={() => navigate("/cycles")} className="btn-primary flex items-center gap-2 shadow-sm">
           <Plus className="w-4 h-4" /> New Allocation Batch

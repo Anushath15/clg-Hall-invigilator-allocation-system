@@ -133,7 +133,7 @@ function StaffTab() {
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><XCircle className="w-3.5 h-3.5" /> Inactive</span>}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  <button onClick={() => setForm(u)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => setForm(u)} title="Edit" className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
                   {u.is_active ? (
                     <button onClick={() => remove(u.id)} title="Deactivate" className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
                   ) : (
@@ -235,15 +235,16 @@ function HallsTab() {
     try { await api.saveHall(form); toast.success("Saved!"); setForm(null); load() } finally { setLoading(false) }
   }
 
-  async function remove(id: number) {
-    const r = await api.deleteHall(id)
+  async function remove(h: any) {
+    if (!confirm(`Delete hall ${h.hall_code}?`)) return
+    const r = await api.deleteHall(h.id)
     if (r.success) { toast.success("Deleted"); load() } else toast.error(r.error)
   }
 
   return (
     <div>
       <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-        <p className="text-sm text-brand-textsec">{halls.length} halls · Ordered by rotation sequence (top = first in rotation)</p>
+        <p className="text-sm text-brand-textsec">{halls.length} halls · Listed in the order they were added; the allocation does not depend on this order</p>
         <button onClick={() => setForm({ is_active: true })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
       </div>
 
@@ -292,8 +293,8 @@ function HallsTab() {
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><XCircle className="w-3.5 h-3.5" /> Inactive</span>}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  <button onClick={() => setForm(h)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => remove(h.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => setForm(h)} title="Edit" className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => remove(h)} title="Delete" className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
@@ -315,7 +316,7 @@ function DepartmentsTab() {
   useEffect(() => { load() }, [])
 
   async function save() {
-    if (!form?.code || !form?.name) return toast.error("Code and Name are required.")
+    if (!form?.code?.trim() || !form?.name?.trim()) return toast.error("Code and Name are required.")
     setLoading(true)
     try {
       const r = await api.saveDepartment(form)
@@ -324,8 +325,9 @@ function DepartmentsTab() {
     } finally { setLoading(false) }
   }
 
-  async function remove(id: number) {
-    const r = await api.deleteDepartment(id)
+  async function remove(d: any) {
+    if (!confirm(`Delete department ${d.code}?`)) return
+    const r = await api.deleteDepartment(d.id)
     if (r.success) { toast.success("Deleted"); load() } else toast.error(r.error)
   }
 
@@ -363,8 +365,8 @@ function DepartmentsTab() {
                 <td className="px-4 py-3 font-mono font-bold text-brand-primary text-xs">{d.code}</td>
                 <td className="px-4 py-3 font-medium">{d.name}</td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  <button onClick={() => setForm(d)} className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => remove(d.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => setForm(d)} title="Edit" className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => remove(d)} title="Delete" className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
