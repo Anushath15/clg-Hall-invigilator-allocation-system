@@ -247,7 +247,7 @@ export default function AllocationWorkspacePage() {
     ),
     published: (
       <span className="flex items-center gap-2 text-green-600 font-medium text-sm">
-        <CheckCircle className="w-4 h-4" /> Published — visible to staff
+        <CheckCircle className="w-4 h-4" /> Published
       </span>
     )
   }

@@ -43,7 +43,7 @@ export default function SettingsPage() {
     try {
       const res = await api.restartRotation()
       if (res?.success) {
-        toast.success("Rotation restarted successfully! Active staff have been notified.")
+        toast.success("Rotation restarted. Every staff member starts a fresh round with all halls open again.")
       } else {
         toast.error(res?.error || "Failed to restart rotation.")
       }
@@ -263,7 +263,7 @@ export default function SettingsPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-red-900 text-base">Restart Rotation</h3>
                   <p className="text-sm text-red-700 mt-1 leading-relaxed">
-                    Permanently clear the entire rotation history across all sessions. Every staff member starts a fresh rotation cycle with all halls open to them again, and all active staff members will be sent a notification.
+                    Permanently clear the entire rotation history across all sessions. Every staff member starts a fresh rotation cycle with all halls open to them again.
                   </p>
                   <div className="mt-3 p-3 bg-red-100/70 rounded-lg border border-red-200 text-xs text-red-800">
                     <strong>Warning:</strong> This action cannot be reversed. You will be prompted to type <strong>RESTART</strong>{IS_DESKTOP ? "" : " and confirm your password"} before rotation history is cleared.
