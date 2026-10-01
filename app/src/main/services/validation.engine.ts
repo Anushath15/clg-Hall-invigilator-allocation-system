@@ -96,28 +96,20 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
     }
   }
 
-  // R4 ? Rotation integrity: this session must follow the last confirmed session in step order
+  // R4 - Rotation integrity: EVERY earlier session of the batch (lower rotation_step) must
+  // already be confirmed. Requiring only that some earlier session was confirmed let step 3 be
+  // confirmed while step 2 was still pending (QA-16).
   const session = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id = ?", [sessionId])
   if (session) {
-    const prevConfirmed = db.queryOne<any>(
-      `SELECT id FROM exam_sessions WHERE cycle_id = ? AND rotation_step < ? AND status IN ('confirmed','published')
-       ORDER BY rotation_step DESC LIMIT 1`,
+    const unconfirmedEarlier = db.queryOne<any>(
+      "SELECT COUNT(*) as c FROM exam_sessions WHERE cycle_id = ? AND rotation_step < ? AND status NOT IN ('confirmed','published')",
       [session.cycle_id, session.rotation_step]
     )
-    if (prevConfirmed) {
-      // OK ? previous session is confirmed
-    } else {
-      // Check if there is any session before this one
-      const hasPrevious = db.queryOne<any>(
-        "SELECT id FROM exam_sessions WHERE cycle_id = ? AND rotation_step < ?",
-        [session.cycle_id, session.rotation_step]
-      )
-      if (hasPrevious) {
-        errors.push({
-          rule: "R4",
-          message: "Previous session(s) in this cycle have not been confirmed yet. Confirm sessions in order."
-        })
-      }
+    if ((unconfirmedEarlier?.c ?? 0) > 0) {
+      errors.push({
+        rule: "R4",
+        message: "Previous session(s) in this cycle have not been confirmed yet. Confirm sessions in order."
+      })
     }
   }
 

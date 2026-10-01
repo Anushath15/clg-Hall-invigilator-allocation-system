@@ -5,6 +5,10 @@
  * Confirmed and published sessions are never renumbered: their halls are already in the
  * rotation history (whose global_order, set at confirmation, is what R1 reads) and their steps
  * are part of the audit trail. Used by the desktop and the web build.
+ *
+ * R4 confirms sessions strictly in step order, so the confirmed steps are 1..k with no gaps.
+ * Numbering after the HIGHEST confirmed step (rather than after k) also copes with gaps that a
+ * database from before that rule was tightened might contain.
  */
 export interface SessionOrderRow {
   id: number

@@ -370,6 +370,28 @@ describe("More allocation scenarios", () => {
     expect((await confirmAllocation(s2)).success).toBe(true)
   })
 
+  it("G8b step 3 cannot be confirmed while step 2 is pending, even with step 1 confirmed (QA-16)", async () => {
+    reset(4, 4)
+    const u = staffIds(4), h = hallIdList(4)
+    const s1 = newSession(), s2 = newSession(), s3 = newSession()
+    await getOrCreateAllocation(s1, u, h)
+    expect((await confirmAllocation(s1)).success).toBe(true)
+    // Skipping step 2 is refused, and nothing of step 3 reaches the rotation history.
+    await getOrCreateAllocation(s3, u, h)
+    const skip = await confirmAllocation(s3)
+    expect(skip.success).toBe(false)
+    expect(skip.validation?.blockingErrors.map((e: any) => e.rule)).toEqual(["R4"])
+    const status = (sid: number) => db.queryOne<any>("SELECT status FROM exam_sessions WHERE id=?", [sid])?.status
+    expect(status(s3)).toBe("draft")
+    expect(db.queryOne<any>("SELECT COUNT(*) as c FROM rotation_history WHERE session_id=?", [s3])?.c).toBe(0)
+    // In order, both go through (step 3 is regenerated once step 2 is in the history).
+    await getOrCreateAllocation(s2, u, h)
+    expect((await confirmAllocation(s2)).success).toBe(true)
+    await getOrCreateAllocation(s3, u, h)
+    expect((await confirmAllocation(s3)).success).toBe(true)
+    expect([s1, s2, s3].map(status)).toEqual(["confirmed", "confirmed", "confirmed"])
+  })
+
   it("G9 staff and hall counts must match", async () => {
     reset(6, 6)
     const sid = newSession()

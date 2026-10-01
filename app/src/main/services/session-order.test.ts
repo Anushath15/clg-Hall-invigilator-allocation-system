@@ -86,8 +86,11 @@ describe("Unconfirmed sessions are renumbered into date order; confirmed ones ne
     const s = (id: number, exam_date: string, session_type: string, rotation_step: number, status: string) => ({ id, exam_date, session_type, rotation_step, status })
     // Already in order: nothing to change.
     expect(unconfirmedStepChanges([s(1, "2099-01-01", "FN", 1, "confirmed"), s(2, "2099-01-01", "AN", 2, "pending")])).toEqual([])
-    // Confirmed out of step order (steps 1 and 3): the pending session at step 2 moves after them,
-    // and the earlier-dated draft comes first among the unconfirmed (it is already at step 4).
+    // Robustness, not normal operation: R4 requires every earlier session to be confirmed first
+    // (QA-16), so confirmed steps run 1, 2, 3, ... without gaps. A database from before that fix
+    // could still hold confirmed steps 1 and 3 with a pending session between them; the rule
+    // copes: that pending session moves after them, and the earlier-dated draft comes first
+    // among the unconfirmed (it is already at step 4).
     const rows = [
       s(1, "2099-01-01", "FN", 1, "confirmed"), s(2, "2099-01-02", "FN", 2, "pending"),
       s(3, "2099-01-03", "FN", 3, "published"), s(4, "2099-01-01", "AN", 4, "draft"),

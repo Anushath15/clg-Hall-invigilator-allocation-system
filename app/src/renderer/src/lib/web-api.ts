@@ -102,25 +102,20 @@ function validateAllocation(
     }
   }
 
-  // R4 - Rotation integrity
+  // R4 - Rotation integrity: EVERY earlier session of the batch (lower rotation_step) must
+  // already be confirmed. Requiring only that some earlier session was confirmed let step 3 be
+  // confirmed while step 2 was still pending (QA-16).
   const session = webDb.queryOne<any>("SELECT * FROM exam_sessions WHERE id = ?", [sessionId])
   if (session) {
-    const prevConfirmed = webDb.queryOne<any>(
-      `SELECT id FROM exam_sessions WHERE cycle_id = ? AND rotation_step < ? AND status IN ('confirmed','published')
-       ORDER BY rotation_step DESC LIMIT 1`,
+    const unconfirmedEarlier = webDb.queryOne<any>(
+      "SELECT COUNT(*) as c FROM exam_sessions WHERE cycle_id = ? AND rotation_step < ? AND status NOT IN ('confirmed','published')",
       [session.cycle_id, session.rotation_step]
     )
-    if (!prevConfirmed) {
-      const hasPrevious = webDb.queryOne<any>(
-        "SELECT id FROM exam_sessions WHERE cycle_id = ? AND rotation_step < ?",
-        [session.cycle_id, session.rotation_step]
-      )
-      if (hasPrevious) {
-        errors.push({
-          rule: "R4",
-          message: "Previous session(s) in this cycle have not been confirmed yet. Confirm sessions in order."
-        })
-      }
+    if ((unconfirmedEarlier?.c ?? 0) > 0) {
+      errors.push({
+        rule: "R4",
+        message: "Previous session(s) in this cycle have not been confirmed yet. Confirm sessions in order."
+      })
     }
   }
 
