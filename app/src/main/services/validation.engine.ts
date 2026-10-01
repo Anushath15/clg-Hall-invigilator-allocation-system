@@ -1,5 +1,6 @@
 import { db } from "../db/database"
-import { minimumUnavoidableRepeats, hallsVisitedThisCycle } from "./rotation.engine"
+import { minimumUnavoidableRepeats, hallsVisitedThisCycle, hallHistory } from "./rotation.engine"
+import { planSwap, type SwapPlan } from "../../shared/swap"
 
 /** The hall pool a rotation cycle is measured over; all active halls if the session has none yet. */
 function cyclePool(sessionHalls: number[]): number[] {
@@ -123,18 +124,34 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
   return { isValid: errors.length === 0, blockingErrors: errors, warnings }
 }
 
-export function validateSingleEdit(
+/** The confirmed session in which a staff member last had a hall (for R1 messages). */
+function lastVisit(userId: number, hallId: number) {
+  return db.queryOne<any>(
+    `SELECT es.exam_date, es.session_type FROM rotation_history rh
+     JOIN exam_sessions es ON rh.session_id = es.id
+     WHERE rh.user_id = ? AND rh.hall_id = ?
+     ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC LIMIT 1`,
+    [userId, hallId]
+  )
+}
+
+/**
+ * A manual edit is a swap (shared/swap.ts): `userId` takes `hallId` and whoever holds it takes
+ * userId's hall. Both people must be active, both halls active and in the session's pool,
+ * and R1 must hold for BOTH people.
+ */
+export function validateSwap(
   userId: number,
   hallId: number,
   sessionId: number,
   currentEntries: ValidationEntry[],
   sessionHallPool?: number[]
-): ValidationError | null {
+): { error: ValidationError } | { plan: SwapPlan } {
   const user = db.queryOne<any>("SELECT * FROM users WHERE id = ?", [userId])
-  if (!user?.is_active) return { rule: "R5", message: `${user?.name ?? "Staff"} is inactive.`, userId }
+  if (!user?.is_active) return { error: { rule: "R5", message: `${user?.name ?? "Staff"} is inactive.`, userId } }
 
   const hall = db.queryOne<any>("SELECT * FROM halls WHERE id = ?", [hallId])
-  if (!hall?.is_active) return { rule: "R6", message: `Hall ${hall?.hall_code ?? hallId} is inactive.`, hallId }
+  if (!hall?.is_active) return { error: { rule: "R6", message: `Hall ${hall?.hall_code ?? hallId} is inactive.`, hallId } }
 
   // BUG 5 fix: Ensure hall belongs to the current session's hall pool
   const sessionHalls = sessionHallPool && sessionHallPool.length > 0
@@ -142,39 +159,58 @@ export function validateSingleEdit(
     : db.query<any>("SELECT DISTINCT COALESCE(generated_hall_id, hall_id) as h_id FROM allocations WHERE session_id = ?", [sessionId]).map((r: any) => r.h_id)
 
   if (sessionHalls.length > 0 && !sessionHalls.includes(hallId)) {
-    return { rule: "SESSION_POOL", message: `Hall ${hall.hall_code} is not part of this session's hall pool.`, hallId }
+    return { error: { rule: "SESSION_POOL", message: `Hall ${hall.hall_code} is not part of this session's hall pool.`, hallId } }
   }
 
-  const hallTaken = currentEntries.find(e => e.hallId === hallId && e.userId !== userId)
-  if (hallTaken) return { rule: "R2", message: `Hall ${hall.hall_code} is already assigned to another invigilator in this session.`, hallId }
+  const plan = planSwap(currentEntries, userId, hallId, cyclePool(sessionHalls), hallHistory)
+  if (plan.fromHallId === null) return { error: { rule: "SESSION", message: `${user.name} has no hall in this session.`, userId } }
 
-  if (hallsVisitedThisCycle(userId, cyclePool(sessionHalls)).has(hallId)) {
-    const prev = db.queryOne<any>(
-      `SELECT es.exam_date, es.session_type FROM rotation_history rh
-       JOIN exam_sessions es ON rh.session_id = es.id
-       WHERE rh.user_id = ? AND rh.hall_id = ?
-       ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC LIMIT 1`,
-      [userId, hallId]
-    )
-    return {
+  if (plan.selfRepeat) {
+    const prev = lastVisit(userId, hallId)
+    return { error: {
       rule: "R1",
       message: `${user.name} was already assigned Hall ${hall.hall_code} on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.`,
       userId, hallId
+    } }
+  }
+
+  if (plan.partnerUserId !== null) {
+    const partner = db.queryOne<any>("SELECT * FROM users WHERE id = ?", [plan.partnerUserId])
+    const fromHall = db.queryOne<any>("SELECT * FROM halls WHERE id = ?", [plan.fromHallId])
+    if (!partner?.is_active) return { error: { rule: "R5", message: `${partner?.name ?? "Staff"} holds Hall ${hall.hall_code} but is inactive.`, userId: plan.partnerUserId } }
+    if (!fromHall?.is_active) return { error: { rule: "R6", message: `Hall ${fromHall?.hall_code ?? plan.fromHallId} is inactive, so ${partner.name} cannot take it.`, hallId: plan.fromHallId } }
+    if (plan.partnerRepeat) {
+      const prev = lastVisit(partner.id, fromHall.id)
+      return { error: {
+        rule: "R1",
+        message: `Swap refused: ${partner.name} would get Hall ${fromHall.hall_code}, which ${partner.name} already had on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.`,
+        userId: partner.id, hallId: fromHall.id
+      } }
     }
   }
-  return null
+  return { plan }
 }
 
+/** The halls offered in the edit dialog: each one is a swap with its holder, checked for both people. */
 export function getValidHallsForStaff(
   userId: number,
   sessionId: number,
   sessionHallIds: number[],
-  occupiedHallIds: number[]
-): { hallId: number; isValid: boolean; reason?: string }[] {
-  const usedInCycle = hallsVisitedThisCycle(userId, cyclePool(sessionHallIds))
+  entries: { userId: number; hallId: number }[]
+): { hallId: number; isValid: boolean; reason?: string; swapWithUserId?: number }[] {
+  const pool = cyclePool(sessionHallIds)
+  const mine = entries.find(e => e.userId === userId)
   return sessionHallIds.map(hallId => {
-    if (occupiedHallIds.includes(hallId)) return { hallId, isValid: false, reason: "Assigned to another invigilator" }
-    if (usedInCycle.has(hallId)) return { hallId, isValid: false, reason: "Already visited in cycle" }
-    return { hallId, isValid: true }
+    if (mine?.hallId === hallId) return { hallId, isValid: false, reason: "Current hall" }
+    const plan = planSwap(entries, userId, hallId, pool, hallHistory)
+    if (plan.selfRepeat) return { hallId, isValid: false, reason: "Already visited in cycle" }
+    if (plan.partnerUserId === null) return { hallId, isValid: true }
+    if (!mine) return { hallId, isValid: false, reason: "Assigned to another invigilator" }
+    if (plan.partnerRepeat) {
+      const partner = db.queryOne<any>("SELECT name FROM users WHERE id = ?", [plan.partnerUserId])
+      const fromHall = db.queryOne<any>("SELECT hall_code FROM halls WHERE id = ?", [mine.hallId])
+      return { hallId, isValid: false, reason: `Swap blocked: ${partner?.name ?? "the holder"} already had Hall ${fromHall?.hall_code ?? mine.hallId} in this rotation cycle` }
+    }
+    return { hallId, isValid: true, swapWithUserId: plan.partnerUserId }
   })
 }

@@ -351,7 +351,7 @@ describe("Integration Tests ? Database & Service Flow (T1?T12)", () => {
     await getOrCreateAllocation(1, [1, 2], [1, 2])
 
     // Try to edit Staff 1's allocation to Hall 9 (active hall, but outside Session 1's pool [1, 2])
-    const res = editAllocationEntry(1, 1, 9)
+    const res = await editAllocationEntry(1, 1, 9)
     expect(res.success).toBe(false)
     expect(res.error?.rule).toBe("SESSION_POOL")
   })

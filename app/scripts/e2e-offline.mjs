@@ -193,16 +193,33 @@ try {
     await until(() => body().includes("All 7 validation rules passed"), "validation passed");
     return document.querySelectorAll("main tbody tr").length + " assignments, all 7 rules passed"`))
 
-  await step("Manual edits are validated before saving", () => ev(`
+  await step("A manual edit swaps two invigilators' halls (R1 checked for both); the dialog offers the swaps", () => ev(`
     const cycle = (await api.getCycles())[0]; const s = (await api.getSessions(cycle.id))[0];
     const a = await api.getSessionAllocation(s.id);
+    const hallOf = async () => Object.fromEntries((await api.getSessionAllocation(s.id)).map(r => [r.userId, r.hallId]));
+    const before = await hallOf();
     const r = await api.editAllocation(s.id, a[0].userId, a[1].hallId, "e2e");
-    if (r.success || r.error?.rule !== "R2") throw new Error(JSON.stringify(r));
+    if (!r.success || r.swappedWithUserId !== a[1].userId) throw new Error(JSON.stringify(r));
+    const swapped = await hallOf();
+    if (swapped[a[0].userId] !== a[1].hallId || swapped[a[1].userId] !== a[0].hallId) throw new Error("not swapped: " + JSON.stringify(swapped));
+    if (!(await api.editAllocation(s.id, a[0].userId, a[0].hallId)).success) throw new Error("swap back failed");
+    if (JSON.stringify(await hallOf()) !== JSON.stringify(before)) throw new Error("swap back did not restore the halls");
+    // The dialog: the person's own hall is marked Current; every other hall is a swap with its holder.
     document.querySelector("main button[title='Edit hall assignment']").click();
-    await until(() => body().includes("Edit Hall Assignment"), "edit dialog");
-    const disabled = [...document.querySelectorAll(".fixed.inset-0 .grid button")].filter(b => b.disabled).length;
-    [...document.querySelectorAll(".fixed.inset-0 button")].find(b => !b.innerText.trim() && b.querySelector("svg")).click(); await sleep(300);
-    return "occupied hall refused (R2); dialog offers " + disabled + " occupied halls as unavailable"`))
+    await until(() => body().includes("Edit Hall Assignment") && document.querySelectorAll(".fixed.inset-0 .grid button").length > 1, "edit dialog");
+    const opts = [...document.querySelectorAll(".fixed.inset-0 .grid button")];
+    const current = opts.filter(b => b.disabled && b.innerText.includes("Current")).length;
+    const swaps = opts.filter(b => !b.disabled && b.innerText.includes("\u2194")).length;
+    if (current !== 1 || swaps !== opts.length - 1) throw new Error("dialog: " + opts.map(b => b.innerText.split("\\n").join(" ")).join(" | "));
+    // Swap from the dialog, then undo it the same way.
+    opts.find(b => !b.disabled).click();
+    await until(() => toast().includes("Swapped"), "swap toast");
+    const afterUi = await hallOf(); const moved = Object.keys(before).filter(u => before[u] !== afterUi[u]).length;
+    if (moved !== 2) throw new Error("the dialog swap changed " + moved + " rows");
+    const [u1, u2] = Object.keys(before).filter(u => before[u] !== afterUi[u]).map(Number);
+    if (!(await api.editAllocation(s.id, u1, before[u1])).success || JSON.stringify(await hallOf()) !== JSON.stringify(before)) throw new Error("undo failed");
+    const hash = location.hash; await go("#/cycles"); await go(hash); await until(() => document.querySelector("main tbody tr"), "workspace");
+    return "API swap and swap back ok; dialog shows 1 current + " + swaps + " swaps; dialog swap moved 2 rows and was undone"`))
 
   await step("Confirm the allocation and export the session PDF", () => ev(`
     await click("Confirm Allocation"); await until(() => byText("button", "Export PDF"), "confirmed");

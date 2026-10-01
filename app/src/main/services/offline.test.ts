@@ -113,20 +113,25 @@ describe("Offline desktop", () => {
     db.run("INSERT INTO exam_sessions(id, cycle_id, exam_date, session_type, rotation_step, reporting_time, exam_start, exam_end, status) VALUES(2, 1, '2099-11-02', 'AN', 2, '13:30', '14:00', '17:00', 'pending')")
     const userIds = staff.map(s => s.id), hallIds = db.query<any>("SELECT id FROM halls ORDER BY sort_order").map(h => h.id)
 
-    // Generate, check, try an unsafe manual edit, confirm and publish.
+    // Generate, check, swap two halls and back, confirm and publish.
     const gen = await getOrCreateAllocation(1, userIds, hallIds)
     expect(gen.validation.isValid).toBe(true)
     const rows = getSessionAllocationFull(1) as any[]
     expect(new Set(rows.map(r => r.hall_code)).size).toBe(4)
-    const refused = editAllocationEntry(1, rows[0].userId, rows[1].hallId)
-    expect(refused.success).toBe(false)
-    expect(refused.error?.rule).toBe("R2")
-    expect(editAllocationEntry(1, rows[0].userId, rows[0].hallId).error?.rule).toBe("NO_CHANGE") // no fake "Admin Edited"
+    const now = () => new Map((getSessionAllocationFull(1) as any[]).map(r => [r.userId, [r.hallId, r.is_manually_edited]]))
+    // A manual edit swaps two people's halls (no history yet, so R1 allows it for both).
+    expect(await editAllocationEntry(1, rows[0].userId, rows[1].hallId)).toMatchObject({ success: true, swappedWithUserId: rows[1].userId })
+    expect(now().get(rows[0].userId)).toEqual([rows[1].hallId, 1])
+    expect(now().get(rows[1].userId)).toEqual([rows[0].hallId, 1])
+    // Swapping back restores the generated result, which is no longer marked Admin Edited.
+    expect(await editAllocationEntry(1, rows[0].userId, rows[0].hallId)).toMatchObject({ success: true })
+    expect([...now().values()]).toEqual(rows.map(r => [r.hallId, 0]))
+    expect((await editAllocationEntry(1, rows[0].userId, rows[0].hallId)).error?.rule).toBe("NO_CHANGE") // no fake "Admin Edited"
     await expect(getOrCreateAllocation(1, [userIds[0], userIds[0], userIds[1], userIds[2]], hallIds)).rejects.toThrow(/selected more than once/)
     expect((await confirmAllocation(1)).success).toBe(true)
     // A confirmed session is locked: no regeneration or edit can put allocations and history out of step.
     await expect(getOrCreateAllocation(1, userIds, [...hallIds].reverse())).rejects.toThrow(/already confirmed/)
-    expect(editAllocationEntry(1, rows[0].userId, rows[1].hallId).error?.rule).toBe("LOCKED")
+    expect((await editAllocationEntry(1, rows[0].userId, rows[1].hallId)).error?.rule).toBe("LOCKED")
     expect(db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = 1")?.status).toBe("confirmed")
     expect(getSessionAllocationFull(1).map((r: any) => r.hallId)).toEqual(rows.map(r => r.hallId))
     expect(publishAllocation(1)).toMatchObject({ success: true })

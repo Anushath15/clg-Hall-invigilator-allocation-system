@@ -29,7 +29,7 @@ export async function generateAllocation(
 // ─── 1:1 allocation: optimal assignment (see assignment.ts) ─────────────────
 
 /** A staff member's confirmed halls, most recent first. */
-function hallHistory(userId: number): number[] {
+export function hallHistory(userId: number): number[] {
   return db.query<any>(
     "SELECT hall_id FROM rotation_history WHERE user_id = ? ORDER BY COALESCE(global_order, 0) DESC, datetime(recorded_at) DESC, id DESC",
     [userId]

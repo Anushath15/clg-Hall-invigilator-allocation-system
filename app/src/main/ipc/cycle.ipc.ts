@@ -1,6 +1,6 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
-import { deleteSession, deleteCycle, refreshCycleStatus } from "../services/allocation.service"
+import { deleteSession, deleteCycle, createSessions, addSession, updateSession } from "../services/allocation.service"
 
 export function registerCycleHandlers() {
   ipcMain.handle("cycle:getCycles", () => db.query("SELECT * FROM exam_cycles ORDER BY created_at DESC"))
@@ -16,81 +16,10 @@ export function registerCycleHandlers() {
   ipcMain.handle("cycle:getSessions", async (_, cycleId) =>
     db.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
   )
-  ipcMain.handle("cycle:createSessions", async (_, cycleId, sessions) => {
-    return db.runTransaction(() => {
-      // SAFE: only delete sessions that are NOT confirmed or published
-      const safeToDelete = db.query<any>(
-        "SELECT id FROM exam_sessions WHERE cycle_id=? AND status NOT IN ('confirmed','published')",
-        [cycleId]
-      )
-      for (const s of safeToDelete) {
-        db.run("DELETE FROM exam_sessions WHERE id=?", [s.id])
-      }
-      // Find highest step from surviving confirmed sessions
-      const maxStepRow = db.queryOne<any>("SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?", [cycleId])
-      let step = (maxStepRow?.m ?? 0) + 1
-      const seen = new Set<string>()
-      const existing = db.query<any>("SELECT exam_date, session_type FROM exam_sessions WHERE cycle_id=?", [cycleId])
-      for (const e of existing) seen.add(`${e.exam_date}_${e.session_type}`)
-
-      for (const s of sessions) {
-        const key = `${s.exam_date}_${s.session_type}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        db.run(
-          "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
-          [cycleId, s.exam_date, s.session_type, step++, s.reporting_time??null, s.exam_start??null, s.exam_end??null, "pending"]
-        )
-      }
-      return db.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
-    })
-  })
-  ipcMain.handle("cycle:updateSession", async (_, id, data) => {
-    const current = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
-    if (!current) return null
-    const examDate = data.exam_date ?? current.exam_date
-    const sessionType = data.session_type ?? current.session_type
-
-    // Check for duplicate session date and slot within the same cycle
-    const conflict = db.queryOne<any>(
-      "SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=? AND id!=?",
-      [current.cycle_id, examDate, sessionType, id]
-    )
-    if (conflict) {
-      throw new Error(`A ${sessionType === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"} session already exists for ${examDate} in this cycle.`)
-    }
-
-    const reportingTime = data.reporting_time !== undefined ? data.reporting_time : current.reporting_time
-    const examStart = data.exam_start !== undefined ? data.exam_start : current.exam_start
-    const examEnd = data.exam_end !== undefined ? data.exam_end : current.exam_end
-    const status = data.status ?? current.status
-    const rotationStep = data.rotation_step !== undefined ? data.rotation_step : current.rotation_step
-
-    db.run(
-      "UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,status=?,rotation_step=?,updated_at=datetime('now') WHERE id=?",
-      [examDate, sessionType, reportingTime, examStart, examEnd, status, rotationStep, id]
-    )
-    return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [id])
-  })
-  ipcMain.handle("cycle:addSession", async (_, cycleId, data) => {
-    // Check for duplicate session date and slot
-    const exists = db.queryOne<any>(
-      "SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=?",
-      [cycleId, data.exam_date, data.session_type]
-    )
-    if (exists) {
-      throw new Error(`A ${data.session_type === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"} session already exists for ${data.exam_date} in this cycle.`)
-    }
-
-    const maxStep = db.queryOne<any>("SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?", [cycleId])
-    const step = (maxStep?.m ?? 0) + 1
-    const { lastInsertRowid } = db.run(
-      "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
-      [cycleId, data.exam_date, data.session_type, step, data.reporting_time??null, data.exam_start??null, data.exam_end??null, "pending"]
-    )
-    refreshCycleStatus(cycleId) // a new pending session reopens a confirmed batch
-    return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
-  })
+  // Session changes keep the unconfirmed sessions in date order (allocation.service.ts).
+  ipcMain.handle("cycle:createSessions", async (_, cycleId, sessions) => createSessions(cycleId, sessions))
+  ipcMain.handle("cycle:updateSession", async (_, id, data) => updateSession(id, data))
+  ipcMain.handle("cycle:addSession", async (_, cycleId, data) => addSession(cycleId, data))
   ipcMain.handle("cycle:deleteSession", async (_, id) => deleteSession(id))
   ipcMain.handle("cycle:deleteCycle", async (_, id) => deleteCycle(id))
 }

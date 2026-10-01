@@ -7,6 +7,8 @@ import bcrypt from "bcryptjs"
 import { assignHalls, minimumRepeats, visitedThisCycle, allocationSeed } from "../../../shared/assignment"
 import { importStaffFromSheet } from "../../../shared/staff-import"
 import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../../shared/staff-duty"
+import { planSwap } from "../../../shared/swap"
+import { unconfirmedStepChanges, type SessionOrderRow } from "../../../shared/session-order"
 import * as XLSX from "xlsx"
 import { webDb } from "./web-db"
 
@@ -125,7 +127,19 @@ function validateAllocation(
   return { isValid: errors.length === 0, blockingErrors: errors, warnings }
 }
 
-function validateSingleEdit(
+/** The confirmed session in which a staff member last had a hall (for R1 messages). */
+function lastVisit(userId: number, hallId: number) {
+  return webDb.queryOne<any>(
+    `SELECT es.exam_date, es.session_type FROM rotation_history rh
+     JOIN exam_sessions es ON rh.session_id = es.id
+     WHERE rh.user_id = ? AND rh.hall_id = ?
+     ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC LIMIT 1`,
+    [userId, hallId]
+  )
+}
+
+/** Manual edit = swap, checked for both people (same rules as the desktop validation.engine.ts validateSwap). */
+function validateSwap(
   userId: number,
   hallId: number,
   sessionId: number,
@@ -133,33 +147,45 @@ function validateSingleEdit(
   sessionHallPool?: number[]
 ) {
   const user = webDb.queryOne<any>("SELECT * FROM users WHERE id = ?", [userId])
-  if (!user?.is_active) return `${user?.name ?? "Staff"} is inactive.`
+  if (!user?.is_active) return { error: `${user?.name ?? "Staff"} is inactive.` }
 
   const hall = webDb.queryOne<any>("SELECT * FROM halls WHERE id = ?", [hallId])
-  if (!hall?.is_active) return `Hall ${hall?.hall_code ?? hallId} is inactive.`
+  if (!hall?.is_active) return { error: `Hall ${hall?.hall_code ?? hallId} is inactive.` }
 
   const sessionHalls = sessionHallPool && sessionHallPool.length > 0
     ? sessionHallPool
     : webDb.query<any>("SELECT DISTINCT COALESCE(generated_hall_id, hall_id) as h_id FROM allocations WHERE session_id = ?", [sessionId]).map((r: any) => r.h_id)
 
   if (sessionHalls.length > 0 && !sessionHalls.includes(hallId)) {
-    return `Hall ${hall.hall_code} is not part of this session's hall pool.`
+    return { error: `Hall ${hall.hall_code} is not part of this session's hall pool.` }
   }
 
-  const hallTaken = currentEntries.find(e => e.hallId === hallId && e.userId !== userId)
-  if (hallTaken) return `Hall ${hall.hall_code} is already assigned to another invigilator in this session.`
+  const plan = planSwap(currentEntries, userId, hallId, cyclePool(sessionHalls), hallHistory)
+  if (plan.fromHallId === null) return { error: `${user.name} has no hall in this session.` }
 
-  if (visitedThisCycle(hallHistory(userId), cyclePool(sessionHalls)).has(hallId)) {
-    const prev = webDb.queryOne<any>(
-      `SELECT es.exam_date, es.session_type FROM rotation_history rh
-       JOIN exam_sessions es ON rh.session_id = es.id
-       WHERE rh.user_id = ? AND rh.hall_id = ?
-       ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC LIMIT 1`,
-      [userId, hallId]
-    )
-    return `${user.name} was already assigned Hall ${hall.hall_code} on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.`
+  if (plan.selfRepeat) {
+    const prev = lastVisit(userId, hallId)
+    return { error: `${user.name} was already assigned Hall ${hall.hall_code} on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.` }
   }
-  return null
+  if (plan.partnerUserId !== null) {
+    const partner = webDb.queryOne<any>("SELECT * FROM users WHERE id = ?", [plan.partnerUserId])
+    const fromHall = webDb.queryOne<any>("SELECT * FROM halls WHERE id = ?", [plan.fromHallId])
+    if (!partner?.is_active) return { error: `${partner?.name ?? "Staff"} holds Hall ${hall.hall_code} but is inactive.` }
+    if (!fromHall?.is_active) return { error: `Hall ${fromHall?.hall_code ?? plan.fromHallId} is inactive, so ${partner.name} cannot take it.` }
+    if (plan.partnerRepeat) {
+      const prev = lastVisit(partner.id, fromHall.id)
+      return { error: `Swap refused: ${partner.name} would get Hall ${fromHall.hall_code}, which ${partner.name} already had on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.` }
+    }
+  }
+  return { plan }
+}
+
+/** Puts a batch's pending and draft sessions into date order after its confirmed ones (shared/session-order.ts). */
+function renumberUnconfirmedSessions(cycleId: number) {
+  const sessions = webDb.query<SessionOrderRow>("SELECT id, exam_date, session_type, rotation_step, status FROM exam_sessions WHERE cycle_id=?", [cycleId])
+  for (const c of unconfirmedStepChanges(sessions)) {
+    webDb.run("UPDATE exam_sessions SET rotation_step=?, updated_at=datetime('now') WHERE id=? AND status NOT IN ('confirmed','published')", [c.rotation_step, c.id])
+  }
 }
 
 // -------------------------------------------------------------
@@ -523,6 +549,7 @@ export const webApi = {
           [cycleId, s.exam_date, s.session_type, step++, s.reporting_time??null, s.exam_start??null, s.exam_end??null, "pending"]
         )
       }
+      renumberUnconfirmedSessions(cycleId)
       writeAuditLog(null, "CREATE_SESSION", `Generated ${sessions.length} sessions for cycle ${cycleId}`, { cycleId, count: sessions.length })
       return webDb.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
     })
@@ -546,13 +573,13 @@ export const webApi = {
     const reportingTime = data.reporting_time !== undefined ? data.reporting_time : current.reporting_time
     const examStart = data.exam_start !== undefined ? data.exam_start : current.exam_start
     const examEnd = data.exam_end !== undefined ? data.exam_end : current.exam_end
-    const status = data.status ?? current.status
-    const rotationStep = data.rotation_step !== undefined ? data.rotation_step : current.rotation_step
 
+    // Status and rotation_step are not taken from the caller (as on the desktop, allocation.service.ts updateSession).
     webDb.run(
-      "UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,status=?,rotation_step=?,updated_at=datetime('now') WHERE id=?",
-      [examDate, sessionType, reportingTime, examStart, examEnd, status, rotationStep, id]
+      "UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,updated_at=datetime('now') WHERE id=?",
+      [examDate, sessionType, reportingTime, examStart, examEnd, id]
     )
+    renumberUnconfirmedSessions(current.cycle_id)
     return webDb.queryOne("SELECT * FROM exam_sessions WHERE id=?", [id])
   },
 
@@ -572,6 +599,7 @@ export const webApi = {
       "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
       [cycleId, data.exam_date, data.session_type, step, data.reporting_time??null, data.exam_start??null, data.exam_end??null, "pending"]
     )
+    renumberUnconfirmedSessions(cycleId)
     writeAuditLog(null, "CREATE_SESSION", `Added session ${data.exam_date} ${data.session_type} for cycle ${cycleId}`, { id: lastInsertRowid, cycleId, ...data })
     return webDb.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
   },
@@ -585,10 +613,7 @@ export const webApi = {
     }
     webDb.run("DELETE FROM allocations WHERE session_id=?", [id])
     webDb.run("DELETE FROM exam_sessions WHERE id=?", [id])
-    const remaining = webDb.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
-    remaining.forEach((s, idx) => {
-      webDb.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
-    })
+    renumberUnconfirmedSessions(session.cycle_id) // confirmed sessions keep their steps
     writeAuditLog(null, "DELETE_SESSION", `Session ID ${id} deleted`, { id, cycle_id: session.cycle_id })
     return { success: true }
   },
@@ -631,31 +656,57 @@ export const webApi = {
     const session = webDb.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
     if (!session) return { success: false, error: "Exam session not found." }
     if (session.status === "confirmed" || session.status === "published") return { success: false, error: "This session is confirmed; its allocation can no longer be edited." }
-    const current = webDb.query<any>("SELECT user_id, hall_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])
+    const current = webDb.query<any>("SELECT user_id, hall_id, generated_hall_id, created_at FROM allocations WHERE session_id = ?", [sessionId])
     if (current.find((r: any) => r.user_id === userId)?.hall_id === newHallId) return { success: false, error: "That is already the assigned hall." }
     const currentEntries = current.map((r: any) => ({ userId: r.user_id, hallId: r.hall_id, sessionId }))
     const sessionHallPool = Array.from(new Set(current.map((r: any) => r.generated_hall_id || r.hall_id))) as number[]
-    const error = validateSingleEdit(userId, newHallId, sessionId, currentEntries, sessionHallPool)
-    if (error) return { success: false, error }
+    const checked = validateSwap(userId, newHallId, sessionId, currentEntries, sessionHallPool)
+    if ("error" in checked) return { success: false, error: checked.error }
+    const { plan } = checked!
 
-    webDb.run(
-      "UPDATE allocations SET hall_id=?, is_manually_edited=1, edit_reason=?, updated_at=datetime('now') WHERE session_id=? AND user_id=?",
-      [newHallId, editReason ?? null, sessionId, userId]
-    )
-    writeAuditLog(null, "EDIT_ALLOCATION", `Manual override for session ${sessionId}, user ${userId} to hall ${newHallId}`, { sessionId, userId, newHallId, editReason })
-    return { success: true }
+    const moves = [{ userId, hallId: newHallId }]
+    if (plan.partnerUserId !== null) moves.push({ userId: plan.partnerUserId, hallId: plan.fromHallId! })
+    // Both rows are replaced together: UNIQUE(session_id, hall_id) rules out moving them one at a time.
+    await webDb.runTransaction(() => {
+      for (const m of moves) webDb.run("DELETE FROM allocations WHERE session_id=? AND user_id=?", [sessionId, m.userId])
+      for (const m of moves) {
+        const row = current.find((r: any) => r.user_id === m.userId)
+        const edited = row.generated_hall_id == null || m.hallId !== row.generated_hall_id
+        webDb.run(
+          `INSERT INTO allocations(session_id, user_id, hall_id, is_manually_edited, edit_reason, generated_hall_id, created_at, updated_at)
+           VALUES(?,?,?,?,?,?,?,datetime('now'))`,
+          [sessionId, m.userId, m.hallId, edited ? 1 : 0, edited ? editReason ?? null : null, row.generated_hall_id, row.created_at]
+        )
+      }
+      if (plan.partnerUserId !== null) {
+        writeAuditLog(null, "SWAP_ALLOCATION", `Manual swap in session ${sessionId}: user ${userId} to hall ${newHallId}, user ${plan.partnerUserId} to hall ${plan.fromHallId}`,
+          { sessionId, userId, newHallId, partnerUserId: plan.partnerUserId, partnerHallId: plan.fromHallId, editReason })
+      } else {
+        writeAuditLog(null, "EDIT_ALLOCATION", `Manual override for session ${sessionId}, user ${userId} to hall ${newHallId}`, { sessionId, userId, newHallId, editReason })
+      }
+    })
+    return { success: true, swappedWithUserId: plan.partnerUserId }
   },
 
   getValidHalls: async (userId: number, sessionId: number) => {
     await ensureDb()
     const allocations = webDb.query<any>("SELECT hall_id, user_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])
     const sessionHallIds = Array.from(new Set(allocations.map((a: any) => a.generated_hall_id || a.hall_id))) as number[]
-    const occupiedHallIds = allocations.filter((a: any) => a.user_id !== userId).map((a: any) => a.hall_id)
-    const usedInCycle = visitedThisCycle(hallHistory(userId), cyclePool(sessionHallIds))
+    const entries = allocations.map((a: any) => ({ userId: a.user_id, hallId: a.hall_id }))
+    const pool = cyclePool(sessionHallIds)
+    const mine = entries.find((e: any) => e.userId === userId)
     return sessionHallIds.map(hallId => {
-      if (occupiedHallIds.includes(hallId)) return { hallId, isValid: false, reason: "Assigned to another invigilator" }
-      if (usedInCycle.has(hallId)) return { hallId, isValid: false, reason: "Already visited in cycle" }
-      return { hallId, isValid: true }
+      if (mine?.hallId === hallId) return { hallId, isValid: false, reason: "Current hall" }
+      const plan = planSwap(entries, userId, hallId, pool, hallHistory)
+      if (plan.selfRepeat) return { hallId, isValid: false, reason: "Already visited in cycle" }
+      if (plan.partnerUserId === null) return { hallId, isValid: true }
+      if (!mine) return { hallId, isValid: false, reason: "Assigned to another invigilator" }
+      if (plan.partnerRepeat) {
+        const partner = webDb.queryOne<any>("SELECT name FROM users WHERE id = ?", [plan.partnerUserId])
+        const fromHall = webDb.queryOne<any>("SELECT hall_code FROM halls WHERE id = ?", [mine.hallId])
+        return { hallId, isValid: false, reason: `Swap blocked: ${partner?.name ?? "the holder"} already had Hall ${fromHall?.hall_code ?? mine.hallId} in this rotation cycle` }
+      }
+      return { hallId, isValid: true, swapWithUserId: plan.partnerUserId }
     })
   },
 

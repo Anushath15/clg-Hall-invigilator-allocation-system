@@ -423,10 +423,11 @@ describe("More allocation scenarios", () => {
     const sid = newSession()
     await getOrCreateAllocation(sid, u, hallIdList(4))
     const m = mapping(sid)
-    // Onto a hall someone else already has in this session (R2).
-    expect(editAllocationEntry(sid, u[0], m[u[1]]).error?.rule).toBe("R2")
+    // Three sessions into a four-hall cycle, each person's only unvisited hall is the one they
+    // have, so swapping with anyone repeats a hall (R1).
+    expect((await editAllocationEntry(sid, u[0], m[u[1]])).error?.rule).toBe("R1")
     // Onto a hall outside this session's pool.
-    expect(editAllocationEntry(sid, u[0], 5).error?.rule).toBe("SESSION_POOL")
+    expect((await editAllocationEntry(sid, u[0], 5)).error?.rule).toBe("SESSION_POOL")
     // Nothing changed.
     expect(mapping(sid)).toEqual(m)
   })

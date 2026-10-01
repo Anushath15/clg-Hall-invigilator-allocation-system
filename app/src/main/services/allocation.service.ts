@@ -1,6 +1,7 @@
 import { db, writeAuditLog } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
-import { validateAllocation, validateSingleEdit, getValidHallsForStaff } from "./validation.engine"
+import { validateAllocation, validateSwap, getValidHallsForStaff } from "./validation.engine"
+import { unconfirmedStepChanges, type SessionOrderRow } from "../../shared/session-order"
 import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../shared/staff-duty"
 
 export async function getOrCreateAllocation(
@@ -35,28 +36,50 @@ export async function getOrCreateAllocation(
   return { entries: fullAllocation, validation }
 }
 
-export function editAllocationEntry(sessionId: number, userId: number, newHallId: number, editReason?: string) {
+/**
+ * Manual edit = swap: `userId` takes `newHallId` and whoever holds it takes userId's hall
+ * (validateSwap checks R1 for both). A row counts as Admin Edited while it differs from the
+ * generated hall, so swapping back clears the mark.
+ */
+export async function editAllocationEntry(sessionId: number, userId: number, newHallId: number, editReason?: string) {
   const session = db.queryOne<any>("SELECT status FROM exam_sessions WHERE id = ?", [sessionId])
   if (!session) return { success: false, error: { rule: "SESSION", message: "Exam session not found." } }
   if (session.status === "confirmed" || session.status === "published") {
     return { success: false, error: { rule: "LOCKED", message: "This session is confirmed; its allocation can no longer be edited." } }
   }
-  const current = db.query<any>("SELECT user_id, hall_id, generated_hall_id FROM allocations WHERE session_id = ?", [sessionId])
+  const current = db.query<any>("SELECT user_id, hall_id, generated_hall_id, created_at FROM allocations WHERE session_id = ?", [sessionId])
   if (current.find((r: any) => r.user_id === userId)?.hall_id === newHallId) {
     return { success: false, error: { rule: "NO_CHANGE", message: "That is already the assigned hall." } }
   }
   const currentEntries = current.map((r: any) => ({ userId: r.user_id, hallId: r.hall_id, sessionId }))
   // BUG 5 fix: Extract session's declared hall pool
   const sessionHallPool = Array.from(new Set(current.map((r: any) => r.generated_hall_id || r.hall_id))) as number[]
-  const error = validateSingleEdit(userId, newHallId, sessionId, currentEntries, sessionHallPool)
-  if (error) return { success: false, error }
+  const checked = validateSwap(userId, newHallId, sessionId, currentEntries, sessionHallPool)
+  if ("error" in checked) return { success: false, error: checked.error }
+  const { plan } = checked
 
-  db.run(
-    "UPDATE allocations SET hall_id=?, is_manually_edited=1, edit_reason=?, updated_at=datetime('now') WHERE session_id=? AND user_id=?",
-    [newHallId, editReason ?? null, sessionId, userId]
-  )
-  writeAuditLog(null, "EDIT_ALLOCATION", `Manual override for session ${sessionId}, user ${userId} to hall ${newHallId}`, { sessionId, userId, newHallId, editReason })
-  return { success: true }
+  const moves = [{ userId, hallId: newHallId }]
+  if (plan.partnerUserId !== null) moves.push({ userId: plan.partnerUserId, hallId: plan.fromHallId! })
+  // Both rows are replaced together: UNIQUE(session_id, hall_id) rules out moving them one at a time.
+  await db.runTransaction(() => {
+    for (const m of moves) db.run("DELETE FROM allocations WHERE session_id=? AND user_id=?", [sessionId, m.userId])
+    for (const m of moves) {
+      const row = current.find((r: any) => r.user_id === m.userId)
+      const edited = row.generated_hall_id == null || m.hallId !== row.generated_hall_id
+      db.run(
+        `INSERT INTO allocations(session_id, user_id, hall_id, is_manually_edited, edit_reason, generated_hall_id, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,datetime('now'))`,
+        [sessionId, m.userId, m.hallId, edited ? 1 : 0, edited ? editReason ?? null : null, row.generated_hall_id, row.created_at]
+      )
+    }
+    if (plan.partnerUserId !== null) {
+      writeAuditLog(null, "SWAP_ALLOCATION", `Manual swap in session ${sessionId}: user ${userId} to hall ${newHallId}, user ${plan.partnerUserId} to hall ${plan.fromHallId}`,
+        { sessionId, userId, newHallId, partnerUserId: plan.partnerUserId, partnerHallId: plan.fromHallId, editReason })
+    } else {
+      writeAuditLog(null, "EDIT_ALLOCATION", `Manual override for session ${sessionId}, user ${userId} to hall ${newHallId}`, { sessionId, userId, newHallId, editReason })
+    }
+  })
+  return { success: true, swappedWithUserId: plan.partnerUserId }
 }
 
 export async function confirmAllocation(sessionId: number) {
@@ -176,7 +199,7 @@ export function getSessionAllocationFull(sessionId: number) {
 }
 
 export function getValidHallsFor(userId: number, sessionId: number) {
-  const occupied = db.query<any>("SELECT hall_id FROM allocations WHERE session_id = ?", [sessionId]).map((r: any) => r.hall_id)
+  const entries = db.query<any>("SELECT user_id, hall_id FROM allocations WHERE session_id = ?", [sessionId]).map((r: any) => ({ userId: r.user_id, hallId: r.hall_id }))
   // BUG 5 fix: Session hall pool only
   const poolRows = db.query<any>(
     `SELECT DISTINCT h.id, h.sort_order 
@@ -190,7 +213,7 @@ export function getValidHallsFor(userId: number, sessionId: number) {
   if (sessionHalls.length === 0) {
     sessionHalls = db.query<any>("SELECT id FROM halls WHERE is_active = 1 ORDER BY sort_order, id").map((h: any) => h.id)
   }
-  return getValidHallsForStaff(userId, sessionId, sessionHalls, occupied)
+  return getValidHallsForStaff(userId, sessionId, sessionHalls, entries)
 }
 
 export function getStaffDutyHistory(userId: number): StaffDutyRow[] {
@@ -253,13 +276,99 @@ export function deleteSession(id: number) {
   }
   db.run("DELETE FROM allocations WHERE session_id=?", [id])
   db.run("DELETE FROM exam_sessions WHERE id=?", [id])
-  // Renumber remaining sessions in this cycle to maintain contiguous 1..N rotation_step
-  const remaining = db.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step, id", [session.cycle_id])
-  remaining.forEach((s, idx) => {
-    db.run("UPDATE exam_sessions SET rotation_step=? WHERE id=?", [idx + 1, s.id])
-  })
+  renumberUnconfirmedSessions(session.cycle_id) // confirmed sessions keep their steps
   refreshCycleStatus(session.cycle_id)
   return { success: true }
+}
+
+/** Puts a batch's pending and draft sessions into date order after its confirmed ones (shared/session-order.ts). */
+export function renumberUnconfirmedSessions(cycleId: number) {
+  const sessions = db.query<SessionOrderRow>("SELECT id, exam_date, session_type, rotation_step, status FROM exam_sessions WHERE cycle_id=?", [cycleId])
+  for (const c of unconfirmedStepChanges(sessions)) {
+    db.run("UPDATE exam_sessions SET rotation_step=?, updated_at=datetime('now') WHERE id=? AND status NOT IN ('confirmed','published')", [c.rotation_step, c.id])
+  }
+}
+
+const slotName = (type: string) => (type === "FN" ? "Forenoon (FN)" : "Afternoon (AN)")
+
+/** The batch wizard: replaces the batch's unconfirmed sessions with `sessions` (confirmed ones stay). */
+export async function createSessions(cycleId: number, sessions: any[]) {
+  return db.runTransaction(() => {
+    // SAFE: only delete sessions that are NOT confirmed or published
+    const safeToDelete = db.query<any>(
+      "SELECT id FROM exam_sessions WHERE cycle_id=? AND status NOT IN ('confirmed','published')",
+      [cycleId]
+    )
+    for (const s of safeToDelete) {
+      db.run("DELETE FROM exam_sessions WHERE id=?", [s.id])
+    }
+    // Find highest step from surviving confirmed sessions
+    const maxStepRow = db.queryOne<any>("SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?", [cycleId])
+    let step = (maxStepRow?.m ?? 0) + 1
+    const seen = new Set<string>()
+    const existing = db.query<any>("SELECT exam_date, session_type FROM exam_sessions WHERE cycle_id=?", [cycleId])
+    for (const e of existing) seen.add(`${e.exam_date}_${e.session_type}`)
+
+    for (const s of sessions) {
+      const key = `${s.exam_date}_${s.session_type}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      db.run(
+        "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
+        [cycleId, s.exam_date, s.session_type, step++, s.reporting_time??null, s.exam_start??null, s.exam_end??null, "pending"]
+      )
+    }
+    renumberUnconfirmedSessions(cycleId)
+    return db.query("SELECT * FROM exam_sessions WHERE cycle_id=? ORDER BY rotation_step", [cycleId])
+  })
+}
+
+/** One more session in a batch; it takes its date-order place among the unconfirmed sessions. */
+export function addSession(cycleId: number, data: any) {
+  const exists = db.queryOne<any>(
+    "SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=?",
+    [cycleId, data.exam_date, data.session_type]
+  )
+  if (exists) throw new Error(`A ${slotName(data.session_type)} session already exists for ${data.exam_date} in this cycle.`)
+
+  const maxStep = db.queryOne<any>("SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?", [cycleId])
+  const { lastInsertRowid } = db.run(
+    "INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)",
+    [cycleId, data.exam_date, data.session_type, (maxStep?.m ?? 0) + 1, data.reporting_time??null, data.exam_start??null, data.exam_end??null, "pending"]
+  )
+  renumberUnconfirmedSessions(cycleId)
+  refreshCycleStatus(cycleId) // a new pending session reopens a confirmed batch
+  return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [lastInsertRowid])
+}
+
+/**
+ * Reschedule a session (date, slot, times). Status and rotation_step are not taken from the
+ * caller: they change only through generate/confirm and date-order renumbering, so a stale
+ * copy in the window can never reopen or reorder a confirmed session.
+ */
+export function updateSession(id: number, data: any) {
+  const current = db.queryOne<any>("SELECT * FROM exam_sessions WHERE id=?", [id])
+  if (!current) return null
+  const examDate = data.exam_date ?? current.exam_date
+  const sessionType = data.session_type ?? current.session_type
+
+  // Check for duplicate session date and slot within the same cycle
+  const conflict = db.queryOne<any>(
+    "SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=? AND id!=?",
+    [current.cycle_id, examDate, sessionType, id]
+  )
+  if (conflict) throw new Error(`A ${slotName(sessionType)} session already exists for ${examDate} in this cycle.`)
+
+  const reportingTime = data.reporting_time !== undefined ? data.reporting_time : current.reporting_time
+  const examStart = data.exam_start !== undefined ? data.exam_start : current.exam_start
+  const examEnd = data.exam_end !== undefined ? data.exam_end : current.exam_end
+
+  db.run(
+    "UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,updated_at=datetime('now') WHERE id=?",
+    [examDate, sessionType, reportingTime, examStart, examEnd, id]
+  )
+  renumberUnconfirmedSessions(current.cycle_id)
+  return db.queryOne("SELECT * FROM exam_sessions WHERE id=?", [id])
 }
 
 // Deleting an entire batch (exam cycle) is a deliberate, explicit action distinct from

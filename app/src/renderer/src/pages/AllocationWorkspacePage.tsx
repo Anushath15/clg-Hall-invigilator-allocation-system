@@ -164,9 +164,14 @@ export default function AllocationWorkspacePage() {
     setValidHalls(halls)
   }
 
+  // A manual edit is a swap: the person holding the chosen hall takes this person's hall.
+  const staffName = (userId?: number) => allocation.find((a: any) => a.userId === userId)?.userName
   async function applyEdit(hallId: number) {
     const r = await api.editAllocation(activeSession.id, editEntry.userId, hallId)
-    if (r.success) { toast.success("Hall updated!"); setEditEntry(null); loadAllocation() }
+    if (r.success) {
+      toast.success(r.swappedWithUserId ? `Swapped: ${editEntry.userName} and ${staffName(r.swappedWithUserId) ?? "the other invigilator"}` : "Hall updated!")
+      setEditEntry(null); loadAllocation()
+    }
     else toast.error(r.error?.message ?? (typeof r.error === "string" ? r.error : "Invalid assignment."))
   }
 
@@ -514,7 +519,10 @@ export default function AllocationWorkspacePage() {
                     <span className="text-brand-textsec font-normal ml-2">({editEntry.staff_id})</span></p>
                   <p className="text-brand-textsec mt-0.5">Current hall: <span className="font-bold text-brand-primary">{editEntry.hall_code}</span></p>
                 </div>
-                <p className="text-xs font-semibold text-brand-textsec uppercase tracking-wider mb-3">Select New Hall:</p>
+                <p className="text-xs font-semibold text-brand-textsec uppercase tracking-wider mb-1">Swap with:</p>
+                <p className="text-xs text-brand-textsec mb-3">
+                  The invigilator of the hall you choose moves to {editEntry.hall_code}. Both must be allowed their new hall (R1).
+                </p>
                 <div className="grid grid-cols-4 gap-2">
                   {validHalls.map((vh: any) => {
                     const hallInfo = allHallsMap[vh.hallId]
@@ -536,9 +544,16 @@ export default function AllocationWorkspacePage() {
                               {hallLocation(hallInfo)}
                             </div>
                           )}
+                          {vh.isValid && vh.swapWithUserId && (
+                            <div className="text-[9px] font-normal text-brand-textsec mt-0.5 truncate" title={staffName(vh.swapWithUserId)}>
+                              ↔ {staffName(vh.swapWithUserId)}
+                            </div>
+                          )}
                           {!vh.isValid && (
                             <div className="text-[9px] font-normal text-red-400 mt-0.5 no-underline">
-                              {vh.reason?.includes("cycle") ? "In cycle" : "Occupied"}
+                              {vh.reason === "Current hall" ? "Current"
+                                : vh.reason?.startsWith("Swap blocked") ? "Swap blocked"
+                                : vh.reason?.includes("cycle") ? "In cycle" : "Occupied"}
                             </div>
                           )}
                         </button>
