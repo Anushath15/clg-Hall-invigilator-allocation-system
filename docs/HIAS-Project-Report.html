@@ -15,7 +15,7 @@
   <div class="college">St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil</div>
   <div class="meta">
     Developed by <b>Anushath S</b>, <b>Akhil Koska A</b> and <b>Harish S</b><br>
-    Version 1.0.0 &nbsp;·&nbsp; Windows desktop application
+    Version 1.1.0 &nbsp;·&nbsp; Windows desktop application
   </div>
 </section>
 
@@ -36,7 +36,7 @@
 
 <h1>1. Abstract</h1>
 <p>Allocating invigilators to examination halls is a recurring, manual task in every college. Done by hand, it is slow and error-prone: the same person can be sent to the same hall repeatedly while others are not, a hall can be double-booked, and there is no record to check fairness against afterwards.</p>
-<p><b>HIAS (Hall Invigilator Allocation System)</b> is a Windows desktop application that automates this task. For every exam session it assigns each on-duty staff member to a hall using a <b>rotation algorithm</b> that remembers each person's previous halls, validates the result against seven rules, allows controlled manual edits with an audit trail, and produces printable PDF allocation sheets and reports. It runs completely offline with an embedded SQLite database, so it can be installed on any college computer without a server or internet connection.</p>
+<p><b>HIAS (Hall Invigilator Allocation System)</b> is a Windows desktop application that automates this task. For every exam session it assigns each on-duty staff member to a hall using a <b>rotation algorithm</b> that remembers each person's previous halls, validates the result against seven rules, allows controlled manual edits (swaps between two invigilators, checked for both) with an audit trail, and produces printable PDF allocation sheets and reports. It runs completely offline with an embedded SQLite database, so it can be installed on any college computer without a server or internet connection.</p>
 
 <h1>2. Problem statement and objectives</h1>
 <h2>Problem</h2>
@@ -60,9 +60,9 @@
 <div class="grid2">
   <div class="card"><b>Master data</b><br>Departments, halls (code, block, floor, capacity, active flag) and staff, including bulk import from Excel with row-by-row error reporting.</div>
   <div class="card"><b>Allocation batches</b><br>A three-step wizard creates an exam series from calendar dates, flags Sundays and public holidays, and sets FN/AN sessions with timings.</div>
-  <div class="card"><b>One-click allocation</b><br>Choose the staff and halls for a session by ticking, by searching name or Staff ID, or by uploading an Excel duty list; the rotation engine assigns everyone a hall.</div>
+  <div class="card"><b>One-click allocation</b><br>Choose the staff and halls for a session by ticking, by searching (staff by name or Staff ID, halls by code or block), by uploading an Excel duty list, or by copying the selection of an earlier session; the rotation engine assigns everyone a hall afresh.</div>
   <div class="card"><b>Rule validation</b><br>Seven rules (R1–R7) are checked before confirmation; violations are explained by name.</div>
-  <div class="card"><b>Controlled edits</b><br>Manual changes offer only rule-safe halls and are recorded as "Admin Edited" with an optional reason.</div>
+  <div class="card"><b>Controlled edits</b><br>A manual change swaps two invigilators' halls, is offered only when the rules hold for both, and is recorded as "Admin Edited".</div>
   <div class="card"><b>Reports and PDF</b><br>Session allocation sheet, staff-wise duties, date-wise hall sheet, complete timetable grid and rotation audit, all exportable to PDF with the college letterhead.</div>
   <div class="card"><b>History and audit</b><br>Search past allocations by batch, session, staff or hall; key actions are written to an audit log.</div>
   <div class="card"><b>Offline and safe</b><br>No internet or server needed; one-click backup and restore; destructive actions require typed confirmation.</div>
@@ -131,12 +131,12 @@
   <tr><td>users</td><td>Staff/invigilators and the administrator</td><td>staff_id (unique), name, department_id, role, is_active</td></tr>
   <tr><td>halls</td><td>Examination halls</td><td>hall_code (unique), block, floor, capacity, sort_order, is_active</td></tr>
   <tr><td>exam_cycles</td><td>Allocation batches (exam series)</td><td>name, academic_year, status</td></tr>
-  <tr><td>exam_sessions</td><td>One FN/AN session on a date</td><td>cycle_id, exam_date, session_type, rotation_step, timings, status</td></tr>
+  <tr><td>exam_sessions</td><td>One FN/AN session on a date; rotation_step is the confirmation order (unconfirmed sessions are kept in date order; confirmed ones are never renumbered)</td><td>cycle_id, exam_date, session_type, rotation_step, timings, status</td></tr>
   <tr><td>allocations</td><td>Staff-to-hall assignments per session</td><td>session_id, user_id, hall_id, generated_hall_id, is_manually_edited, edit_reason; unique per (session, user) and (session, hall)</td></tr>
   <tr><td>rotation_history</td><td>Confirmed assignments over time; the memory used by the rotation</td><td>user_id, session_id, hall_id, global_order</td></tr>
   <tr><td>settings</td><td>College profile and default timings</td><td>key, value</td></tr>
   <tr><td>audit_log</td><td>Record of key actions (edits, confirmations, rotation restarts, deletions)</td><td>action, description, payload, created_at</td></tr>
-  <tr><td>notifications</td><td>In-app notices for staff (web build)</td><td>user_id, title, message, is_read</td></tr>
+  <tr><td>notifications</td><td>In-app notices for staff (web build)</td><td>user_id, title, message, session_id, is_read</td></tr>
 </table>
 
 <h1>7. Allocation algorithm and validation rules</h1>
@@ -158,23 +158,25 @@
   <tr><td>R1</td><td>No repeated hall within a cycle: a staff member may not return to a hall of the session's pool until they have had every hall of that pool once; the cycle then resets and every hall is open again. Halls outside the session's pool are ignored.</td></tr>
   <tr><td>R2</td><td>A hall has at most one invigilator in a session.</td></tr>
   <tr><td>R3</td><td>A staff member has at most one hall in a session.</td></tr>
-  <tr><td>R4</td><td>Rotation integrity: a session follows the last confirmed session in step order.</td></tr>
+  <tr><td>R4</td><td>Rotation integrity: every earlier session of the batch must be confirmed first. Sessions not yet confirmed are kept in date order.</td></tr>
   <tr><td>R5</td><td>Staff must be active.</td></tr>
   <tr><td>R6</td><td>Halls must be active.</td></tr>
   <tr><td>R7</td><td>The number of staff equals the number of halls.</td></tr>
 </table>
-<p>R1 is enforced strictly with one exception: if an allocation has no more repeats than the proven minimum for the staff and halls of that session, the repeats are shown to the administrator as <b>warnings</b> ("unavoidable repeat") instead of blocking the session. Manual edits are checked against the rules as they are made, and the edit dialog only offers halls that keep the allocation valid.</p>
+<p>R1 is enforced strictly with one exception: if an allocation has no more repeats than the proven minimum for the staff and halls of that session, the repeats are shown to the administrator as <b>warnings</b> ("unavoidable repeat") instead of blocking the session. A manual edit is a <b>swap</b>: the invigilator of the chosen hall takes the edited person's hall, and R1 is checked for <b>both</b> people, because a swap that is fine for one can hand the other a hall they already had in their cycle. The edit dialog only offers swaps that keep the allocation valid. Copying another session's selection copies only which staff and halls are ticked, never who had which hall, so the engine always draws the halls afresh.</p>
 <h2>Why a matching algorithm</h2>
 <p>An earlier version assigned halls one person at a time. Fairness testing showed that this worked perfectly for a fixed team but failed badly when more staff than halls take turns (the normal case in a college): two people competed for the same "next" hall and one was pushed into a recently used hall, so the system rejected its own allocation. With 10 staff sharing 6 halls, only 5 of 60 sessions could be confirmed; with a random duty list of 6 out of 12 staff, 9 of 80. Assigning everyone together as an optimal matching fixed this: all sessions in every tested scenario now confirm.</p>
 
 <h1>8. Testing and quality</h1>
 <h2>Automated tests</h2>
-<p><b>101 automated tests</b> (Vitest) run against an in-memory database and all pass. They cover:</p>
+<p><b>159 automated tests</b> (Vitest, 16 files) run against in-memory and on-disk databases and all pass. They cover:</p>
 <ul>
   <li>The rotation algorithm: rotation cycles (no hall repeats until every hall of the pool has been visited, then the cycle resets), the seeded random draw (the same selection gives the same draft; different sessions give different orders), staff who join later, pools smaller than the total number of halls, and reading history in the correct order across batches.</li>
   <li>Every validation rule, including a regression test for a full-cycle restart that an earlier version wrongly blocked.</li>
-  <li>The allocation lifecycle: generate, edit, confirm, delete draft sessions, permanent staff deletion, rotation restart, and batch status updates.</li>
-  <li>A <b>fairness suite</b> of 29 multi-session scenarios run through the real engine, validator and database (below).</li>
+  <li>The allocation lifecycle: generate, swap (with R1 checked for both people), confirm strictly in order, keep unconfirmed sessions in date order, delete draft sessions, permanent staff deletion, rotation restart, and batch status updates.</li>
+  <li>A <b>fairness suite</b> of 30 multi-session scenarios run through the real engine, validator and database (below).</li>
+  <li>The selection window and output: copying a previous session's selection (identifiers only; the allocation generated afterwards is a fresh draw, also across batches), the staff and hall search, report row order, department validation, and HTML escaping of the printable duty slip.</li>
+  <li>Offline operation: the complete administrator workflow and PDF generation with every network function disabled, creation of a fresh database, opening a database from the first version with all its records, and backup and restore, including refusing a file that is not a HIAS backup.</li>
 </ul>
 <h2>Fairness testing</h2>
 <p>Each scenario generates and confirms every session in turn and checks that no hall or person is double-booked. "Hall spread" is, for the worst-off person, the difference between the hall they had most often and least often.</p>
@@ -202,9 +204,9 @@
   <tr><td>A single hall</td><td>All confirmed, no false warnings</td></tr>
   <tr><td>Regenerating a draft several times</td><td>Identical result every time; nothing recorded until confirmed</td></tr>
   <tr><td>Ticking staff and halls in a different order</td><td>Same person gets the same hall</td></tr>
-  <tr><td>Confirming sessions out of order; mismatched counts; inactive staff or hall</td><td>Refused with R4, R7, R5 and R6</td></tr>
+  <tr><td>Confirming sessions out of order (including skipping a pending one); mismatched counts; inactive staff or hall</td><td>Refused with R4, R7, R5 and R6</td></tr>
   <tr><td>History built so that a repeat is forced</td><td>Exactly one repeat (the minimum), drawn at random from the halls already used in the person's current cycle, avoiding their most recent hall; confirmed with a warning</td></tr>
-  <tr><td>Manual edit onto an occupied hall or a hall outside the session</td><td>Refused; nothing changes</td></tr>
+  <tr><td>A swap that would repeat a hall for either person, or a hall outside the session</td><td>Refused; nothing changes</td></tr>
   <tr><td>Deleting a draft part-way</td><td>The deleted draft leaves nothing in the rotation history; the next session is valid, and after 10 sessions everyone has had every hall exactly twice</td></tr>
   <tr><td>300 sessions with a fixed team</td><td>Every hall exactly 50 times each, no repeats</td></tr>
   <tr><td>Two batches running side by side; 20 newcomers starting together</td><td>No repeats; everyone has every hall exactly 4 times (batches) or twice (newcomers)</td></tr>
@@ -214,20 +216,21 @@
 <p>With a stable team, every person has every hall exactly once per cycle, in a randomly drawn order, with no repeats. When staff take turns or the duty list is random, every session still confirms, but a few repeats can be unavoidable; they are kept to the proven minimum and each person's hall counts stay within 1–4 of each other. How many duties each person gets depends on who the administrator puts on duty, which the engine does not choose.</p>
 <p>TypeScript runs in strict mode and the whole code base type-checks without errors (<code>npm run typecheck</code>).</p>
 <h2>End-to-end verification</h2>
-<p>The packaged Windows application was driven automatically against a separate test data folder with sample data (3 departments, 6 halls, 8 staff, one batch of 4 sessions). The run checked:</p>
-<p class="small">This run predates the change to the random-draw rotation algorithm (Section 7); read it as a historical record of the packaged-app workflow, not as a measurement of current allocation behaviour.</p>
+<p>The packaged Windows application (the version 1.1.0 installer) was driven automatically with <code>npm run test:e2e</code> against a separate test data folder, with every host name made unresolvable so that any network use would fail. All 24 steps passed:</p>
 <table>
   <tr><th>Check</th><th style="width:24%">Result</th></tr>
-  <tr><td>Generate and confirm four sessions</td><td>Passed, 0 rule violations</td></tr>
-  <tr><td>30 sessions with 10 staff taking turns in 6 halls; 20 sessions with random duty lists</td><td>All 50 confirmed</td></tr>
-  <tr><td>Batch status moves from Draft to Confirmed</td><td>Passed</td></tr>
-  <tr><td>Excel import with two valid and two invalid rows</td><td>2 imported, 2 reported with reasons</td></tr>
-  <tr><td>Delete a batch; database backup</td><td>Passed</td></tr>
-  <tr><td>All screens load without errors</td><td>Passed</td></tr>
-  <tr><td>Session PDF and all four report PDFs</td><td>All valid PDFs, content checked</td></tr>
+  <tr><td>Opens straight to the Dashboard with no login; a fresh install creates an empty database</td><td>Passed</td></tr>
+  <tr><td>Departments, halls and staff by form and by Excel import, with problem rows reported</td><td>Passed</td></tr>
+  <tr><td>Batch wizard; choosing staff and halls (including the hall search); generating an allocation</td><td>All 7 rules passed</td></tr>
+  <tr><td>A manual edit as a swap, through the edit dialog and directly, then undone</td><td>Exactly two rows change; restored</td></tr>
+  <tr><td>Confirmation and the session PDF; copying the previous session's selection</td><td>Ticks copied; nothing generated</td></tr>
+  <tr><td>Allocation history, all four reports and their PDFs, staff duty history</td><td>Passed</td></tr>
+  <tr><td>Settings, the college name on screens and PDFs, the sidebar switch at 1024 px</td><td>Passed</td></tr>
+  <tr><td>Backup; restart with all data intact; restore (a non-backup file refused, safety copy kept); rotation restart</td><td>Passed</td></tr>
   <tr><td>Network access while running</td><td>None (fully offline)</td></tr>
 </table>
-<p>This run found and fixed several defects before release, including an allocation engine that rejected its own allocations when staff took turns, empty staff-wise reports, a dashboard counter that was never calculated, batches that never left the Draft state, the order of sessions in the timetable, and a restore that could be undone by further use before a restart.</p>
+<p>A separate large-data run of the packaged application used 200 staff, 100 halls and 50 sessions with a random 100 staff on duty in each (5,000 allocations). Every session generated (on average in 178 ms, at most 347 ms) and confirmed (on average in 13 ms) with no hall repeat and no back-to-back repeat. The History page listed every record in about 1.4 s, the largest report PDFs (132 to 201 pages) exported in about 1.5 s, the swap dialog for a 100-hall session opened in 0.1 s, and the 0.86 MB database reopened with every allocation intact.</p>
+<p>The quality-assurance pass before this release found and fixed, among others: a confirmed session that could still be regenerated or edited; manual edits that could never change a hall (now swaps, checked for both people); sessions that could be confirmed out of order; sessions added later that were placed out of date order; Afternoon listed before Forenoon in two reports; an unescaped name in the printable duty slip; and several smaller display issues.</p>
 
 <h1>9. Screenshots</h1>
 <figure><img src="images/allocation.png" alt="Allocation workspace"><figcaption>Allocation workspace: a confirmed session with its generated hall assignments.</figcaption></figure>
@@ -241,7 +244,7 @@
   <li><b>Single computer.</b> Data lives on the computer where HIAS is installed; several computers cannot share it live. Backup and restore move data between computers.</li>
   <li><b>No user accounts in the desktop app.</b> Anyone who can open the app has full access, so it should be installed on a computer used only by the examination cell.</li>
   <li><b>Unsigned installer.</b> Windows shows a SmartScreen warning on first install.</li>
-  <li><b>Hall order</b> is fixed by creation order; there is no screen to reorder halls.</li>
+  <li><b>Hall order.</b> Halls are listed in the order they were added and there is no screen to reorder them; the allocation does not depend on this order.</li>
 </ul>
 <h2>Possible enhancements</h2>
 <ul>
@@ -250,6 +253,8 @@
   <li>Excel export of reports, and SMS or e-mail duty notifications to staff.</li>
   <li>Workload balancing so the number of duties per person evens out across a batch.</li>
   <li>Hall reordering and seat-capacity-based allocation.</li>
+  <li>Manual-edit reason entry in the dialog (backend already supports it).</li>
+  <li>Turning on Electron's renderer sandbox (<code>sandbox: true</code>) as further hardening.</li>
 </ul>
 
 <h1>11. Conclusion</h1>
