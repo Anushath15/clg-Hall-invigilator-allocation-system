@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Plus, ChevronRight, Calendar, Trash2 } from "lucide-react"
+import { Plus, ChevronRight, Calendar } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, getStatusColor } from "../lib/utils"
-import toast from "react-hot-toast"
 import CreateCycleWizard from "../components/CreateCycleWizard"
-import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 
 export default function ExamCyclesPage() {
   const [cycles, setCycles] = useState<any[]>([])
   const [showWizard, setShowWizard] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const navigate = useNavigate()
 
   const load = () => api.getCycles().then(setCycles)
@@ -61,36 +58,11 @@ export default function ExamCyclesPage() {
             </div>
             <div className="flex items-center gap-3">
               <span className={getStatusColor(c.status)}>{c.status.charAt(0).toUpperCase() + c.status.slice(1)}</span>
-              <button
-                onClick={e => { e.stopPropagation(); setDeleteTarget(c) }}
-                title="Delete Batch"
-                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
               <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-brand-primary transition-colors" />
             </div>
           </div>
         ))}
       </div>
-
-      <ConfirmWithPasswordModal
-        isOpen={!!deleteTarget}
-        title="Delete Allocation Batch"
-        message={`Are you sure you want to permanently delete "${deleteTarget?.name}" (${deleteTarget?.academic_year})? This removes every session, allocation, and rotation record tied to this batch — including published ones. This cannot be undone.`}
-        confirmButtonText="Delete Batch"
-        onClose={() => setDeleteTarget(null)}
-        onConfirmed={async () => {
-          if (!deleteTarget) return
-          const res = await api.deleteCycle(deleteTarget.id)
-          if (res?.success) {
-            toast.success(`"${deleteTarget.name}" deleted`)
-            load()
-          } else {
-            toast.error(res?.error || "Cannot delete this allocation batch.")
-          }
-        }}
-      />
     </div>
   )
 }

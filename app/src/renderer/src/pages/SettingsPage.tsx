@@ -5,11 +5,14 @@ import { api } from "../lib/api"
 import { useAuthStore } from "../store/auth.store"
 import toast from "react-hot-toast"
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
+import DeleteBatchesPanel from "../components/DeleteBatchesPanel"
 import { IS_DESKTOP } from "../lib/platform"
 
 // The offline desktop app has no login, so there is no password to change there.
-const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore", "Restart Rotation"]
+const SECTIONS = ["College Profile", "Session Timings", "Change Password", "Backup & Restore", "Restart Rotation", "Delete Batch"]
   .filter(s => !(IS_DESKTOP && s === "Change Password"))
+// Destructive sections are drawn in red.
+const DANGER = ["Restart Rotation", "Delete Batch"]
 
 export default function SettingsPage() {
   const { user } = useAuthStore()
@@ -106,8 +109,8 @@ export default function SettingsPage() {
               <button key={s} onClick={() => setActive(s)}
                 className={`lg:w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   active === s
-                    ? (s === "Restart Rotation" ? "bg-red-600 text-white" : "bg-brand-primary text-white")
-                    : (s === "Restart Rotation" ? "text-red-600 hover:bg-red-50" : "text-brand-textsec hover:bg-gray-100")
+                    ? (DANGER.includes(s) ? "bg-red-600 text-white" : "bg-brand-primary text-white")
+                    : (DANGER.includes(s) ? "text-red-600 hover:bg-red-50" : "text-brand-textsec hover:bg-gray-100")
                 }`}>{s}</button>
             ))}
           </nav>
@@ -263,6 +266,9 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* Delete Batch */}
+          {active === "Delete Batch" && <DeleteBatchesPanel />}
 
           {/* Restart Rotation */}
           {active === "Restart Rotation" && (

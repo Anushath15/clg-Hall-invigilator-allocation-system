@@ -345,6 +345,23 @@ try {
       return "restored; department added after the backup is gone; safety copy ${path.basename(r.safetyCopy)}"`)
   })
 
+  await step("Delete a batch from Settings with a typed DELETE; the Batches list has no delete button", () => ev(`
+    const temp = await api.createCycle({ name: "E2E batch to delete", academic_year: "2026-27" });
+    const keep = (await api.getCycles()).length - 1;
+    await go("#/cycles"); await until(() => byText("main", "E2E batch to delete"), "batch list");
+    const found = [...document.querySelectorAll("main button[title*=Delete], main button svg.lucide-trash-2, main button svg.lucide-trash2")]; if (found.length) throw new Error("the Batches list still has a delete button: " + found.map(e => e.outerHTML.slice(0, 200)).join(" | "));
+    await go("#/settings"); await click("Delete Batch", "nav button");
+    const row = await until(() => [...document.querySelectorAll("main div")].filter(d => visible(d) && d.innerText.includes("E2E batch to delete") && d.querySelector("button") && d.innerText.length < 160).pop(), "batch row in Settings");
+    [...row.querySelectorAll("button")].find(b => b.innerText.includes("Delete")).click(); await sleep(400);
+    const input = await until(() => document.querySelector("input[placeholder=DELETE]"), "DELETE field");
+    setValue(input, "NOPE"); await sleep(100); await click("Delete Batch", ".fixed.inset-0 button"); await sleep(400);
+    if (!(await api.getCycles()).some(c => c.id === temp.id)) throw new Error("a wrong confirmation word must not delete the batch");
+    setValue(document.querySelector("input[placeholder=DELETE]"), "DELETE"); await sleep(100);
+    await click("Delete Batch", ".fixed.inset-0 button"); await until(() => toast().includes("deleted"), "deleted toast");
+    const left = await api.getCycles();
+    if (left.some(c => c.id === temp.id) || left.length !== keep) throw new Error("batches left: " + left.map(c => c.name).join(", "));
+    return "wrong word refused; correct word deleted only the chosen batch (" + left.length + " other batch(es) kept)"`))
+
   await step("Restart the rotation (typed confirmation, no password)", () => ev(`
     await go("#/settings"); await click("Restart Rotation"); // the section in the menu
     const buttons = await until(() => { const b = [...document.querySelectorAll("button")].filter(b => visible(b) && b.innerText.trim() === "Restart Rotation"); return b.length > 1 && b }, "restart button");
