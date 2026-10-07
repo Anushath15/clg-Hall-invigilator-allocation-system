@@ -208,7 +208,7 @@ export default function ReportsPage() {
                   {data.sessions.filter((s: any) => ["confirmed","published"].includes(s.status)).map((s: any) => (
                     <th key={s.id} className="bg-gray-100 px-2 py-2 text-center whitespace-nowrap border border-gray-200 min-w-[65px]">
                       <div>{formatDate(s.exam_date).split(" ").slice(0,2).join(" ")}</div>
-                      <div className="text-gray-500">{s.session_type}</div>
+                      <div className="text-gray-500">{s.exam_date.slice(0, 4)} · {s.session_type}</div>
                     </th>
                   ))}
                 </tr>

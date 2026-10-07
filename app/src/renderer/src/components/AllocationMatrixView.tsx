@@ -62,7 +62,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
             {confirmedSessions.map((s: any) => (
               <th key={s.id} className="bg-brand-sidebar text-white px-2 py-2 text-center whitespace-nowrap min-w-[70px] border-l border-white/10">
                 <div className="font-semibold">{formatDate(s.exam_date).split(" ").slice(0,2).join(" ")}</div>
-                <div className="text-gray-300 text-[10px]">{s.session_type}</div>
+                <div className="text-gray-300 text-[10px]">{s.exam_date.slice(0, 4)} · {s.session_type}</div>
               </th>
             ))}
           </tr>
