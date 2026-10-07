@@ -304,7 +304,7 @@ try {
     const seen = []
     for (const w of [1366, 1024, 1023, 1022, 960, 1366]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: 800, deviceScaleFactor: 1, mobile: false })
-      const r = await ev(`await sleep(400); return { w: visualViewport.width, lg: matchMedia("(min-width: 1024px)").matches, sidebar: Math.round(document.querySelector("aside").getBoundingClientRect().width) }`)
+      const r = await ev(`const read = () => ({ w: visualViewport.width, lg: matchMedia("(min-width: 1024px)").matches, sidebar: Math.round(document.querySelector("aside").getBoundingClientRect().width) }); await sleep(400); let r = read(); for (let i = 0; i < 25 && (r.sidebar === 64) === r.lg; i++) { await sleep(100); r = read() } return r`) // the media-query event can arrive late in a background window
       seen.push(`${Math.round(r.w * 10) / 10}px ${r.sidebar === 64 ? "icons" : "full"}`)
       if ((r.sidebar === 64) === r.lg) throw new Error(`at ${r.w}px the sidebar is ${r.sidebar}px but the page layout is ${r.lg ? "wide" : "narrow"}`)
     }
