@@ -6,6 +6,7 @@
  * so the check lives here rather than in the schema; existing databases need no migration.
  */
 import { db } from "../db/database"
+import { todayLocal, timeNowLocal } from "../../shared/session-dates"
 import { validateStaff, validateDepartmentCode, validateDepartmentName, validateHallPlace } from "../../shared/validation"
 
 export interface DepartmentInput { id?: number; code: string; name: string; is_active?: boolean }
@@ -76,6 +77,27 @@ export function saveHall(data: HallInput): any {
   const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?,?)",
     [code, code, floor, capacity, block, 1, (maxOrder?.m ?? 0) + 1])
   return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
+}
+
+/**
+ * The Dashboard numbers. "Upcoming" sessions are those that have not finished yet by the
+ * computer's clock: any later day, or today until the session's exam end time passes (a session
+ * with no end time counts for the whole day). `now` is the current date and time.
+ */
+export function getDashboardStats(now: Date = new Date()) {
+  const today = todayLocal(now), time = timeNowLocal(now)
+  const count = (sql: string, params: any[] = []) => db.queryOne<any>(sql, params)?.c ?? 0
+  return {
+    totalStaff:         count("SELECT COUNT(*) as c FROM users WHERE is_active=1 AND role='staff'"),
+    totalHalls:         count("SELECT COUNT(*) as c FROM halls WHERE is_active=1"),
+    totalCycles:        count("SELECT COUNT(*) as c FROM exam_cycles"),
+    confirmedSessions:  count("SELECT COUNT(*) as c FROM exam_sessions WHERE status IN ('confirmed','published')"),
+    upcomingSessions:   count("SELECT COUNT(*) as c FROM exam_sessions WHERE exam_date > ? OR (exam_date = ? AND (exam_end IS NULL OR exam_end = '' OR exam_end > ?))", [today, today, time]),
+    // Sessions that still need an allocation to be generated/confirmed.
+    pendingAllocations: count("SELECT COUNT(*) as c FROM exam_sessions WHERE status NOT IN ('confirmed','published')"),
+    allocatedHalls:     count("SELECT COUNT(DISTINCT a.hall_id) as c FROM allocations a JOIN exam_sessions es ON a.session_id=es.id WHERE es.status IN ('confirmed','published')"),
+    totalExamDays:      count("SELECT COUNT(DISTINCT exam_date) as c FROM exam_sessions"),
+  }
 }
 
 /** The department an import row names, by code or name, ignoring case; a code match wins over a name match. */

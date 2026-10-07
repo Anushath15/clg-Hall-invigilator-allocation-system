@@ -3,7 +3,7 @@ import { db } from "../db/database"
 import * as XLSX from "xlsx"
 import { hardDeleteUser } from "../services/allocation.service"
 import { validateCollegeName, validateCollegeShortName, validateTimeOfDay } from "../../shared/validation"
-import { saveDepartment, saveHall, saveUser, findDepartmentByCodeOrName, listUsers, USER_COLUMNS } from "../services/master.service"
+import { getDashboardStats, saveDepartment, saveHall, saveUser, findDepartmentByCodeOrName, listUsers, USER_COLUMNS } from "../services/master.service"
 import { importStaffFromSheet } from "../../shared/staff-import"
 
 export function registerMasterHandlers() {
@@ -66,18 +66,5 @@ export function registerMasterHandlers() {
   })
 
   // DASHBOARD STATS
-  ipcMain.handle("master:dashboardStats", () => {
-    return {
-      totalStaff:       db.queryOne<any>("SELECT COUNT(*) as c FROM users WHERE is_active=1 AND role='staff'")?.c ?? 0,
-      totalHalls:       db.queryOne<any>("SELECT COUNT(*) as c FROM halls WHERE is_active=1")?.c ?? 0,
-      totalCycles:      db.queryOne<any>("SELECT COUNT(*) as c FROM exam_cycles")?.c ?? 0,
-      confirmedSessions:db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE status IN ('confirmed','published')")?.c ?? 0,
-      // Sessions from today (local date) onwards, whatever their status.
-      upcomingSessions: db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE exam_date >= date('now','localtime')")?.c ?? 0,
-      // Sessions that still need an allocation to be generated/confirmed.
-      pendingAllocations: db.queryOne<any>("SELECT COUNT(*) as c FROM exam_sessions WHERE status NOT IN ('confirmed','published')")?.c ?? 0,
-      allocatedHalls:   db.queryOne<any>(`SELECT COUNT(DISTINCT a.hall_id) as c FROM allocations a JOIN exam_sessions es ON a.session_id=es.id WHERE es.status IN ('confirmed','published')`)?.c ?? 0,
-      totalExamDays:    db.queryOne<any>("SELECT COUNT(DISTINCT exam_date) as c FROM exam_sessions")?.c ?? 0
-    }
-  })
+  ipcMain.handle("master:dashboardStats", () => getDashboardStats())
 }

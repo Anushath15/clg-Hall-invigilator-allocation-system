@@ -1,11 +1,6 @@
 import { useState, useMemo } from "react"
 import {
   format,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  eachDayOfInterval,
   isSameMonth,
   isSameDay,
   addMonths,
@@ -16,6 +11,7 @@ import { ChevronLeft, ChevronRight, Sparkles, XCircle } from "lucide-react"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { cn, formatDateWithDay } from "../lib/utils"
 import { todayLocal } from "../../../shared/session-dates"
+import { monthGrid } from "../../../shared/calendar"
 
 interface RealCalendarProps {
   selectedDates: string[]
@@ -52,13 +48,7 @@ export default function RealCalendar({
   const todayStr = todayLocal(today)
 
   // Calculate calendar grid for the month view
-  const calendarDays = useMemo(() => {
-    const monthStart = startOfMonth(currentMonth)
-    const monthEnd = endOfMonth(monthStart)
-    const startDate = startOfWeek(monthStart, { weekStartsOn: 0 }) // Sunday start
-    const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 }) // Saturday end
-    return eachDayOfInterval({ start: startDate, end: endDate })
-  }, [currentMonth])
+  const calendarDays = useMemo(() => monthGrid(currentMonth), [currentMonth])
 
   function prevMonth() {
     setCurrentMonth(m => subMonths(m, 1))

@@ -9,6 +9,11 @@ export function todayLocal(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
 }
 
+/** The time of day on this computer, as HH:MM (24-hour, local time). */
+export function timeNowLocal(now: Date = new Date()): string {
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+}
+
 /** True when `date` (YYYY-MM-DD) is before today. */
 export function isPastDate(date: string, today: string = todayLocal()): boolean {
   return date < today
