@@ -58,3 +58,7 @@ Thumbs.db
 
 # Handover bundle (installer + PDFs) assembled for delivery
 HIAS-Handover/
+
+# Local developer-tool configuration (not part of the product)
+.claude/launch.json
+.claude/settings.local.json
