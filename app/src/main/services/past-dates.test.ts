@@ -49,8 +49,8 @@ describe("Past dates", () => {
     expect(updateSession(future, { exam_date: day(10) })).toMatchObject({ exam_date: day(10) })
     // An older record (created before this rule, here inserted directly) keeps its date and can have its times corrected.
     db.run("INSERT INTO exam_sessions(id, cycle_id, exam_date, session_type, rotation_step, status) VALUES(90, 1, '2023-07-05', 'AN', 90, 'confirmed')")
-    expect(updateSession(90, { exam_start: "14:05", exam_end: "17:05" })).toMatchObject({ exam_date: "2023-07-05", exam_start: "14:05" })
-    expect(updateSession(90, { exam_date: "2023-07-05", exam_end: "17:10" })).toMatchObject({ exam_end: "17:10" })
+    expect(updateSession(90, { reporting_time: "13:45", exam_start: "14:05", exam_end: "17:05" })).toMatchObject({ exam_date: "2023-07-05", exam_start: "14:05" })
+    expect(updateSession(90, { exam_end: "17:10" })).toMatchObject({ exam_end: "17:10" })
     expect(() => updateSession(90, { exam_date: "2023-07-06" })).toThrow(PAST_DATE_MESSAGE) // a different past day is still refused
   })
 })

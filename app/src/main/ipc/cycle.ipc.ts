@@ -1,14 +1,19 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
+import { validateBatchName, validateAcademicYear } from "../../shared/validation"
 import { deleteSession, deleteCycle, createSessions, addSession, updateSession } from "../services/allocation.service"
 
 export function registerCycleHandlers() {
   ipcMain.handle("cycle:getCycles", () => db.query("SELECT * FROM exam_cycles ORDER BY created_at DESC"))
   ipcMain.handle("cycle:createCycle", async (_, data) => {
+    const problem = validateBatchName(data.name) ?? validateAcademicYear(data.academic_year)
+    if (problem) throw new Error(problem)
     const { lastInsertRowid } = db.run("INSERT INTO exam_cycles(name,academic_year,status) VALUES(?,?,?)", [data.name, data.academic_year, "draft"])
     return db.queryOne("SELECT * FROM exam_cycles WHERE id=?", [lastInsertRowid])
   })
   ipcMain.handle("cycle:updateCycle", async (_, id, data) => {
+    const problem = validateBatchName(data.name) ?? validateAcademicYear(data.academic_year)
+    if (problem) throw new Error(problem)
     db.run("UPDATE exam_cycles SET name=?,academic_year=?,status=?,updated_at=datetime('now') WHERE id=?",
       [data.name, data.academic_year, data.status, id])
     return db.queryOne("SELECT * FROM exam_cycles WHERE id=?", [id])

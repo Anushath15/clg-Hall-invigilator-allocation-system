@@ -2,7 +2,8 @@ import { ipcMain } from "electron"
 import { db } from "../db/database"
 import * as XLSX from "xlsx"
 import { hardDeleteUser } from "../services/allocation.service"
-import { saveDepartment, findDepartmentByCodeOrName, listUsers, USER_COLUMNS } from "../services/master.service"
+import { validateCollegeName, validateCollegeShortName, validateTimeOfDay } from "../../shared/validation"
+import { saveDepartment, saveHall, saveUser, findDepartmentByCodeOrName, listUsers, USER_COLUMNS } from "../services/master.service"
 import { importStaffFromSheet } from "../../shared/staff-import"
 
 export function registerMasterHandlers() {
@@ -18,20 +19,7 @@ export function registerMasterHandlers() {
   // USERS
   ipcMain.handle("master:getUsers", async (_, filters) => listUsers(filters))
   // Staff are data records only: they never sign in to the desktop app, so no passwords.
-  ipcMain.handle("master:saveUser", async (_, data) => {
-    if (data.id) {
-      db.run(
-        `UPDATE users SET staff_id=?,name=?,email=?,designation=?,role=?,department_id=?,is_active=?,updated_at=datetime('now') WHERE id=?`,
-        [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, data.is_active?1:0, data.id]
-      )
-      return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [data.id])
-    }
-    const { lastInsertRowid } = db.run(
-      "INSERT INTO users(staff_id,name,email,designation,role,department_id,is_active) VALUES(?,?,?,?,?,?,?)",
-      [data.staff_id, data.name, data.email??null, data.designation??null, data.role??"staff", data.department_id??null, 1]
-    )
-    return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [lastInsertRowid])
-  })
+  ipcMain.handle("master:saveUser", async (_, data) => saveUser(data))
   ipcMain.handle("master:deleteUser", async (_, id) => {
     db.run("UPDATE users SET is_active=0 WHERE id=?", [id]); return { success: true }
   })
@@ -56,20 +44,7 @@ export function registerMasterHandlers() {
   // UI never sets it, so without this the row order is undefined SQL tie-break
   // behavior — and this array's order is what the rotation engine indexes into.
   ipcMain.handle("master:getHalls", () => db.query("SELECT * FROM halls ORDER BY sort_order, id"))
-  ipcMain.handle("master:saveHall", async (_, data) => {
-    // Halls are identified by code and floor; the NOT NULL name column just mirrors the code.
-    const name = data.hall_code
-    const floor = (data.floor && String(data.floor).trim()) || null
-    if (data.id) {
-      db.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=? WHERE id=?",
-        [data.hall_code, name, floor, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
-      return db.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
-    }
-    const maxOrder = db.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-    const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?,?)",
-      [data.hall_code, name, floor, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
-    return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
-  })
+  ipcMain.handle("master:saveHall", async (_, data) => saveHall(data))
   ipcMain.handle("master:deleteHall", async (_, id) => {
     const inUse = db.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: hall has existing allocations." }
@@ -82,7 +57,12 @@ export function registerMasterHandlers() {
     return Object.fromEntries(rows.map((r: any) => [r.key, r.value]))
   })
   ipcMain.handle("master:saveSetting", async (_, key, value) => {
-    db.run("UPDATE settings SET value=? WHERE key=?", [value, key]); return { success: true }
+    const problem = key === "college.name" ? validateCollegeName(value)
+      : key === "college.short_name" ? validateCollegeShortName(value)
+      : /^session\.(fn|an)_(reporting|start|end)_time$/.test(key) ? validateTimeOfDay(value) // each default time must be a valid HH:MM
+      : null
+    if (problem) return { success: false, error: problem }
+    db.run("UPDATE settings SET value=? WHERE key=?", [String(value).trim(), key]); return { success: true }
   })
 
   // DASHBOARD STATS

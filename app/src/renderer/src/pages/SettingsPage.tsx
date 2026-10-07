@@ -1,3 +1,4 @@
+import { validateCollegeName, validateCollegeShortName, validateSessionTimes } from "../../../shared/validation"
 import { useEffect, useState } from "react"
 import { Save, Download, Upload, Lock, CheckCircle, AlertTriangle, Info, RotateCcw, X } from "lucide-react"
 import { api } from "../lib/api"
@@ -28,9 +29,19 @@ export default function SettingsPage() {
   const get = (key: string) => changed[key] ?? settings[key] ?? ""
 
   async function saveSection() {
+    // Check everything first so a mistake never leaves the settings half saved.
+    const finalValue = (k: string) => String(changed[k] ?? settings[k] ?? "")
+    const problem = ("college.name" in changed ? validateCollegeName(changed["college.name"]) : null)
+      ?? ("college.short_name" in changed ? validateCollegeShortName(changed["college.short_name"]) : null)
+      ?? ["session.fn", "session.an"].map(p => Object.keys(changed).some(k => k.startsWith(p + "_"))
+        ? validateSessionTimes(finalValue(p + "_reporting_time"), finalValue(p + "_start_time"), finalValue(p + "_end_time")) : null).find(Boolean) ?? null
+    if (problem) return toast.error(problem)
     setSaving(true)
     try {
-      for (const [k, v] of Object.entries(changed)) await api.saveSetting(k, v)
+      for (const [k, v] of Object.entries(changed)) {
+        const r = await api.saveSetting(k, v)
+        if (r?.success === false) return toast.error(r.error)
+      }
       setSettings(s => ({ ...s, ...changed }))
       setChanged({})
       // Lets the sidebar show the new college short name without a restart.

@@ -6,6 +6,7 @@ import { formatFullDate, formatTime12h, cn } from "../lib/utils"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { parseISO } from "date-fns"
 import { isPastDate, PAST_DATE_MESSAGE } from "../../../shared/session-dates"
+import { validateSessionTimes } from "../../../shared/validation"
 import RealCalendar from "./RealCalendar"
 
 interface EditSessionScheduleModalProps {
@@ -114,6 +115,7 @@ export default function EditSessionScheduleModal({
     if (examDate !== session.exam_date && isPastDate(examDate)) return toast.error(PAST_DATE_MESSAGE)
     if (!reportingTime.trim()) return toast.error("Reporting time is required.")
     if (!examStart.trim() || !examEnd.trim()) return toast.error("Exam start and end times are required.")
+    { const timesProblem = validateSessionTimes(reportingTime, examStart, examEnd); if (timesProblem) return toast.error(timesProblem) }
 
     setSaving(true)
     try {

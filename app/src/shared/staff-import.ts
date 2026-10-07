@@ -3,6 +3,7 @@
  * Shared by the desktop handler (master.ipc.ts) and the web build (web-api.ts), which
  * each supply the department lookup, the existing-staff check and the insert.
  */
+import { validateStaff } from "./validation"
 import * as XLSX from "xlsx"
 
 // Column names accepted in the staff import sheet, matched case-insensitively
@@ -76,7 +77,14 @@ export function importStaffFromSheet(
       return
     }
 
-    insertStaff(staffId, name, row["Email"] ?? null, row["Designation"] ?? null, dept.id)
+    const email = String(row["Email"] ?? "").trim() || null, designation = String(row["Designation"] ?? "").trim() || null
+    const problem = validateStaff({ staff_id: staffId, name, designation, email })
+    if (problem) {
+      issues.push({ row: excelRow, reason: `${problem} (Staff ID "${staffId}")` })
+      return
+    }
+
+    insertStaff(staffId, name, email, designation, dept.id)
     inserted++
   })
 

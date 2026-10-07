@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest"
 import * as XLSX from "xlsx"
 import { initDatabase, db } from "../db/database"
-import { saveDepartment, findDepartmentByCodeOrName, listUsers } from "./master.service"
+import { saveDepartment, saveHall, saveUser, findDepartmentByCodeOrName, listUsers } from "./master.service"
 import { getSessionAllocationFull } from "./allocation.service"
 import { getCompleteTimetable } from "./report.service"
 import { importStaffFromSheet } from "../../shared/staff-import"
@@ -117,5 +117,99 @@ describe("Excel staff import: department matching", () => {
     saveDepartment({ code: "ITS", name: "it" }) // older department whose name is "it"
     saveDepartment({ code: "IT", name: "Information Technology" })
     expect(findDepartmentByCodeOrName("It")?.id).toBe(deptId("IT"))
+  })
+})
+
+describe("Hall codes", () => {
+  const hallCodes = () => db.query<any>("SELECT hall_code FROM halls ORDER BY id").map(r => r.hall_code)
+
+  it("a second hall with the same code is refused with a message, in any letter case", () => {
+    expect(saveHall({ hall_code: "H101", block: "Main", capacity: 30 })).toMatchObject({ hall_code: "H101" })
+    for (const code of ["H101", "h101", " H101 "]) {
+      const r = saveHall({ hall_code: code })
+      expect(r.success).toBe(false)
+      expect(r.error).toMatch(/Hall H101 already exists/)
+    }
+    expect(hallCodes()).toEqual(["H101"])
+    expect(saveHall({ hall_code: "H102" })).toMatchObject({ hall_code: "H102" })
+  })
+
+  it("editing a hall keeps its own code, but cannot take another hall's code", () => {
+    saveHall({ hall_code: "H101" }); saveHall({ hall_code: "H102" })
+    const h101 = db.queryOne<any>("SELECT * FROM halls WHERE hall_code = 'H101'")!
+    expect(saveHall({ ...h101, block: "New block", is_active: true })).toMatchObject({ hall_code: "H101", block: "New block" })
+    expect(saveHall({ ...h101, hall_code: "h101", is_active: true })).toMatchObject({ hall_code: "h101" }) // only the letter case of its own code
+    expect(saveHall({ ...h101, hall_code: "H102", is_active: true }).success).toBe(false)
+    expect(hallCodes()).toEqual(["h101", "H102"])
+  })
+
+  it("a blank hall code is refused", () => {
+    expect(saveHall({ hall_code: "   " })).toEqual({ success: false, error: "Hall Code is required." })
+    expect(saveHall({} as any).success).toBe(false)
+  })
+
+  it("capacity must be a whole number, zero or more; nothing is saved otherwise", () => {
+    for (const capacity of [-4, -12, -0.5, 2.5, NaN]) {
+      const r = saveHall({ hall_code: "HC1", capacity })
+      expect(r.success, `capacity ${capacity}`).toBe(false)
+      expect(r.error).toMatch(/Capacity (cannot be negative|must be a whole number)/)
+    }
+    expect(hallCodes()).toEqual([])
+    expect(saveHall({ hall_code: "HC1", capacity: 0 })).toMatchObject({ capacity: 0 })
+    expect(saveHall({ hall_code: "HC2", capacity: 48 })).toMatchObject({ capacity: 48 })
+    expect(saveHall({ hall_code: "HC3" })).toMatchObject({ capacity: 0 }) // left empty
+    const hc2 = db.queryOne<any>("SELECT * FROM halls WHERE hall_code = 'HC2'")!
+    expect(saveHall({ ...hc2, capacity: -1, is_active: true }).success).toBe(false) // editing too
+    expect(db.queryOne<any>("SELECT capacity FROM halls WHERE hall_code = 'HC2'")!.capacity).toBe(48)
+  })
+})
+
+describe("Staff records", () => {
+  const dept = () => { saveDepartment({ code: "CSE", name: "Computer Science" }); return deptId("CSE") }
+  const staffIds = () => db.query<any>("SELECT staff_id FROM users WHERE role='staff' ORDER BY id").map(r => r.staff_id)
+
+  it("a valid record is saved with trimmed values; empty designation and e-mail become empty", () => {
+    const d = dept()
+    expect(saveUser({ staff_id: " STF001 ", name: "  Anitha R ", designation: "  ", email: "", department_id: d, role: "staff" }))
+      .toMatchObject({ staff_id: "STF001", name: "Anitha R", designation: null, email: null })
+    expect(saveUser({ staff_id: "STF002", name: "Bala S", designation: "harish101", email: "bala@college.edu", department_id: d })).toMatchObject({ designation: "harish101" })
+  })
+
+  it("a number-only designation, a bad e-mail or a number-only name is refused with a message; nothing is saved", () => {
+    const d = dept()
+    expect(saveUser({ staff_id: "S1", name: "Harish", designation: "10120", department_id: d }).error).toMatch(/Designation must contain letters/)
+    expect(saveUser({ staff_id: "S1", name: "Harish", email: "harish@gmail", department_id: d }).error).toMatch(/E-mail is not valid/)
+    expect(saveUser({ staff_id: "S1", name: "1010", department_id: d }).success).toBe(false)
+    expect(saveUser({ staff_id: "", name: "Harish", department_id: d }).error).toBe("Staff ID is required.")
+    expect(staffIds()).toEqual([])
+  })
+
+  it("a repeated Staff ID is refused naming the owner, in any letter case; editing keeps its own", () => {
+    const d = dept()
+    const a = saveUser({ staff_id: "STF001", name: "Anitha R", department_id: d })
+    for (const id of ["STF001", "stf001"]) expect(saveUser({ staff_id: id, name: "Someone Else", department_id: d }).error).toMatch(/Staff ID STF001 is already used by Anitha R/)
+    expect(saveUser({ ...a, name: "Anitha Rajan", is_active: true })).toMatchObject({ name: "Anitha Rajan" })
+    expect(saveUser({ ...a, designation: "1010", is_active: true }).success).toBe(false) // editing is checked too
+    expect(staffIds()).toEqual(["STF001"])
+  })
+
+  it("the Excel import reports each bad row with its reason and still imports the good ones", () => {
+    dept()
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Staff ID", "Name", "Department", "Designation", "Email"],
+      ["IMP1", "Good One", "CSE", "Assistant Professor", "good@college.edu"],
+      ["IMP2", "Bad Designation", "CSE", "1010", ""],
+      ["IMP3", "Bad Email", "CSE", "", "no-domain@gmail"],
+      ["IMP 4", "Bad Id", "CSE", "", ""],
+      ["IMP5", "1234", "CSE", "", ""],
+    ])
+    const inserted: string[] = []
+    const r: any = importStaffFromSheet(sheet, code => findDepartmentByCodeOrName(code), () => undefined, (id) => { inserted.push(id) })
+    expect(inserted).toEqual(["IMP1"])
+    expect(r.issues.map((i: any) => i.row)).toEqual([3, 4, 5, 6])
+    expect(r.issues[0].reason).toMatch(/^Designation must contain letters/)
+    expect(r.issues[1].reason).toMatch(/^E-mail is not valid/)
+    expect(r.issues[2].reason).toMatch(/^Staff ID can contain only/)
+    expect(r.issues[3].reason).toMatch(/^Full Name must contain letters/)
   })
 })

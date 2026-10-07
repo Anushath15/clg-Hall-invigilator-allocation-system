@@ -6,6 +6,7 @@ import { addDays, format } from "date-fns"
 import { cn, formatFullDate, formatTime12h } from "../lib/utils"
 import RealCalendar from "./RealCalendar"
 import { getHoliday, getExamDateStatus } from "../lib/holidays"
+import { validateBatchName, validateAcademicYear } from "../../../shared/validation"
 import { useCollegeName } from "../hooks/useCollegeName"
 
 interface Props {
@@ -189,7 +190,8 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
   }
 
   async function handleCreate() {
-    if (!cycleName.trim()) return toast.error("Batch name is required.")
+    const problem = validateBatchName(cycleName) ?? validateAcademicYear(academicYear)
+    if (problem) return toast.error(problem)
     const sessions: any[] = []
     const uniqueDates = Array.from(new Set(selectedDates)).sort()
     for (const date of uniqueDates) {
@@ -684,7 +686,8 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
               type="button"
               onClick={() => {
                 if (step === "info") {
-                  if (!cycleName.trim()) return toast.error("Batch name is required.")
+                  const problem = validateBatchName(cycleName) ?? validateAcademicYear(academicYear)
+                  if (problem) return toast.error(problem)
                   setStep("dates")
                 } else if (step === "dates") {
                   if (selectedDates.length !== numDays) {

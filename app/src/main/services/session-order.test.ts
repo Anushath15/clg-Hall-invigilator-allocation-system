@@ -69,9 +69,9 @@ describe("Unconfirmed sessions are renumbered into date order; confirmed ones ne
 
   it("rescheduling a confirmed session changes its date and times only, never its step or status", () => {
     const s = idOf("2099-11-03", "AN")
-    updateSession(s, { exam_date: "2099-12-01", exam_start: "14:05", rotation_step: 99, status: "pending" })
+    updateSession(s, { exam_date: "2099-12-01", exam_start: "09:35", rotation_step: 99, status: "pending" })
     const row = db.queryOne<any>("SELECT exam_date, exam_start, rotation_step, status FROM exam_sessions WHERE id=?", [s])
-    expect(row).toEqual({ exam_date: "2099-12-01", exam_start: "14:05", rotation_step: 2, status: "confirmed" })
+    expect(row).toEqual({ exam_date: "2099-12-01", exam_start: "09:35", rotation_step: 2, status: "confirmed" })
     expect(order().slice(2)).toEqual(["11-01 FN:3:pending", "11-02 FN:4:pending", "11-04 FN:5:pending", "11-05 FN:6:draft"])
     expect(history()).toEqual(confirmedHistory)
   })

@@ -6,11 +6,14 @@
  * so the check lives here rather than in the schema; existing databases need no migration.
  */
 import { db } from "../db/database"
+import { validateStaff, validateDepartmentCode, validateDepartmentName, validateHallPlace } from "../../shared/validation"
 
 export interface DepartmentInput { id?: number; code: string; name: string; is_active?: boolean }
 
 export function saveDepartment(data: DepartmentInput): { success: boolean; error?: string; department?: any } {
   if (!String(data?.code ?? "").trim() || !String(data?.name ?? "").trim()) return { success: false, error: "Code and Name are required." }
+  const problem = validateDepartmentCode(data.code) ?? validateDepartmentName(data.name)
+  if (problem) return { success: false, error: problem }
   const clash = db.queryOne<any>("SELECT code FROM departments WHERE code = ? COLLATE NOCASE AND id != ?", [data.code, data.id ?? 0])
   if (clash) return { success: false, error: `A department with code "${clash.code}" already exists (codes are not case-sensitive).` }
   if (data.id) {
@@ -19,6 +22,60 @@ export function saveDepartment(data: DepartmentInput): { success: boolean; error
   }
   const { lastInsertRowid } = db.run("INSERT INTO departments(code,name) VALUES(?,?)", [data.code, data.name])
   return { success: true, department: db.queryOne("SELECT * FROM departments WHERE id=?", [lastInsertRowid]) }
+}
+
+export interface StaffInput { id?: number; staff_id: string; name: string; email?: string | null; designation?: string | null; role?: string; department_id?: number | null; is_active?: boolean }
+
+/**
+ * Add or edit a staff member (an invigilator record; nobody signs in). Fields follow shared/validation.ts;
+ * a Staff ID is unique ignoring letter case. Returns the saved record, or { success: false, error }.
+ */
+export function saveUser(data: StaffInput): any {
+  const problem = validateStaff(data)
+  if (problem) return { success: false, error: problem }
+  const staffId = String(data.staff_id).trim(), name = String(data.name).trim()
+  const email = String(data.email ?? "").trim() || null, designation = String(data.designation ?? "").trim() || null
+  const clash = db.queryOne<any>("SELECT staff_id, name FROM users WHERE staff_id = ? COLLATE NOCASE AND id != ?", [staffId, data.id ?? 0])
+  if (clash) return { success: false, error: `Staff ID ${clash.staff_id} is already used by ${clash.name}. Each Staff ID can be used only once.` }
+  if (data.id) {
+    db.run(`UPDATE users SET staff_id=?,name=?,email=?,designation=?,role=?,department_id=?,is_active=?,updated_at=datetime('now') WHERE id=?`,
+      [staffId, name, email, designation, data.role ?? "staff", data.department_id ?? null, data.is_active ? 1 : 0, data.id])
+    return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [data.id])
+  }
+  const { lastInsertRowid } = db.run("INSERT INTO users(staff_id,name,email,designation,role,department_id,is_active) VALUES(?,?,?,?,?,?,?)",
+    [staffId, name, email, designation, data.role ?? "staff", data.department_id ?? null, 1])
+  return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [lastInsertRowid])
+}
+
+export interface HallInput { id?: number; hall_code: string; floor?: string | null; capacity?: number; block?: string | null; is_active?: boolean }
+
+/**
+ * Add or edit a hall. Hall codes are unique ignoring case ("H101" and "h101" are the same hall)
+ * and surrounding spaces are removed; a clash is reported by name instead of reaching the
+ * database. Returns the saved hall, or { success: false, error }.
+ */
+export function saveHall(data: HallInput): any {
+  const code = String(data?.hall_code ?? "").trim()
+  if (!code) return { success: false, error: "Hall Code is required." }
+  const place = validateHallPlace("Block", data.block) ?? validateHallPlace("Floor", data.floor)
+  if (place) return { success: false, error: place }
+  const capacity = Number(data.capacity ?? 0)
+  if (!Number.isFinite(capacity) || !Number.isInteger(capacity)) return { success: false, error: "Capacity must be a whole number." }
+  if (capacity < 0) return { success: false, error: "Capacity cannot be negative." }
+  const clash = db.queryOne<any>("SELECT hall_code FROM halls WHERE hall_code = ? COLLATE NOCASE AND id != ?", [code, data.id ?? 0])
+  if (clash) return { success: false, error: `Hall ${clash.hall_code} already exists. Each hall code can be used only once (capital and small letters count as the same).` }
+  // Halls are identified by code and floor; the NOT NULL name column just mirrors the code.
+  const floor = (data.floor && String(data.floor).trim()) || null
+  const block = (data.block && String(data.block).trim()) || null
+  if (data.id) {
+    db.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=? WHERE id=?",
+      [code, code, floor, capacity, block, data.is_active ? 1 : 0, data.id])
+    return db.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
+  }
+  const maxOrder = db.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
+  const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?,?)",
+    [code, code, floor, capacity, block, 1, (maxOrder?.m ?? 0) + 1])
+  return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
 }
 
 /** The department an import row names, by code or name, ignoring case; a code match wins over a name match. */

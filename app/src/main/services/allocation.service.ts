@@ -3,6 +3,14 @@ import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, validateSwap, getValidHallsForStaff } from "./validation.engine"
 import { unconfirmedStepChanges, type SessionOrderRow } from "../../shared/session-order"
 import { isPastDate, PAST_DATE_MESSAGE } from "../../shared/session-dates"
+import { validateSessionTimes } from "../../shared/validation"
+
+/** Times are optional on old records; when any is given, all three must be valid and in order. */
+function checkTimes(d: any): void {
+  if (d.reporting_time == null && d.exam_start == null && d.exam_end == null) return
+  const problem = validateSessionTimes(d.reporting_time, d.exam_start, d.exam_end)
+  if (problem) throw new Error(problem)
+}
 import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../shared/staff-duty"
 
 export async function getOrCreateAllocation(
@@ -307,6 +315,7 @@ const slotName = (type: string) => (type === "FN" ? "Forenoon (FN)" : "Afternoon
 /** The batch wizard: replaces the batch's unconfirmed sessions with `sessions` (confirmed ones stay). */
 export async function createSessions(cycleId: number, sessions: any[]) {
   if (sessions.some(s => isPastDate(s.exam_date))) throw new Error(PAST_DATE_MESSAGE)
+  sessions.forEach(checkTimes)
   return db.runTransaction(() => {
     // SAFE: only delete sessions that are NOT confirmed or published
     const safeToDelete = db.query<any>(
@@ -340,6 +349,7 @@ export async function createSessions(cycleId: number, sessions: any[]) {
 /** One more session in a batch; it takes its date-order place among the unconfirmed sessions. */
 export function addSession(cycleId: number, data: any) {
   if (isPastDate(data.exam_date)) throw new Error(PAST_DATE_MESSAGE)
+  checkTimes(data)
   const exists = db.queryOne<any>(
     "SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=?",
     [cycleId, data.exam_date, data.session_type]
@@ -380,6 +390,8 @@ export function updateSession(id: number, data: any) {
   const reportingTime = data.reporting_time !== undefined ? data.reporting_time : current.reporting_time
   const examStart = data.exam_start !== undefined ? data.exam_start : current.exam_start
   const examEnd = data.exam_end !== undefined ? data.exam_end : current.exam_end
+  // An old record may have no times at all; those are left alone. Otherwise the final times must be valid and in order.
+  if (reportingTime != null && examStart != null && examEnd != null) checkTimes({ reporting_time: reportingTime, exam_start: examStart, exam_end: examEnd })
 
   db.run(
     "UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,updated_at=datetime('now') WHERE id=?",

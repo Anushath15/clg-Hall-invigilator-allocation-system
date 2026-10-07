@@ -1,3 +1,4 @@
+import { validateStaff, validateDepartmentCode, validateDepartmentName } from "../../../shared/validation"
 import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Plus, Pencil, Trash2, Upload, CheckCircle, XCircle } from "lucide-react"
@@ -64,10 +65,13 @@ function StaffTab() {
   }
 
   async function save() {
-    if (!form?.name || !form?.staff_id) return toast.error("Name and Staff ID are required.")
+    const problem = validateStaff(form ?? {})
+    if (problem) return toast.error(problem)
     setLoading(true)
     try {
-      await api.saveUser(form); toast.success("Saved!"); setForm(null); load()
+      const r = await api.saveUser(form)
+      if (r?.success === false) return toast.error(r.error) // e.g. the Staff ID is already used
+      toast.success("Saved!"); setForm(null); load()
     } finally { setLoading(false) }
   }
 
@@ -230,9 +234,13 @@ function HallsTab() {
   useEffect(() => { load() }, [])
 
   async function save() {
-    if (!form?.hall_code) return toast.error("Hall Code is required.")
+    if (!form?.hall_code?.trim()) return toast.error("Hall Code is required.")
     setLoading(true)
-    try { await api.saveHall(form); toast.success("Saved!"); setForm(null); load() } finally { setLoading(false) }
+    try {
+      const r = await api.saveHall(form)
+      if (r?.success === false) return toast.error(r.error) // e.g. the hall code is already used
+      toast.success("Saved!"); setForm(null); load()
+    } finally { setLoading(false) }
   }
 
   async function remove(h: any) {
@@ -263,7 +271,7 @@ function HallsTab() {
                     {["Ground", "1st", "2nd", "3rd", "4th", "5th"].map(f => <option key={f} value={f} />)}
                   </datalist>
                 </div>
-                <div><label className="label">Capacity</label><input className="input-field" type="number" value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>
+                <div><label className="label">Capacity</label><input className="input-field" type="number" min={0} step={1} value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
               </div>
               <div className="flex gap-2 mt-5 justify-end">
@@ -317,6 +325,8 @@ function DepartmentsTab() {
 
   async function save() {
     if (!form?.code?.trim() || !form?.name?.trim()) return toast.error("Code and Name are required.")
+    const problem = validateDepartmentCode(form.code) ?? validateDepartmentName(form.name)
+    if (problem) return toast.error(problem)
     setLoading(true)
     try {
       const r = await api.saveDepartment(form)
