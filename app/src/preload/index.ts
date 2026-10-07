@@ -51,8 +51,10 @@ const api = {
   getDateWiseReport:    (sessionId: number) => ipcRenderer.invoke("report:dateWise", sessionId),
   getCompleteTimetable: (cycleId: number) => ipcRenderer.invoke("report:timetable", cycleId),
   getAuditReport:       (cycleId: number) => ipcRenderer.invoke("report:audit", cycleId),
+  // After a native pop-up (confirm / alert): give the page its keyboard focus back
+  refocusWindow:   () => ipcRenderer.invoke("app:refocus"),
   // File dialogs
-  openFileDialog:  (filters?: any[]) => ipcRenderer.invoke("dialog:openFile", filters),
+  openFileDialog:(filters?: any[]) => ipcRenderer.invoke("dialog:openFile", filters),
   openSaveDialog:  (filters?: any[], defaultName?: string) => ipcRenderer.invoke("dialog:saveFile", filters, defaultName),
   // Backup & Restore
   backupDatabase:  (destPath: string) => ipcRenderer.invoke("backup:database", destPath),

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell, dialog } from "electron"
+import { app, BrowserWindow, shell, dialog, ipcMain } from "electron"
 import { join } from "path"
+import { restoreKeyboardFocus } from "./focus"
 // electron-toolkit inlined
 import { initDatabase } from "./db/database"
 import { ensureDefaultAdmin } from "./services/auth.service"
@@ -45,7 +46,12 @@ function createWindow(): void {
     // Windows foreground bypass: pulse always-on-top so it pops over Chrome
     mainWindow.setAlwaysOnTop(true)
     mainWindow.setAlwaysOnTop(false)
+    mainWindow.webContents.focus() // the page itself must have keyboard focus, not just the window
   })
+
+  // Whenever the window becomes active again (switching back from another app, closing a
+  // dialog), make sure the page has keyboard focus so text fields show their cursor.
+  mainWindow.on("focus", () => mainWindow?.webContents.focus())
 
   // Fallback: Ensure window shows even if ready-to-show is delayed
   setTimeout(() => {
@@ -70,7 +76,12 @@ function createWindow(): void {
       title: "Save report",
       defaultPath: join(app.getPath("downloads"), item.getFilename())
     })
+    // The Save window is a native dialog: give the page its keyboard focus back afterwards.
+    item.once("done", () => restoreKeyboardFocus(mainWindow))
   })
+
+  ipcMain.removeHandler("app:refocus") // createWindow can run again (macOS re-activation)
+  ipcMain.handle("app:refocus", () => restoreKeyboardFocus(mainWindow))
 
   if (process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"])

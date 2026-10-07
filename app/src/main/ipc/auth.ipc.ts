@@ -2,6 +2,7 @@ import { ipcMain, dialog } from "electron"
 import { app } from "electron"
 import { getLocalAdmin } from "../services/auth.service"
 import { backupDatabase, restoreDatabase } from "../services/backup.service"
+import { restoreKeyboardFocus } from "../focus"
 
 export function registerAuthHandlers() {
   // The only "auth" call: which local administrator the app runs as (no login, no passwords).
@@ -9,6 +10,7 @@ export function registerAuthHandlers() {
 
   ipcMain.handle("dialog:openFile", async (_, filters) => {
     const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: filters ?? [] })
+    restoreKeyboardFocus()
     return result.canceled ? null : result.filePaths[0]
   })
 
@@ -17,6 +19,7 @@ export function registerAuthHandlers() {
       defaultPath: defaultName ?? "hias-backup.db",
       filters: filters ?? [{ name: "Database", extensions: ["db"] }]
     })
+    restoreKeyboardFocus()
     return result.canceled ? null : result.filePath
   })
 

@@ -93,7 +93,7 @@ function StaffTab() {
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Staff" : "Add Staff"}</h3>
             <form onSubmit={e => { e.preventDefault(); save() }}>
               <div className="space-y-3">
-                <div><label className="label">Staff ID *</label><input className="input-field" value={form.staff_id ?? ""} onChange={e => setForm({ ...form, staff_id: e.target.value })} /></div>
+                <div><label className="label">Staff ID *</label><input autoFocus className="input-field" value={form.staff_id ?? ""} onChange={e => setForm({ ...form, staff_id: e.target.value })} /></div>
                 <div><label className="label">Full Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
                 <div><label className="label">Designation</label><input className="input-field" value={form.designation ?? ""} onChange={e => setForm({ ...form, designation: e.target.value })} /></div>
                 <div><label className="label">Email</label><input className="input-field" type="email" value={form.email ?? ""} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
@@ -254,7 +254,7 @@ function HallsTab() {
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Hall" : "Add Hall"}</h3>
             <form onSubmit={e => { e.preventDefault(); save() }}>
               <div className="space-y-3">
-                <div><label className="label">Hall Code *</label><input className="input-field" value={form.hall_code ?? ""} onChange={e => setForm({ ...form, hall_code: e.target.value })} placeholder="e.g. H001" /></div>
+                <div><label className="label">Hall Code *</label><input autoFocus className="input-field" value={form.hall_code ?? ""} onChange={e => setForm({ ...form, hall_code: e.target.value })} placeholder="e.g. H001" /></div>
                 <div><label className="label">Block / Building</label><input className="input-field" value={form.block ?? ""} onChange={e => setForm({ ...form, block: e.target.value })} placeholder="e.g. Main Block" /></div>
                 <div>
                   <label className="label">Floor</label>
@@ -343,7 +343,7 @@ function DepartmentsTab() {
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Department" : "Add Department"}</h3>
             <form onSubmit={e => { e.preventDefault(); save() }}>
               <div className="space-y-3">
-                <div><label className="label">Code *</label><input className="input-field" value={form.code ?? ""} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="e.g. CSE" /></div>
+                <div><label className="label">Code *</label><input autoFocus className="input-field" value={form.code ?? ""} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="e.g. CSE" /></div>
                 <div><label className="label">Name *</label><input className="input-field" value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Computer Science & Engineering" /></div>
               </div>
               <div className="flex gap-2 mt-5 justify-end">
