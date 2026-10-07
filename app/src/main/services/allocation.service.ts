@@ -2,6 +2,7 @@ import { db, writeAuditLog } from "../db/database"
 import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, validateSwap, getValidHallsForStaff } from "./validation.engine"
 import { unconfirmedStepChanges, type SessionOrderRow } from "../../shared/session-order"
+import { isPastDate, PAST_DATE_MESSAGE } from "../../shared/session-dates"
 import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../shared/staff-duty"
 
 export async function getOrCreateAllocation(
@@ -305,6 +306,7 @@ const slotName = (type: string) => (type === "FN" ? "Forenoon (FN)" : "Afternoon
 
 /** The batch wizard: replaces the batch's unconfirmed sessions with `sessions` (confirmed ones stay). */
 export async function createSessions(cycleId: number, sessions: any[]) {
+  if (sessions.some(s => isPastDate(s.exam_date))) throw new Error(PAST_DATE_MESSAGE)
   return db.runTransaction(() => {
     // SAFE: only delete sessions that are NOT confirmed or published
     const safeToDelete = db.query<any>(
@@ -337,6 +339,7 @@ export async function createSessions(cycleId: number, sessions: any[]) {
 
 /** One more session in a batch; it takes its date-order place among the unconfirmed sessions. */
 export function addSession(cycleId: number, data: any) {
+  if (isPastDate(data.exam_date)) throw new Error(PAST_DATE_MESSAGE)
   const exists = db.queryOne<any>(
     "SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=?",
     [cycleId, data.exam_date, data.session_type]
@@ -363,6 +366,9 @@ export function updateSession(id: number, data: any) {
   if (!current) return null
   const examDate = data.exam_date ?? current.exam_date
   const sessionType = data.session_type ?? current.session_type
+  // Moving a session to a day that has passed is refused; changing only the times of a session
+  // that keeps its date is still allowed, so an older record can be corrected.
+  if (examDate !== current.exam_date && isPastDate(examDate)) throw new Error(PAST_DATE_MESSAGE)
 
   // Check for duplicate session date and slot within the same cycle
   const conflict = db.queryOne<any>(

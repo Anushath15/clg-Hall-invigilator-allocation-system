@@ -5,6 +5,8 @@ import toast from "react-hot-toast"
 import { formatFullDate, formatTime12h, cn } from "../lib/utils"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { parseISO } from "date-fns"
+import { isPastDate, PAST_DATE_MESSAGE } from "../../../shared/session-dates"
+import RealCalendar from "./RealCalendar"
 
 interface AddSessionModalProps {
   cycleId: number
@@ -74,6 +76,7 @@ export default function AddSessionModal({
       return toast.error(`A ${sessionType === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"} session already exists for ${examDate}.`)
     }
     if (!examDate.trim()) return toast.error("Please choose an exam date.")
+    if (isPastDate(examDate)) return toast.error(PAST_DATE_MESSAGE)
     if (!reportingTime.trim()) return toast.error("Please enter reporting time.")
     if (!examStart.trim() || !examEnd.trim()) return toast.error("Please enter exam start and end times.")
 
@@ -166,12 +169,11 @@ export default function AddSessionModal({
           {/* Date Picker */}
           <div className="space-y-1">
             <label className="label">Exam Date *</label>
-            <input
-              type="date"
-              value={examDate}
-              onChange={e => setExamDate(e.target.value)}
-              className="input-field"
-              required
+            <RealCalendar
+              single
+              selectedDates={examDate ? [examDate] : []}
+              onToggleDate={setExamDate}
+              maxDates={1}
             />
             {dateInfo && (
               <div className="flex items-center gap-2 mt-1">

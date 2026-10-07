@@ -5,6 +5,8 @@ import toast from "react-hot-toast"
 import { formatFullDate, formatTime12h, cn } from "../lib/utils"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { parseISO } from "date-fns"
+import { isPastDate, PAST_DATE_MESSAGE } from "../../../shared/session-dates"
+import RealCalendar from "./RealCalendar"
 
 interface EditSessionScheduleModalProps {
   session: any
@@ -108,6 +110,8 @@ export default function EditSessionScheduleModal({
       return toast.error(`A ${sessionType === "FN" ? "Forenoon (FN)" : "Afternoon (AN)"} session already exists for ${examDate} in this cycle.`)
     }
     if (!examDate.trim()) return toast.error("Exam date is required.")
+    // Only a CHANGE of date is checked, so the times of an older session can still be corrected.
+    if (examDate !== session.exam_date && isPastDate(examDate)) return toast.error(PAST_DATE_MESSAGE)
     if (!reportingTime.trim()) return toast.error("Reporting time is required.")
     if (!examStart.trim() || !examEnd.trim()) return toast.error("Exam start and end times are required.")
 
@@ -178,7 +182,7 @@ export default function EditSessionScheduleModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSave} className="p-6 space-y-5 flex-1 min-h-0 overflow-y-auto">
+        <form onSubmit={handleSave} noValidate className="p-6 space-y-5 flex-1 min-h-0 overflow-y-auto">
           {/* Unresolved existing duplicate banner */}
           {isCurrentlyDuplicate && (
             <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-800 flex items-start gap-2.5 shadow-xs">
@@ -241,12 +245,11 @@ export default function EditSessionScheduleModal({
           {/* Section 1: Date Reselection */}
           <div className="space-y-1.5">
             <label className="label">Exam Date *</label>
-            <input
-              type="date"
-              value={examDate}
-              onChange={e => setExamDate(e.target.value)}
-              className="input-field font-medium"
-              required
+            <RealCalendar
+              single
+              selectedDates={examDate ? [examDate] : []}
+              onToggleDate={setExamDate}
+              maxDates={1}
             />
             {dateInfo && (
               <div className="flex items-center gap-2 mt-1">

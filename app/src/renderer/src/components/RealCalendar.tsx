@@ -15,6 +15,7 @@ import {
 import { ChevronLeft, ChevronRight, Sparkles, XCircle } from "lucide-react"
 import { getHoliday, isSundayDate } from "../lib/holidays"
 import { cn, formatDateWithDay } from "../lib/utils"
+import { todayLocal } from "../../../shared/session-dates"
 
 interface RealCalendarProps {
   selectedDates: string[]
@@ -22,6 +23,8 @@ interface RealCalendarProps {
   maxDates: number
   onAutoSelect?: (count: number) => void
   onClearDates?: () => void
+  /** Pick ONE date (Add Session, Reschedule): no order badges or summary, shorter cells. */
+  single?: boolean
 }
 
 export default function RealCalendar({
@@ -29,11 +32,13 @@ export default function RealCalendar({
   onToggleDate,
   maxDates,
   onAutoSelect,
-  onClearDates
+  onClearDates,
+  single = false
 }: RealCalendarProps) {
   // Center on current month or first selected date
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
-    if (selectedDates.length > 0) {
+    // A single-date picker opens on the selected month, or on this month if that date has passed.
+    if (selectedDates.length > 0 && !(single && selectedDates[0] < todayLocal())) {
       try {
         return parseISO(selectedDates[0])
       } catch {
@@ -44,6 +49,7 @@ export default function RealCalendar({
   })
 
   const today = useMemo(() => new Date(), [])
+  const todayStr = todayLocal(today)
 
   // Calculate calendar grid for the month view
   const calendarDays = useMemo(() => {
@@ -138,7 +144,8 @@ export default function RealCalendar({
             const selectionIndex = selectedDates.indexOf(dateStr)
 
             // Sundays are disabled for exam scheduling in college
-            const isDisabled = isSunday
+            const isPast = dateStr < todayStr // days that have passed cannot be scheduled
+            const isDisabled = isSunday || isPast
 
             return (
               <button
@@ -147,15 +154,18 @@ export default function RealCalendar({
                 disabled={isDisabled}
                 onClick={() => onToggleDate(dateStr)}
                 title={
-                  isSunday
+                  isPast
+                    ? "This date has already passed"
+                    : isSunday
                     ? "Sunday — Weekly Holiday (No Exams)"
                     : holiday
                     ? `${holiday.name} (TN Gazetted Holiday)`
                     : format(day, "EEEE, dd MMMM yyyy")
                 }
                 className={cn(
-                  "relative flex flex-col items-center justify-between p-2 rounded-lg text-xs transition-all min-h-[58px] border",
+                  single ? "relative flex flex-col items-center justify-between p-1.5 rounded-lg text-xs transition-all min-h-[46px] border" : "relative flex flex-col items-center justify-between p-2 rounded-lg text-xs transition-all min-h-[58px] border",
                   !isCurrentMonth && "opacity-35 bg-gray-50/50",
+                  isPast && !isSunday && "opacity-40 cursor-not-allowed",
                   isSunday && "bg-red-50/60 border-red-100 text-red-400 cursor-not-allowed",
                   !isSunday && !isSelected && isCurrentMonth && "border-gray-100 hover:border-brand-primary/50 hover:bg-brand-verylight text-brand-textmain",
                   isSelected && "bg-brand-primary text-white border-brand-dark shadow-sm font-semibold hover:bg-brand-dark",
@@ -171,7 +181,7 @@ export default function RealCalendar({
                   )}>
                     {format(day, "d")}
                   </span>
-                  {isSelected && (
+                  {isSelected && !single && (
                     <span className="text-[10px] bg-white text-brand-dark font-bold px-1 rounded-full leading-tight">
                       #{selectionIndex + 1}
                     </span>
@@ -208,7 +218,7 @@ export default function RealCalendar({
       </div>
 
       {/* Selected Dates Summary */}
-      <div className="bg-brand-verylight rounded-xl p-4 border border-brand-border">
+      {!single && <div className="bg-brand-verylight rounded-xl p-4 border border-brand-border">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-bold text-brand-dark uppercase tracking-wider">
             Selected Exam Dates:{" "}
@@ -270,7 +280,7 @@ export default function RealCalendar({
             Click on any weekday above to select exam dates, or use &quot;Auto-Select&quot; to pick consecutive working days.
           </p>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
