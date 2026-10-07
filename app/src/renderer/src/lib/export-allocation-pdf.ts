@@ -73,19 +73,30 @@ export function buildAllocationPDF({ cycle, session, allocation, settings = {} }
   doc.text(`Generated: ${new Date().toLocaleString()} · ${shortName}`, 14, 34)
   doc.setTextColor(0)
 
+  // The sheet is printed and handed round: two writing columns take most of the width, so a
+  // replacement invigilator can be named ("Adjusted By") and each invigilator can sign. Portrait A4.
   autoTable(doc, {
     startY: 39,
-    head: [["#", "Staff ID", "Name", "Department", "Assigned Hall", "Location"]],
+    margin: { left: 14, right: 14 },
+    head: [["#", "Staff ID", "Name", "Dept", "Hall", "Location", "Adjusted By", "Staff Signature"]],
     body: allocation.map((a, idx) => [
       String(idx + 1),
       a.staff_id ?? "—",
       a.userName ?? "—",
       a.deptCode ?? "—",
       a.hall_code ?? "—",
-      hallLocation({ block: a.hallBlock, floor: a.hallFloor }) || "—"
+      hallLocation({ block: a.hallBlock, floor: a.hallFloor }) || "—",
+      "",
+      ""
     ]),
-    styles: { fontSize: 9, cellPadding: 3 },
-    headStyles: { fillColor: [22, 163, 74] }
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [150, 150, 150], lineWidth: 0.2, valign: "middle", minCellHeight: 15 },
+    headStyles: { fillColor: [22, 163, 74], textColor: 255, minCellHeight: 10 },
+    // Widths in mm out of the 182 available: 104 for the printed details, 78 left for writing.
+    columnStyles: {
+      0: { cellWidth: 7, halign: "center" }, 1: { cellWidth: 17 }, 2: { cellWidth: 30 }, 3: { cellWidth: 12 },
+      4: { cellWidth: 12 }, 5: { cellWidth: 26 }, 6: { cellWidth: 39 }, 7: { cellWidth: 39 }
+    }
   })
 
   const finalY = (doc as any).lastAutoTable?.finalY ?? 39
