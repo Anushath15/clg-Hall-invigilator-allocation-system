@@ -3,17 +3,19 @@ import { AlertTriangle, Trash2 } from "lucide-react"
 import toast from "react-hot-toast"
 import { api } from "../lib/api"
 import { formatDate, getStatusColor } from "../lib/utils"
-import ConfirmWithPasswordModal from "./ConfirmWithPasswordModal"
+import DeleteBatchModal from "./DeleteBatchModal"
 
 /**
  * Settings → Delete Batch. Deleting a whole allocation batch lives here, away from the batch
- * list where one wrong click could remove a year's allocations. It still needs the typed
- * DELETE confirmation (the password in the web build).
+ * list where one wrong click could remove a year's allocations. It needs the
+ * batch name typed again plus the name and Staff ID of the person deleting it; those are kept with
+ * the batch's details in the record of deleted batches shown below the list.
  */
 export default function DeleteBatchesPanel() {
   const [cycles, setCycles] = useState<any[]>([])
   const [target, setTarget] = useState<any>(null)
-  const load = () => api.getCycles().then(setCycles)
+  const [deleted, setDeleted] = useState<any[]>([])
+  const load = () => { api.getCycles().then(setCycles); api.getDeletedBatches().then(setDeleted).catch(() => setDeleted([])) }
   useEffect(() => { load() }, [])
 
   return (
@@ -25,10 +27,10 @@ export default function DeleteBatchesPanel() {
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-red-900 text-base">Delete Batch</h3>
           <p className="text-sm text-red-700 mt-1 leading-relaxed">
-            Permanently delete an allocation batch with all its sessions, allocations and rotation records, including confirmed ones.
+            Permanently delete an allocation batch with all its sessions and allocations, including confirmed ones. The rotation history stays, so later allocations still count the duties already done.
           </p>
           <div className="mt-3 p-3 bg-red-100/70 rounded-lg border border-red-200 text-xs text-red-800">
-            <strong>Warning:</strong> This cannot be undone. You will be asked to type <strong>DELETE</strong> before anything is removed. Back up first (Backup &amp; Restore) if you may need the data again.
+            <strong>Warning:</strong> This cannot be undone. You will be asked to type the batch name and enter your name and Staff ID before anything is removed; these are kept in the record of deleted batches. Back up first (Backup &amp; Restore) if you may need the data again.
           </div>
 
           <div className="mt-4 space-y-2">
@@ -49,24 +51,42 @@ export default function DeleteBatchesPanel() {
               </div>
             ))}
           </div>
+
+          <h4 className="mt-6 text-sm font-semibold text-red-900">Deleted batches</h4>
+          {deleted.length === 0
+            ? <p className="mt-1 text-xs text-red-700">No batch has been deleted yet.</p>
+            : (
+              <div className="mt-2 overflow-x-auto bg-white border border-red-100 rounded-lg">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-red-50 text-red-900">
+                    <tr><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Year</th><th className="px-3 py-2">Sessions</th><th className="px-3 py-2">Deleted on</th><th className="px-3 py-2">Deleted by</th></tr>
+                  </thead>
+                  <tbody>
+                    {deleted.map(d => (
+                      <tr key={d.id} className="border-t border-red-50 text-brand-textmain">
+                        <td className="px-3 py-2 font-medium">{d.batch_name}</td>
+                        <td className="px-3 py-2">{d.academic_year}</td>
+                        <td className="px-3 py-2">{d.session_count} ({d.confirmed_session_count} confirmed)</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{new Date(d.deleted_at).toLocaleString()}</td>
+                        <td className="px-3 py-2">{d.deleted_by_name} · {d.deleted_by_staff_id}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
         </div>
       </div>
 
-      <ConfirmWithPasswordModal
-        isOpen={!!target}
-        title="Delete Allocation Batch"
-        message={`Are you sure you want to permanently delete "${target?.name}" (${target?.academic_year})? This removes every session, allocation, and rotation record tied to this batch — including published ones. This cannot be undone.`}
-        confirmButtonText="Delete Batch"
+      <DeleteBatchModal
+        batch={target}
         onClose={() => setTarget(null)}
-        onConfirmed={async () => {
-          if (!target) return
-          const res = await api.deleteCycle(target.id)
-          if (res?.success) {
-            toast.success(`"${target.name}" deleted`)
-            load()
-          } else {
-            toast.error(res?.error || "Cannot delete this allocation batch.")
-          }
+        onDelete={async (typedBatchName, personName, staffId) => {
+          const res = await api.deleteCycle(target.id, { typedBatchName, personName, staffId })
+          if (!res?.success) return res?.error || "Cannot delete this allocation batch."
+          toast.success(`"${target.name}" deleted`)
+          load()
+          return null
         }}
       />
     </div>

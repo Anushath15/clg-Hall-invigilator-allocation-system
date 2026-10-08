@@ -136,7 +136,9 @@ function runMigrations(): void {
     "002_rotation_global_order": migration002,
     "003_notifications": migration003,
     "004_hall_floor": migration004,
-    "005_notification_session": migration005
+    "005_notification_session": migration005,
+    "006_deleted_batches": migration006,
+    "007_rotation_outlives_session": migration007
   }
 
   for (const [name, fn] of Object.entries(migrations)) {
@@ -286,6 +288,57 @@ function migration004(): void {
 function migration005(): void {
   const cols = query<any>("PRAGMA table_info(notifications)")
   if (!cols.some((c: any) => c.name === "session_id")) run(`ALTER TABLE notifications ADD COLUMN session_id INTEGER`)
+}
+
+// A record of every allocation batch deleted from Settings: what it was and who deleted it.
+// It is kept after the batch itself (and its sessions and allocations) is gone.
+function migration006(): void {
+  run(`CREATE TABLE IF NOT EXISTS deleted_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_name TEXT NOT NULL,
+    academic_year TEXT,
+    status TEXT,
+    batch_created_at TEXT,
+    session_count INTEGER NOT NULL DEFAULT 0,
+    confirmed_session_count INTEGER NOT NULL DEFAULT 0,
+    allocation_count INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT NOT NULL,
+    deleted_by_name TEXT NOT NULL,
+    deleted_by_staff_id TEXT NOT NULL
+  )`)
+}
+
+// Rotation records (who has had which hall) used to be deleted with their session. They now stay
+// when a finished batch is deleted, so later allocations still count the duties already done:
+// session_id becomes optional and is cleared (ON DELETE SET NULL) instead of the row being removed.
+// SQLite cannot change a column's constraint in place, so the table is rebuilt with its rows kept.
+function migration007(): void {
+  _inTransaction = true
+  try {
+    _db.run("BEGIN TRANSACTION")
+    _db.run(`CREATE TABLE rotation_history_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_id INTEGER REFERENCES exam_sessions(id) ON DELETE SET NULL,
+      hall_id INTEGER NOT NULL REFERENCES halls(id) ON DELETE CASCADE,
+      rotation_step INTEGER NOT NULL,
+      recorded_at TEXT DEFAULT (datetime('now')),
+      global_order INTEGER,
+      UNIQUE(user_id, session_id)
+    )`)
+    _db.run(`INSERT INTO rotation_history_new(id, user_id, session_id, hall_id, rotation_step, recorded_at, global_order)
+             SELECT id, user_id, session_id, hall_id, rotation_step, recorded_at, global_order FROM rotation_history`)
+    _db.run("DROP TABLE rotation_history")
+    _db.run("ALTER TABLE rotation_history_new RENAME TO rotation_history")
+    _db.run("CREATE INDEX IF NOT EXISTS idx_rotation_history_user_order ON rotation_history(user_id, global_order DESC)")
+    _db.run("COMMIT")
+  } catch (err) {
+    try { _db.run("ROLLBACK") } catch { /* nothing to roll back */ }
+    throw err
+  } finally {
+    _inTransaction = false
+  }
+  persistDb()
 }
 
 // ?? Default seed data ?????????????????????????????????????????????????????

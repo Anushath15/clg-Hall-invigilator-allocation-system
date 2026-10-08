@@ -67,14 +67,14 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
       const hall = db.queryOne<any>("SELECT hall_code FROM halls WHERE id = ?", [e.hallId])
       const prev = db.queryOne<any>(
         `SELECT es.exam_date, es.session_type FROM rotation_history rh
-         JOIN exam_sessions es ON rh.session_id = es.id
+         LEFT JOIN exam_sessions es ON rh.session_id = es.id
          WHERE rh.user_id = ? AND rh.hall_id = ?
          ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC LIMIT 1`,
         [e.userId, e.hallId]
       )
       errors.push({
         rule: "R1",
-        message: `${user?.name} was already assigned Hall ${hall?.hall_code} on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle. Cannot repeat.`,
+        message: `${user?.name} was already assigned Hall ${hall?.hall_code} ${visitText(prev)} in the current rotation cycle. Cannot repeat.`,
         userId: e.userId, hallId: e.hallId
       })
     }
@@ -116,11 +116,16 @@ export function validateAllocation(sessionId: number, entries: ValidationEntry[]
   return { isValid: errors.length === 0, blockingErrors: errors, warnings }
 }
 
+/** "on 2026-11-02 (FN)", or "earlier (in a deleted batch)" when that session has since been deleted with its batch. */
+function visitText(prev: { exam_date?: string | null; session_type?: string | null } | undefined): string {
+  return prev?.exam_date ? `on ${prev.exam_date} (${prev.session_type})` : "earlier (in a deleted batch)"
+}
+
 /** The confirmed session in which a staff member last had a hall (for R1 messages). */
 function lastVisit(userId: number, hallId: number) {
   return db.queryOne<any>(
     `SELECT es.exam_date, es.session_type FROM rotation_history rh
-     JOIN exam_sessions es ON rh.session_id = es.id
+     LEFT JOIN exam_sessions es ON rh.session_id = es.id
      WHERE rh.user_id = ? AND rh.hall_id = ?
      ORDER BY COALESCE(rh.global_order, 0) DESC, datetime(rh.recorded_at) DESC, rh.id DESC LIMIT 1`,
     [userId, hallId]
@@ -161,7 +166,7 @@ export function validateSwap(
     const prev = lastVisit(userId, hallId)
     return { error: {
       rule: "R1",
-      message: `${user.name} was already assigned Hall ${hall.hall_code} on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.`,
+      message: `${user.name} was already assigned Hall ${hall.hall_code} ${visitText(prev)} in the current rotation cycle.`,
       userId, hallId
     } }
   }
@@ -175,7 +180,7 @@ export function validateSwap(
       const prev = lastVisit(partner.id, fromHall.id)
       return { error: {
         rule: "R1",
-        message: `Swap refused: ${partner.name} would get Hall ${fromHall.hall_code}, which ${partner.name} already had on ${prev?.exam_date ?? "?"} (${prev?.session_type ?? "?"}) in the current rotation cycle.`,
+        message: `Swap refused: ${partner.name} would get Hall ${fromHall.hall_code}, which ${partner.name} already had ${visitText(prev)} in the current rotation cycle.`,
         userId: partner.id, hallId: fromHall.id
       } }
     }

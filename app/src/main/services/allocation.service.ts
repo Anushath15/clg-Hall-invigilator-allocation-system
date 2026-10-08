@@ -3,7 +3,7 @@ import { generateAllocation, commitToHistory } from "./rotation.engine"
 import { validateAllocation, validateSwap, getValidHallsForStaff } from "./validation.engine"
 import { unconfirmedStepChanges, type SessionOrderRow } from "../../shared/session-order"
 import { isPastDate, PAST_DATE_MESSAGE } from "../../shared/session-dates"
-import { validateSessionTimes } from "../../shared/validation"
+import { validateSessionTimes, validateBatchDeletion } from "../../shared/validation"
 
 /** Times are optional on old records; when any is given, all three must be valid and in order. */
 function checkTimes(d: any): void {
@@ -404,25 +404,44 @@ export function updateSession(id: number, data: any) {
 // Deleting an entire batch (exam cycle) is a deliberate, explicit action distinct from
 // deleteSession above: unlike removing one session from an in-progress workflow, this is
 // meant to work even on a confirmed/published batch (the UI gates it behind a typed DELETE
-// confirmation instead; the web build also asks for the password). It removes the batch's rotation_history too, so any fairness
-// effect that batch had on future allocations is fully undone along with it — the rotation
-// engine only ever reads the *latest* remaining entry per staff member and the running
-// MAX(global_order), neither of which requires the deleted step numbers to be contiguous.
-export function deleteCycle(id: number) {
+// confirmation instead). Its sessions and allocations go, but its rotation_history rows STAY with
+// their session link cleared: the duties were done, so later allocations must still count them
+// (R1 and the fair rotation read only hall_id and global_order, never the session). Restart
+// Rotation in Settings is the deliberate way to clear that memory.
+//
+// The person deleting must type the batch name and give their name and Staff ID; a record of the
+// deleted batch (what it was, when, and by whom) is kept in deleted_batches.
+export interface BatchDeletionConfirmation { typedBatchName?: string; personName?: string; staffId?: string }
+export function deleteCycle(id: number, confirm: BatchDeletionConfirmation = {}) {
   const cycle = db.queryOne<any>("SELECT * FROM exam_cycles WHERE id=?", [id])
   if (!cycle) return { success: false, error: "Allocation batch not found." }
+  const problem = validateBatchDeletion({ batchName: cycle.name, ...confirm })
+  if (problem) return { success: false, error: problem }
+  const personName = String(confirm.personName).trim(), staffId = String(confirm.staffId).trim()
 
   return db.runTransaction(() => {
-    const sessions = db.query<any>("SELECT id FROM exam_sessions WHERE cycle_id=?", [id])
+    const sessions = db.query<any>("SELECT id, status FROM exam_sessions WHERE cycle_id=?", [id])
+    const allocationCount = sessions.reduce((n: number, s: any) => n + db.queryOne<any>("SELECT COUNT(*) AS c FROM allocations WHERE session_id=?", [s.id])!.c, 0)
+    db.run(`INSERT INTO deleted_batches(batch_name, academic_year, status, batch_created_at, session_count, confirmed_session_count, allocation_count, deleted_at, deleted_by_name, deleted_by_staff_id)
+            VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      [cycle.name, cycle.academic_year, cycle.status, cycle.created_at, sessions.length,
+       sessions.filter((s: any) => s.status === "confirmed" || s.status === "published").length,
+       allocationCount, new Date().toISOString(), personName, staffId])
     for (const s of sessions) {
-      db.run("DELETE FROM rotation_history WHERE session_id=?", [s.id])
+      // The rotation record (who had which hall) stays: only its link to the deleted session is cleared.
+      db.run("UPDATE rotation_history SET session_id=NULL WHERE session_id=?", [s.id])
       db.run("DELETE FROM allocations WHERE session_id=?", [s.id])
     }
     db.run("DELETE FROM exam_sessions WHERE cycle_id=?", [id])
     db.run("DELETE FROM exam_cycles WHERE id=?", [id])
     writeAuditLog(null, "CYCLE_DELETE",
-      `Allocation batch deleted: ${cycle.name} (${cycle.academic_year}) — ${sessions.length} session(s) removed`,
-      { id, name: cycle.name, sessionCount: sessions.length })
+      `Allocation batch deleted: ${cycle.name} (${cycle.academic_year}) — ${sessions.length} session(s) removed — by ${personName} (${staffId})`,
+      { id, name: cycle.name, sessionCount: sessions.length, deletedByName: personName, deletedByStaffId: staffId })
     return { success: true }
   })
+}
+
+/** The record of deleted batches, newest first. */
+export function getDeletedBatches() {
+  return db.query<any>("SELECT * FROM deleted_batches ORDER BY id DESC")
 }

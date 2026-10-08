@@ -70,3 +70,19 @@ describe("Department, hall, batch, settings, times", () => {
     expect(V.validateSessionTimes("", "09:30", "12:30")).toMatch(/required/)
   })
 })
+
+describe("Deleting a batch", () => {
+  const base = { batchName: "November 2026 End Semester", typedBatchName: "November 2026 End Semester", personName: "Anitha R", staffId: "STF001" }
+  it("passes with the exact batch name, a name and a Staff ID", () => {
+    expect(V.validateBatchDeletion(base)).toBeNull()
+    expect(V.validateBatchDeletion({ ...base, typedBatchName: "  november 2026 end semester " })).toBeNull()
+  })
+  it("reports the first thing missing or wrong", () => {
+    expect(V.validateBatchDeletion({ ...base, typedBatchName: "" })).toBe("Type the batch name to confirm.")
+    expect(V.validateBatchDeletion({ ...base, typedBatchName: "November 2026" })).toMatch(/does not match/)
+    expect(V.validateBatchDeletion({ ...base, personName: " " })).toBe("Enter your name.")
+    expect(V.validateBatchDeletion({ ...base, personName: "1010" })).toMatch(/Your name must contain letters/)
+    expect(V.validateBatchDeletion({ ...base, staffId: "" })).toBe("Enter your Staff ID.")
+    expect(V.validateBatchDeletion({ ...base, staffId: "ST F1" })).toMatch(/no spaces/)
+  })
+})

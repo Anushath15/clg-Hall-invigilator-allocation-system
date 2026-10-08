@@ -376,7 +376,7 @@ try {
       return "restored; department added after the backup is gone; safety copy ${path.basename(r.safetyCopy)}"`)
   })
 
-  await step("Delete a batch from Settings with a typed DELETE; the Batches list has no delete button", () => ev(`
+  await step("Delete a batch from Settings: batch name, your name and Staff ID are required, and the deletion is recorded; the Batches list has no delete button", () => ev(`
     const temp = await api.createCycle({ name: "E2E batch to delete", academic_year: "2026-27" });
     const keep = (await api.getCycles()).length - 1;
     await go("#/cycles"); await until(() => byText("main", "E2E batch to delete"), "batch list");
@@ -384,14 +384,26 @@ try {
     await go("#/settings"); await click("Delete Batch", "nav button");
     const row = await until(() => [...document.querySelectorAll("main div")].filter(d => visible(d) && d.innerText.includes("E2E batch to delete") && d.querySelector("button") && d.innerText.length < 160).pop(), "batch row in Settings");
     [...row.querySelectorAll("button")].find(b => b.innerText.includes("Delete")).click(); await sleep(400);
-    const input = await until(() => document.querySelector("input[placeholder=DELETE]"), "DELETE field");
-    setValue(input, "NOPE"); await sleep(100); await click("Delete Batch", ".fixed.inset-0 button"); await sleep(400);
-    if (!(await api.getCycles()).some(c => c.id === temp.id)) throw new Error("a wrong confirmation word must not delete the batch");
-    setValue(document.querySelector("input[placeholder=DELETE]"), "DELETE"); await sleep(100);
-    await click("Delete Batch", ".fixed.inset-0 button"); await until(() => toast().includes("deleted"), "deleted toast");
+    const input = ph => document.querySelector(".fixed.inset-0 input[placeholder=" + JSON.stringify(ph) + "]");
+    const submit = () => [...document.querySelectorAll(".fixed.inset-0 button")].find(b => b.innerText.trim() === "Delete Batch");
+    await until(() => input("E2E batch to delete"), "batch name field");
+    // The button stays disabled until all three are filled; a wrong batch name is refused with a message.
+    if (!submit().disabled) throw new Error("the Delete Batch button should be disabled while the form is empty");
+    setValue(input("E2E batch to delete"), "NOPE"); setValue(input("Name of the person deleting"), "Anitha R"); setValue(input("e.g. STF001"), "STF001"); await sleep(150);
+    submit().click(); await until(() => document.querySelector(".fixed.inset-0")?.innerText.includes("does not match"), "wrong batch name refused");
+    if (!(await api.getCycles()).some(c => c.id === temp.id)) throw new Error("a wrong batch name must not delete the batch");
+    // The right batch name but a bad Staff ID is refused too.
+    setValue(input("E2E batch to delete"), "E2E batch to delete"); setValue(input("e.g. STF001"), "ST F1"); await sleep(150);
+    submit().click(); await until(() => document.querySelector(".fixed.inset-0")?.innerText.includes("no spaces"), "bad Staff ID refused");
+    if (!(await api.getCycles()).some(c => c.id === temp.id)) throw new Error("a bad Staff ID must not delete the batch");
+    setValue(input("e.g. STF001"), "STF001"); await sleep(150); submit().click();
+    await until(() => toast().includes("deleted"), "deleted toast");
     const left = await api.getCycles();
     if (left.some(c => c.id === temp.id) || left.length !== keep) throw new Error("batches left: " + left.map(c => c.name).join(", "));
-    return "wrong word refused; correct word deleted only the chosen batch (" + left.length + " other batch(es) kept)"`))
+    const rec = (await api.getDeletedBatches())[0];
+    if (!rec || rec.batch_name !== "E2E batch to delete" || rec.deleted_by_name !== "Anitha R" || rec.deleted_by_staff_id !== "STF001" || !rec.deleted_at) throw new Error("record: " + JSON.stringify(rec));
+    await until(() => byText("main", "Anitha R · STF001"), "record shown in Settings");
+    return "wrong name and bad Staff ID refused; deleted only the chosen batch; recorded as deleted by Anitha R (STF001) at " + rec.deleted_at`))
 
   await step("Restart the rotation (typed confirmation, no password)", () => ev(`
     await go("#/settings"); await click("Restart Rotation"); // the section in the menu

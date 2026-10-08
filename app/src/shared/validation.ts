@@ -18,6 +18,21 @@ export function validateStaffId(value: unknown): string | null {
   return null
 }
 
+/**
+ * Deleting a whole batch: the batch name must be typed as shown, and the person deleting it
+ * must give their name and Staff ID (kept in the record of deleted batches). Returns the first problem.
+ */
+export function validateBatchDeletion(d: { batchName: string; typedBatchName?: unknown; personName?: unknown; staffId?: unknown }): string | null {
+  const typed = String(d.typedBatchName ?? "").trim()
+  if (!typed) return "Type the batch name to confirm."
+  if (typed.toLowerCase() !== String(d.batchName).trim().toLowerCase()) return `The batch name does not match. Type it exactly as shown: ${d.batchName}`
+  if (!String(d.personName ?? "").trim()) return "Enter your name."
+  const name = validateStaffName(d.personName)
+  if (name) return name.replace("Full Name", "Your name")
+  if (!String(d.staffId ?? "").trim()) return "Enter your Staff ID."
+  return validateStaffId(d.staffId)
+}
+
 /** Name: must contain a letter (so "1010" or "---" is refused); letters, digits, spaces and . ' - ( ) , & are allowed. */
 export function validateStaffName(value: unknown): string | null {
   const v = String(value ?? "").trim()

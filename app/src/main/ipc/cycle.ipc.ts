@@ -1,7 +1,7 @@
 import { ipcMain } from "electron"
 import { db } from "../db/database"
 import { validateBatchName, validateAcademicYear } from "../../shared/validation"
-import { deleteSession, deleteCycle, createSessions, addSession, updateSession } from "../services/allocation.service"
+import { deleteSession, deleteCycle, getDeletedBatches, createSessions, addSession, updateSession } from "../services/allocation.service"
 
 export function registerCycleHandlers() {
   ipcMain.handle("cycle:getCycles", () => db.query("SELECT * FROM exam_cycles ORDER BY created_at DESC"))
@@ -26,5 +26,6 @@ export function registerCycleHandlers() {
   ipcMain.handle("cycle:updateSession", async (_, id, data) => updateSession(id, data))
   ipcMain.handle("cycle:addSession", async (_, cycleId, data) => addSession(cycleId, data))
   ipcMain.handle("cycle:deleteSession", async (_, id) => deleteSession(id))
-  ipcMain.handle("cycle:deleteCycle", async (_, id) => deleteCycle(id))
+  ipcMain.handle("cycle:deleteCycle", async (_, id, confirm) => deleteCycle(id, confirm))
+  ipcMain.handle("cycle:getDeletedBatches", () => getDeletedBatches())
 }

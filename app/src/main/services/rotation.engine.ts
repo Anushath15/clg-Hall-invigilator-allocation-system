@@ -88,7 +88,7 @@ export function getStaffHallHistory(userId: number): any[] {
     `SELECT rh.hall_id as hallId, rh.session_id as sessionId, rh.rotation_step as rotationStep,
             rh.global_order as globalOrder, es.exam_date as examDate, es.session_type as sessionType
      FROM rotation_history rh
-     JOIN exam_sessions es ON rh.session_id = es.id
+     LEFT JOIN exam_sessions es ON rh.session_id = es.id
      WHERE rh.user_id = ?
      ORDER BY COALESCE(rh.global_order, 0) ASC, datetime(rh.recorded_at) ASC, rh.id ASC`,
     [userId]

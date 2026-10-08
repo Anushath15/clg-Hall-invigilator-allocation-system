@@ -60,7 +60,7 @@ describe("Offline desktop", () => {
     const tables = db.query<any>("SELECT name FROM sqlite_master WHERE type = 'table'").map(t => t.name)
     for (const t of ["departments", "users", "halls", "settings", "exam_cycles", "exam_sessions", "allocations", "rotation_history", "audit_log", "notifications"]) expect(tables).toContain(t)
     expect(db.query<any>("SELECT name FROM _migrations ORDER BY name").map(m => m.name))
-      .toEqual(["001_initial_schema", "002_rotation_global_order", "003_notifications", "004_hall_floor", "005_notification_session"])
+      .toEqual(["001_initial_schema", "002_rotation_global_order", "003_notifications", "004_hall_floor", "005_notification_session", "006_deleted_batches", "007_rotation_outlives_session"])
     expect(db.queryOne<any>("SELECT value FROM settings WHERE key = 'app.version'")?.value).toBe("9.9.9")
     expect(db.queryOne<any>("SELECT value FROM settings WHERE key = 'session.fn_start_time'")?.value).toBe("10:00")
 
@@ -238,6 +238,9 @@ describe("Offline desktop", () => {
     expect(db.query<any>("PRAGMA table_info(halls)").map(c => c.name)).toContain("floor")
     expect(count("notifications")).toBe(0)
     expect(db.query<any>("PRAGMA table_info(notifications)").map(c => c.name)).toContain("session_id")
+    expect(db.query<any>("PRAGMA table_info(deleted_batches)").map(c => c.name)).toContain("deleted_by_staff_id") // an existing database gains the record of deleted batches
+    // Rotation records may outlive their session, and every record the old database had was kept.
+    expect(db.query<any>("PRAGMA table_info(rotation_history)").find((c: any) => c.name === "session_id")?.notnull).toBe(0)
     expect(getLocalAdmin().user?.staff_id).toBe("ADMIN001")
 
     // The next session can be allocated and respects the old history (R1).
