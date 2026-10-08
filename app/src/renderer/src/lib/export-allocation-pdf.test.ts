@@ -80,4 +80,15 @@ describe("Session allocation PDF", () => {
     expect(pdf).toContain("Invigilator 40")
     expect(pdf).toContain("Total invigilators: 40")
   })
+
+  it("prints dark: black text, dark table rules and dark header band (no pale greys that fade on a printer)", () => {
+    const stream = Buffer.from(buildAllocationPDF(args(3)).output("arraybuffer")).toString("latin1")
+    const greys = [...stream.matchAll(/(?:^|\s)([\d.]+) [gG](?=\s)/g)].map(m => Number(m[1]))
+    expect(greys.length).toBeGreaterThan(0)
+    for (const g of greys) expect(g <= 0.3 || g >= 0.99, `grey level ${g} is too pale to print well`).toBe(true)
+    const bands = [...stream.matchAll(/(?:^|\s)([\d.]+) ([\d.]+) ([\d.]+) rg(?=\s)/g)].map(m => [Number(m[1]), Number(m[2]), Number(m[3])])
+    expect(bands.length).toBeGreaterThan(0)
+    for (const [r, g, b] of bands) expect(0.2126 * r + 0.7152 * g + 0.0722 * b, `fill ${r} ${g} ${b}`).toBeLessThan(0.45) // dark enough for white lettering
+  })
+
 })

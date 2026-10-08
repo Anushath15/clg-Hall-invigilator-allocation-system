@@ -9,6 +9,7 @@
  */
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
+import { INK, INK_NOTE, RULE, HEAD_GREEN } from "./pdf-ink"
 import { formatDateWithDay, formatSession, formatTime12h, hallLocation } from "./utils"
 
 export interface AllocationExportRow {
@@ -69,9 +70,9 @@ export function buildAllocationPDF({ cycle, session, allocation, settings = {} }
   doc.text(subtitle, pageWidth / 2, 27, { align: "center" })
 
   doc.setFontSize(8)
-  doc.setTextColor(120)
+  doc.setTextColor(INK_NOTE)
   doc.text(`Generated: ${new Date().toLocaleString()} · ${shortName}`, 14, 34)
-  doc.setTextColor(0)
+  doc.setTextColor(INK)
 
   // The sheet is printed and handed round: two writing columns take most of the width, so a
   // replacement invigilator can be named ("Adjusted By") and each invigilator can sign. Portrait A4.
@@ -90,8 +91,9 @@ export function buildAllocationPDF({ cycle, session, allocation, settings = {} }
       ""
     ]),
     theme: "grid",
-    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [150, 150, 150], lineWidth: 0.2, valign: "middle", minCellHeight: 15 },
-    headStyles: { fillColor: [22, 163, 74], textColor: 255, minCellHeight: 10 },
+    tableLineColor: RULE, tableLineWidth: 0.25,
+    styles: { fontSize: 8.5, cellPadding: 2, textColor: INK, lineColor: RULE, lineWidth: 0.25, valign: "middle", minCellHeight: 15 },
+    headStyles: { fillColor: HEAD_GREEN, textColor: 255, fontStyle: "bold", minCellHeight: 10 },
     // Widths in mm out of the 182 available: 104 for the printed details, 78 left for writing.
     columnStyles: {
       0: { cellWidth: 7, halign: "center" }, 1: { cellWidth: 17 }, 2: { cellWidth: 30 }, 3: { cellWidth: 12 },
@@ -101,9 +103,9 @@ export function buildAllocationPDF({ cycle, session, allocation, settings = {} }
 
   const finalY = (doc as any).lastAutoTable?.finalY ?? 39
   doc.setFontSize(8)
-  doc.setTextColor(120)
+  doc.setTextColor(INK_NOTE)
   doc.text(`Total invigilators: ${allocation.length}`, 14, finalY + 8)
-  doc.setTextColor(0)
+  doc.setTextColor(INK)
 
   return doc
 }

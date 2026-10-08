@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { History, Download } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, hallLocation } from "../lib/utils"
+import { INK, INK_NOTE, HEAD_DARK } from "../lib/pdf-ink"
 import { useCollegeName } from "../hooks/useCollegeName"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
@@ -42,18 +43,20 @@ export default function AllocationHistoryPage() {
 
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape" })
+    doc.setTextColor(INK)
     doc.setFontSize(13)
     doc.text(collegeName, 14, 14)
     doc.setFontSize(10)
     doc.text("Allocation History Report", 14, 21)
-    doc.setFontSize(8)
+    doc.setFontSize(8); doc.setTextColor(INK_NOTE)
     doc.text(`Generated: ${new Date().toLocaleString()}  ·  Records: ${history.length}`, 14, 27)
+    doc.setTextColor(INK)
     autoTable(doc, {
       startY: 32,
       head: [["Staff ID","Name","Dept","Date","Session","Hall","Batch","Edited"]],
       body: history.map(r => [r.staff_id, r.staffName, r.deptCode ?? "—", formatDate(r.exam_date), r.session_type, r.hall_code, r.cycleName, r.is_manually_edited ? "Yes" : "No"]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [18, 59, 42] }
+      styles: { fontSize: 8, textColor: INK },
+      headStyles: { fillColor: HEAD_DARK, textColor: 255, fontStyle: "bold" }
     })
     doc.save("HIAS-allocation-history.pdf")
   }

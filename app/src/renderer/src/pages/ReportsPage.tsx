@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { FileText, Download, BarChart3, Users, Calendar, AlertCircle, Grid } from "lucide-react"
 import { api } from "../lib/api"
+import { INK, INK_NOTE, HEAD_DARK, HEAD_RED, HEAD_GREEN_STYLE } from "../lib/pdf-ink"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, hallLocation } from "../lib/utils"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
@@ -74,23 +75,23 @@ export default function ReportsPage() {
       ? `${titles[active]} — ${formatDateWithDay(first.exam_date)} (${formatSession(first.session_type)})`
       : titles[active]
     doc.text(title, doc.internal.pageSize.width / 2, 21, { align: "center" })
-    doc.setFontSize(8); doc.setTextColor(120)
+    doc.setFontSize(8); doc.setTextColor(INK_NOTE)
     doc.text(`Generated: ${new Date().toLocaleString()} · ${shortName}`, 14, 28)
-    doc.setTextColor(0)
+    doc.setTextColor(INK)
 
     if (active === "staffwise" && Array.isArray(data)) {
       autoTable(doc, {
         startY: 33,
         head: [["Staff ID","Name","Dept","Date","Session","Hall","Report Time","Exam","Batch"]],
         body: data.map((r: any) => [r.staff_id, r.staffName, dept(r), formatDate(r.exam_date), r.session_type, r.hall_code, time(r.reporting_time), examTime(r), r.cycleName]),
-        styles: { fontSize: 8 }, headStyles: { fillColor: [22, 163, 74] }
+        styles: { fontSize: 8, textColor: INK }, headStyles: HEAD_GREEN_STYLE
       })
     } else if (active === "datewise" && Array.isArray(data)) {
       autoTable(doc, {
         startY: 33,
         head: [["Hall","Location","Capacity","Staff ID","Name","Dept","Designation","Report Time","Exam"]],
         body: data.map((r: any) => [r.hall_code, where(r), r.capacity, r.staff_id, r.staffName, dept(r), r.designation ?? "—", time(r.reporting_time), examTime(r)]),
-        styles: { fontSize: 8 }, headStyles: { fillColor: [22, 163, 74] }
+        styles: { fontSize: 8, textColor: INK }, headStyles: HEAD_GREEN_STYLE
       })
     } else if (active === "timetable" && data?.sessions && data?.users) {
       // Build matrix table
@@ -109,8 +110,8 @@ export default function ReportsPage() {
         startY: 33,
         head: [headers],
         body: rows,
-        styles: { fontSize: 7, cellPadding: 2 },
-        headStyles: { fillColor: [18, 59, 42], fontSize: 7 },
+        styles: { fontSize: 7, cellPadding: 2, textColor: INK },
+        headStyles: { fillColor: HEAD_DARK, textColor: 255, fontStyle: "bold", fontSize: 7 },
         columnStyles: { 0: { cellWidth: 16 }, 1: { cellWidth: 30 }, 2: { cellWidth: 12 } }
       })
     } else if (active === "audit" && Array.isArray(data)) {
@@ -118,7 +119,7 @@ export default function ReportsPage() {
         startY: 33,
         head: [["Staff ID","Name","Dept","Date","Session","Assigned Hall","Generated Hall","Edited","Reason"]],
         body: data.map((r: any) => [r.staff_id, r.staffName, r.deptCode ?? "—", formatDate(r.exam_date), r.session_type, r.assignedHall, r.generatedHall ?? "—", r.is_manually_edited ? "YES" : "No", r.edit_reason ?? "—"]),
-        styles: { fontSize: 8 }, headStyles: { fillColor: [239, 68, 68] }
+        styles: { fontSize: 8, textColor: INK }, headStyles: { fillColor: HEAD_RED, textColor: 255, fontStyle: "bold" }
       })
     }
     doc.save(`HIAS-${active}-report.pdf`)
