@@ -299,6 +299,37 @@ try {
     if (!text.includes(name)) throw new Error("the History PDF does not carry the college name from Settings");
     return "shown on the Dashboard and in the wizard; printed on the History PDF"`))
 
+  await step("Every PDF prints the college name saved in Settings, even when it is changed after the page was opened", () => ev(`
+    const cycle = (await api.getCycles())[0]; const s = (await api.getSessions(cycle.id))[0];
+    capturePdfs(); const done = [];
+    const rename = async name => { const r = await api.saveSetting("college.name", name); if (r?.success === false) throw new Error(JSON.stringify(r)) };
+    const check = async (what, name, before) => {
+      await until(() => pdfs().length > before, what + " PDF");
+      const t = new TextDecoder("latin1").decode(await (await fetch(pdfs()[pdfs().length - 1].href)).arrayBuffer());
+      if (!t.includes(name)) throw new Error(what + " PDF does not carry the name saved in Settings (" + name + ")");
+      if (t.includes("Xavier") || t.includes("E2E Test College")) throw new Error(what + " PDF still carries an older college name");
+      done.push(what);
+    };
+    // The session sheet: the workspace is already open when the name changes.
+    await go("#/allocation/" + cycle.id + "/" + s.id); await until(() => byText("button", "Export PDF"), "workspace");
+    await rename("Renamed College One"); let n = pdfs().length; await click("Export PDF"); await check("Session sheet", "Renamed College One", n);
+    // The history report and the four reports, each opened before the rename.
+    await go("#/history"); await click("Search Records"); await until(() => document.querySelectorAll("main tbody tr").length > 0, "history rows");
+    await rename("Renamed College Two"); n = pdfs().length; await click("Export PDF"); await check("History", "Renamed College Two", n);
+    let i = 2;
+    for (const [card, filters] of [["Staff-Wise Duty Report", []], ["Date-Wise Allocation Sheet", [["Allocation Batch", cycle.id], ["Session", s.id]]], ["Complete Timetable Grid", [["Allocation Batch", cycle.id]]], ["Rotation Audit Report", [["Allocation Batch", cycle.id]]]]) {
+      await go("#/reports"); await click(card);
+      for (const [label, v] of filters) {
+        await until(() => { const f = field(label); return f && [...f.options].some(o => o.value === String(v)) }, label + " option " + v);
+        await fill(label, String(v)); await sleep(300);
+      }
+      await click("Generate"); await until(() => byText("button", "Export PDF"), card + " generated");
+      const name = "Renamed College " + (++i); await rename(name);
+      n = pdfs().length; await click("Export PDF"); await check(card.split(" ")[0], name, n);
+    }
+    await rename("E2E Test College of Engineering");
+    return done.join(", ") + " all carried the newest name"`))
+
   await step("The sidebar turns icon-only exactly where the page layouts switch to narrow (1024px)", async () => {
     // With display scaling the width can be fractional (1023.2px at 125%); both must agree there too.
     const seen = []

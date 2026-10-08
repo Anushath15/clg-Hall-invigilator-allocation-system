@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { FileText, Download, BarChart3, Users, Calendar, AlertCircle, Grid } from "lucide-react"
 import { api } from "../lib/api"
+import { currentSettings } from "../lib/college-settings"
 import { INK, INK_NOTE, HEAD_DARK, HEAD_RED, HEAD_GREEN_STYLE } from "../lib/pdf-ink"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, hallLocation } from "../lib/utils"
 import jsPDF from "jspdf"
@@ -30,12 +31,10 @@ export default function ReportsPage() {
   const [selectedSession, setSelectedSession] = useState<number | null>(null)
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-  const [settings, setSettings] = useState<Record<string, string>>({})
 
   useEffect(() => {
     api.getCycles().then(setCycles)
     api.getUsers({ role: "staff" }).then(setUsers)
-    api.getSettings().then(setSettings)
   }, [])
 
   useEffect(() => {
@@ -55,7 +54,8 @@ export default function ReportsPage() {
     } finally { setLoading(false) }
   }
 
-  function exportPDF() {
+  async function exportPDF() {
+    const settings = await currentSettings()
     const collegeName = settings["college.name"] ?? "St. Xavier's Catholic College of Engineering (Autonomous), Nagercoil"
     const shortName = settings["college.short_name"] ?? "SXCCE"
     const doc = new jsPDF({ orientation: active === "staffwise" ? "portrait" : "landscape" })

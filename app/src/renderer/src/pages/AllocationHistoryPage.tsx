@@ -3,7 +3,8 @@ import { History, Download } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate, hallLocation } from "../lib/utils"
 import { INK, INK_NOTE, HEAD_DARK } from "../lib/pdf-ink"
-import { useCollegeName } from "../hooks/useCollegeName"
+import { DEFAULT_COLLEGE_NAME } from "../hooks/useCollegeName"
+import { currentSettings } from "../lib/college-settings"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -13,7 +14,6 @@ export default function AllocationHistoryPage() {
   const [halls, setHalls] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [filters, setFilters] = useState({ cycleId: "", userId: "", hallId: "", sessionId: "" })
-  const collegeName = useCollegeName()
   const [history, setHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -41,7 +41,8 @@ export default function AllocationHistoryPage() {
     } finally { setLoading(false) }
   }
 
-  function exportPDF() {
+  async function exportPDF() {
+    const collegeName = (await currentSettings())["college.name"] ?? DEFAULT_COLLEGE_NAME
     const doc = new jsPDF({ orientation: "landscape" })
     doc.setTextColor(INK)
     doc.setFontSize(13)

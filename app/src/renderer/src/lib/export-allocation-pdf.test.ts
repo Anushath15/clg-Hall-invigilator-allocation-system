@@ -91,4 +91,10 @@ describe("Session allocation PDF", () => {
     for (const [r, g, b] of bands) expect(0.2126 * r + 0.7152 * g + 0.0722 * b, `fill ${r} ${g} ${b}`).toBeLessThan(0.45) // dark enough for white lettering
   })
 
+  it("prints the college name and short name saved in Settings, not the built-in default", () => {
+    const text = Buffer.from(buildAllocationPDF({ ...args(2), settings: { "college.name": "abc school", "college.short_name": "abc" } }).output("arraybuffer")).toString("latin1")
+    expect(text).toContain("abc school")
+    expect(text).toContain("· abc")
+    expect(text).not.toContain("Xavier")
+  })
 })

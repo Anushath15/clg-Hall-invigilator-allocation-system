@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2 } from "lucide-react"
 import { api } from "../lib/api"
+import { currentSettings } from "../lib/college-settings"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn, hallLocation } from "../lib/utils"
 import { exportAllocationPDF } from "../lib/export-allocation-pdf"
 import toast from "react-hot-toast"
@@ -30,7 +31,6 @@ export default function AllocationWorkspacePage() {
   const [allHallsMap, setAllHallsMap] = useState<Record<number, any>>({})
   const [editScheduleSession, setEditScheduleSession] = useState<any | null>(null)
   const [showAddSessionModal, setShowAddSessionModal] = useState(false)
-  const [settings, setSettings] = useState<Record<string, string>>({})
 
   // Detect duplicate sessions (sessions with same date and session_type)
   const duplicateSessionKeys = useMemo(() => {
@@ -109,8 +109,6 @@ export default function AllocationWorkspacePage() {
   // Reload (and clear the validation result) only when switching to another session; a
   // refreshed copy of the same session (e.g. after generating) must keep the result visible.
   useEffect(() => { if (activeSession) loadAllocation() }, [activeSession?.id])
-  // Read-only: only supplies the college name/short name printed on the exported PDF.
-  useEffect(() => { api.getSettings().then((s: any) => setSettings(s ?? {})) }, [])
 
   async function loadAllocation() {
     setValidation(null)
@@ -194,12 +192,12 @@ export default function AllocationWorkspacePage() {
     } finally { setLoading(false) }
   }
 
-  function handleExportPDF() {
+  async function handleExportPDF() {
     if (!activeSession || allocation.length === 0) {
       toast.error("Nothing to export for this session.")
       return
     }
-    exportAllocationPDF({ cycle, session: activeSession, allocation, settings })
+    exportAllocationPDF({ cycle, session: activeSession, allocation, settings: await currentSettings() })
     toast.success("PDF exported!")
   }
 
