@@ -30,7 +30,7 @@ export default function DeleteBatchesPanel() {
             Permanently delete an allocation batch with all its sessions and allocations, including confirmed ones. The rotation history stays, so later allocations still count the duties already done.
           </p>
           <div className="mt-3 p-3 bg-red-100/70 rounded-lg border border-red-200 text-xs text-red-800">
-            <strong>Warning:</strong> This cannot be undone. You will be asked to type the batch name and enter your name and Staff ID before anything is removed; these are kept in the record of deleted batches. Back up first (Backup &amp; Restore) if you may need the data again.
+            <strong>Warning:</strong> This cannot be undone. You will be asked to type the batch name and enter your name and Staff ID before anything is removed. Only an active person in the Staff list can delete a batch (the Staff ID and name must match the Staff list); the name and Staff ID are kept in the record of deleted batches. Back up first (Backup &amp; Restore) if you may need the data again.
           </div>
 
           <div className="mt-4 space-y-2">

@@ -65,6 +65,9 @@ export default function DeleteBatchModal({ batch, onDelete, onClose }: Props) {
             has already had) is kept, so later allocations still count the duties already done. A record of the deletion (batch, time and who
             deleted it) is also kept.
           </p>
+          <p className="text-xs text-brand-textsec">
+            Only an active person in the Staff list can delete a batch: the Staff ID and name must match the Staff list exactly.
+          </p>
           {field("Type the batch name to confirm", typed, setTyped, batch.name, true)}
           {field("Your name", person, setPerson, "Name of the person deleting")}
           {field("Your Staff ID", staffId, setStaffId, "e.g. STF001")}

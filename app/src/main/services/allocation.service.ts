@@ -409,15 +409,31 @@ export function updateSession(id: number, data: any) {
 // (R1 and the fair rotation read only hall_id and global_order, never the session). Restart
 // Rotation in Settings is the deliberate way to clear that memory.
 //
-// The person deleting must type the batch name and give their name and Staff ID; a record of the
+// The person deleting must type the batch name and give their name and Staff ID, and that name
+// and Staff ID must belong to the same active person in the database (users); a record of the
 // deleted batch (what it was, when, and by whom) is kept in deleted_batches.
 export interface BatchDeletionConfirmation { typedBatchName?: string; personName?: string; staffId?: string }
+
+const sameName = (a: string, b: string) => a.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase()
+
+/** The registered, active person with this Staff ID and exactly this name, or the reason there is none. */
+function findDeleter(staffId: string, personName: string): { user: { id: number; name: string; staff_id: string } } | { error: string } {
+  const id = staffId.trim()
+  const user = db.queryOne<any>("SELECT id, name, staff_id, is_active FROM users WHERE LOWER(staff_id) = LOWER(?)", [id])
+  if (!user) return { error: `No one with Staff ID "${id}" is registered, so this batch cannot be deleted.` }
+  if (!sameName(user.name, personName)) return { error: `The name does not match the registered name for Staff ID ${user.staff_id}.` }
+  if (!user.is_active) return { error: `${user.name} is no longer active and cannot delete a batch.` }
+  return { user }
+}
 export function deleteCycle(id: number, confirm: BatchDeletionConfirmation = {}) {
   const cycle = db.queryOne<any>("SELECT * FROM exam_cycles WHERE id=?", [id])
   if (!cycle) return { success: false, error: "Allocation batch not found." }
   const problem = validateBatchDeletion({ batchName: cycle.name, ...confirm })
   if (problem) return { success: false, error: problem }
-  const personName = String(confirm.personName).trim(), staffId = String(confirm.staffId).trim()
+  const deleter = findDeleter(String(confirm.staffId), String(confirm.personName))
+  if ("error" in deleter) return { success: false, error: deleter.error }
+  // The record carries the name and Staff ID as registered, not as typed.
+  const personName = deleter.user.name, staffId = deleter.user.staff_id
 
   return db.runTransaction(() => {
     const sessions = db.query<any>("SELECT id, status FROM exam_sessions WHERE cycle_id=?", [id])
@@ -434,7 +450,7 @@ export function deleteCycle(id: number, confirm: BatchDeletionConfirmation = {})
     }
     db.run("DELETE FROM exam_sessions WHERE cycle_id=?", [id])
     db.run("DELETE FROM exam_cycles WHERE id=?", [id])
-    writeAuditLog(null, "CYCLE_DELETE",
+    writeAuditLog(deleter.user.id, "CYCLE_DELETE",
       `Allocation batch deleted: ${cycle.name} (${cycle.academic_year}) — ${sessions.length} session(s) removed — by ${personName} (${staffId})`,
       { id, name: cycle.name, sessionCount: sessions.length, deletedByName: personName, deletedByStaffId: staffId })
     return { success: true }
