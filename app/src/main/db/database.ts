@@ -8,6 +8,7 @@ import path from "path"
 import fs from "fs"
 import { app } from "electron"
 import initSqlJs, { Database, SqlJsStatic } from "sql.js"
+import { migrateStudentsAndSeating, migrateSeatingConfig } from "../../shared/students"
 
 let SQL: SqlJsStatic
 let _db: Database
@@ -138,7 +139,9 @@ function runMigrations(): void {
     "004_hall_floor": migration004,
     "005_notification_session": migration005,
     "006_deleted_batches": migration006,
-    "007_rotation_outlives_session": migration007
+    "007_rotation_outlives_session": migration007,
+    "008_students_seating": () => migrateStudentsAndSeating({ run, query }),
+    "009_seating_config": () => migrateSeatingConfig({ run, query })
   }
 
   for (const [name, fn] of Object.entries(migrations)) {
@@ -380,4 +383,4 @@ export function writeAuditLog(
   } catch (e) {
     console.warn("[HIAS Audit Log] Failed to write audit log:", e)
   }
-}
+}

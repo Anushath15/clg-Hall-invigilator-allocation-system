@@ -1,6 +1,7 @@
 import { webApi } from "./web-api"
 import type { StaffDutyRow } from "../../../shared/staff-duty"
 import type { SelectionSource } from "../../../shared/copy-selection"
+import type { SeatingConfig, UnallocatedStudent } from "../../../shared/seating"
 
 // Typed bridge: uses window.api in Electron desktop, or webApi in web browser / Firebase Hosting
 declare global {
@@ -86,6 +87,20 @@ export const api = apiBridge as {
   getUnreadCount: (userId: number) => Promise<number>
   markNotificationRead: (id: number) => Promise<any>
   markAllRead: (userId: number) => Promise<any>
+  // Students and seating (shared/students.ts)
+  getStudents: (filters?: { batch?: string; department_id?: number; gender?: string; is_active?: boolean }) => Promise<any[]>
+  getStudentBatches: () => Promise<string[]>
+  saveStudent: (data: any) => Promise<{ success: boolean; error?: string; student?: any }>
+  deleteStudent: (id: number) => Promise<{ success: boolean; error?: string }>
+  importStudents: (rows: unknown[][]) => Promise<any>
+  generateSeating: (sessionId: number, studentIds: number[]) => Promise<any>
+  getSeatingConfig: (sessionId: number) => Promise<{ config: SeatingConfig; studentIds: number[]; unallocated: UnallocatedStudent[] } | null>
+  autoConfigureSeating: (sessionId: number, studentIds: number[]) => Promise<any>
+  previewSeating: (sessionId: number, studentIds: number[], config: SeatingConfig) => Promise<any>
+  confirmSeating: (sessionId: number, studentIds: number[], config: SeatingConfig, options?: { acceptUnallocated?: boolean }) => Promise<any>
+  getSessionSeating: (sessionId: number) => Promise<any[]>
+  clearSeating: (sessionId: number) => Promise<any>
+  getSeatingSelections: () => Promise<any[]>
   // Reports
   getStaffWiseReport: (userId?: number, fromYear?: string, toYear?: string) => Promise<any[]>
   getDateWiseReport: (sessionId: number) => Promise<any[]>

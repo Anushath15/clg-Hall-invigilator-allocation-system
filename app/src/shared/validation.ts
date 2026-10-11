@@ -90,6 +90,44 @@ export function validateHallPlace(label: "Block" | "Floor", value: unknown): str
   return v.length > 40 ? `${label} can be at most 40 characters.` : null
 }
 
+/** Roll number / register number: letters, digits and - _ . / only, no spaces, up to 20 characters. */
+export function validateStudentNumber(label: "Roll Number" | "Register Number", value: unknown): string | null {
+  const v = String(value ?? "").trim()
+  if (!v) return `${label} is required.`
+  if (v.length > 20) return `${label} can be at most 20 characters.`
+  if (!/^[A-Za-z0-9._\/-]+$/.test(v)) return `${label} can contain only letters, digits and - _ . / (no spaces).`
+  return null
+}
+
+/** "M" or "F" for the words a sheet or form may use (Male, Female, Boy, Girl, M, F), or null. */
+export function parseGender(value: unknown): "M" | "F" | null {
+  const v = String(value ?? "").trim().toLowerCase()
+  if (["m", "male", "boy", "b"].includes(v)) return "M"
+  if (["f", "female", "girl", "g"].includes(v)) return "F"
+  return null
+}
+
+/** Student batch: the years of study, 2023-2026 or 2023-2027, the end year after the start year. */
+export function validateStudentBatch(value: unknown): string | null {
+  const v = String(value ?? "").trim()
+  const m = /^(\d{4})\s*-\s*(\d{4})$/.exec(v)
+  if (!m) return "Batch must look like 2023-2027 (start year - end year)."
+  if (Number(m[2]) <= Number(m[1])) return "Batch end year must be after the start year (for example 2023-2027)."
+  return null
+}
+
+/** The batch as stored: "2023 - 2027" becomes "2023-2027". */
+export const normalizeStudentBatch = (value: unknown) => String(value ?? "").trim().replace(/\s*-\s*/, "-")
+
+/** The first problem with a student record, or null. */
+export function validateStudent(d: { roll_no?: unknown; register_no?: unknown; name?: unknown; gender?: unknown; batch?: unknown }): string | null {
+  return validateStudentNumber("Roll Number", d.roll_no)
+    ?? validateStudentNumber("Register Number", d.register_no)
+    ?? validateStaffName(d.name)?.replace("Full Name", "Name")
+    ?? (parseGender(d.gender) ? null : "Gender must be Male or Female.")
+    ?? validateStudentBatch(d.batch)
+}
+
 /** Batch name: required, with a letter, up to 100 characters. */
 export function validateBatchName(value: unknown): string | null {
   const v = String(value ?? "").trim()

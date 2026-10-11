@@ -3,12 +3,15 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Plus, Pencil, Trash2, Upload, CheckCircle, XCircle } from "lucide-react"
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
+import BenchLayoutEditor from "../components/BenchLayoutEditor"
+import StudentsTab from "../components/StudentsTab"
+import { hallLayout, benchCount, cleanDisabled, MAX_BENCH_ROWS, MAX_BENCH_COLS, MAX_HALL_CATEGORIES } from "../../../shared/hall-layout"
 import { IS_DESKTOP } from "../lib/platform"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { cn } from "../lib/utils"
 
-const TABS = ["staff", "halls", "departments"]
+const TABS = ["staff", "students", "halls", "departments"]
 
 // Staff IDs are free text (typed or imported), so digit runs compare as numbers
 // (STF2 before STF10) and case is ignored.
@@ -22,7 +25,7 @@ export default function MasterDataPage() {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-brand-textmain">Master Data</h1>
-        <p className="text-brand-textsec mt-1">Manage staff, halls, and departments</p>
+        <p className="text-brand-textsec mt-1">Manage staff, students, halls, and departments</p>
       </div>
       <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
         {TABS.map(t => (
@@ -34,6 +37,7 @@ export default function MasterDataPage() {
         ))}
       </div>
       {activeTab === "staff" && <StaffTab />}
+      {activeTab === "students" && <StudentsTab />}
       {activeTab === "halls" && <HallsTab />}
       {activeTab === "departments" && <DepartmentsTab />}
     </div>
@@ -233,11 +237,23 @@ function HallsTab() {
   const load = async () => setHalls(await api.getHalls())
   useEffect(() => { load() }, [])
 
+  // The form keeps the bench layout as numbers and a list of removed bench positions.
+  const openForm = (h: any) => {
+    const l = hallLayout(h)
+    setForm({ ...h, bench_rows: l.rows, bench_cols: l.cols, disabled_benches: l.disabled })
+  }
+  const formLayout = form ? { rows: Number(form.bench_rows) || 0, cols: Number(form.bench_cols) || 0, disabled: form.disabled_benches ?? [] } : null
+  const formBenches = formLayout && formLayout.rows > 0 && formLayout.cols > 0 ? benchCount({ ...formLayout, disabled: cleanDisabled(formLayout) }) : 0
+  const setGrid = (key: "bench_rows" | "bench_cols", value: string) => {
+    const max = key === "bench_rows" ? MAX_BENCH_ROWS : MAX_BENCH_COLS
+    setForm({ ...form, [key]: Math.max(0, Math.min(max, Math.floor(Number(value) || 0))) })
+  }
+
   async function save() {
     if (!form?.hall_code?.trim()) return toast.error("Hall Code is required.")
     setLoading(true)
     try {
-      const r = await api.saveHall(form)
+      const r = await api.saveHall({ ...form, disabled_benches: formLayout ? cleanDisabled(formLayout) : [] })
       if (r?.success === false) return toast.error(r.error) // e.g. the hall code is already used
       toast.success("Saved!"); setForm(null); load()
     } finally { setLoading(false) }
@@ -253,12 +269,12 @@ function HallsTab() {
     <div>
       <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <p className="text-sm text-brand-textsec">{halls.length} halls · Listed in the order they were added; the allocation does not depend on this order</p>
-        <button onClick={() => setForm({ is_active: true })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
+        <button onClick={() => setForm({ is_active: true, bench_rows: 0, bench_cols: 0, disabled_benches: [] })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
       </div>
 
       {form && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+          <div className={cn("bg-white rounded-2xl shadow-2xl p-6 w-full max-h-[92vh] overflow-y-auto", formBenches > 0 ? "max-w-3xl" : "max-w-md")}>
             <h3 className="text-base font-semibold mb-4">{form.id ? "Edit Hall" : "Add Hall"}</h3>
             <form onSubmit={e => { e.preventDefault(); save() }}>
               <div className="space-y-3">
@@ -271,7 +287,33 @@ function HallsTab() {
                     {["Ground", "1st", "2nd", "3rd", "4th", "5th"].map(f => <option key={f} value={f} />)}
                   </datalist>
                 </div>
-                <div><label className="label">Capacity</label><input className="input-field" type="number" min={0} step={1} value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>
+                <div className="border-t border-brand-border pt-3">
+                  <p className="text-sm font-semibold text-brand-textmain">Bench layout (student seating)</p>
+                  <p className="text-xs text-brand-textsec mb-2">Enter the number of columns, and as rows the most benches any column has. Then tap the benches that are not there to remove them. Two students sit on each bench.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="label">Columns (left to right)</label><input className="input-field" type="number" min={0} max={MAX_BENCH_COLS} step={1} value={form.bench_cols ?? 0} onChange={e => setGrid("bench_cols", e.target.value)} /></div>
+                    <div><label className="label">Rows (front to back)</label><input className="input-field" type="number" min={0} max={MAX_BENCH_ROWS} step={1} value={form.bench_rows ?? 0} onChange={e => setGrid("bench_rows", e.target.value)} /></div>
+                  </div>
+                  {formLayout && formLayout.rows > 0 && formLayout.cols > 0 && (
+                    <div className="mt-3">
+                      <BenchLayoutEditor rows={formLayout.rows} cols={formLayout.cols} disabled={formLayout.disabled}
+                        onChange={d => setForm({ ...form, disabled_benches: d })} />
+                      <p className="text-xs text-brand-textsec mt-2 text-center">
+                        <b className="text-brand-textmain">{formBenches}</b> benches · <b className="text-brand-textmain">{formBenches * 2}</b> seats
+                        {formLayout.rows * formLayout.cols - formBenches > 0 && <> · {formLayout.rows * formLayout.cols - formBenches} removed</>}
+                      </p>
+                    </div>
+                  )}
+                  <div className="mt-3">
+                    <label className="label">Default category limit</label>
+                    <input className="input-field" type="number" min={1} max={MAX_HALL_CATEGORIES} step={1} placeholder="No limit"
+                      value={form.default_max_categories ?? ""} onChange={e => setForm({ ...form, default_max_categories: e.target.value === "" ? null : Number(e.target.value) })} />
+                    <p className="text-xs text-brand-textsec mt-1">Most student categories (department + year, e.g. CSE – Final Year) this hall holds in one session. A session's seating settings can change it. Leave blank for no limit.</p>
+                  </div>
+                </div>
+                {formBenches > 0
+                  ? <div><label className="label">Capacity</label><p className="text-sm text-brand-textsec">{formBenches * 2} seats (two per bench)</p></div>
+                  : <div><label className="label">Capacity</label><input className="input-field" type="number" min={0} step={1} value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>}
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
               </div>
               <div className="flex gap-2 mt-5 justify-end">
@@ -286,7 +328,7 @@ function HallsTab() {
       <div className="card p-0 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
-            <tr>{["Order","Hall Code","Block","Floor","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
+            <tr>{["Order","Hall Code","Block","Floor","Benches","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {halls.map((h: any, i: number) => (
@@ -295,23 +337,30 @@ function HallsTab() {
                 <td className="px-4 py-3 font-mono text-xs font-bold text-brand-primary">{h.hall_code}</td>
                 <td className="px-4 py-3 text-brand-textsec">{h.block || "—"}</td>
                 <td className="px-4 py-3 font-medium">{h.floor || "—"}</td>
+                <td className="px-4 py-3 text-brand-textsec text-xs whitespace-nowrap"><BenchSummary hall={h} /></td>
                 <td className="px-4 py-3 text-brand-textsec">{h.capacity}</td>
                 <td className="px-4 py-3">
                   {h.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><XCircle className="w-3.5 h-3.5" /> Inactive</span>}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  <button onClick={() => setForm(h)} title="Edit" className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => openForm(h)} title="Edit" className="p-1.5 rounded hover:bg-gray-100 text-brand-textsec mr-1"><Pencil className="w-4 h-4" /></button>
                   <button onClick={() => remove(h)} title="Delete" className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
-            {halls.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-brand-textsec">No halls added yet.</td></tr>}
+            {halls.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-brand-textsec">No halls added yet.</td></tr>}
           </tbody>
         </table>
       </div>
     </div>
   )
+}
+
+function BenchSummary({ hall }: { hall: any }) {
+  const l = hallLayout(hall)
+  if (!l.rows) return <span className="text-amber-600">Not set</span>
+  return <>{benchCount(l)} <span className="text-gray-400">({l.cols} col × {l.rows} rows{l.disabled.length ? `, ${l.disabled.length} removed` : ""})</span></>
 }
 
 // ── DEPARTMENTS TAB ──────────────────────────────────────────

@@ -15,6 +15,7 @@ An offline Windows desktop application for St. Xavier's Catholic College of Engi
 - **One-click allocation:** pick the staff and halls for a session (tick them, search staff by name or Staff ID and halls by code or block, upload an Excel duty list, or copy the selection of an earlier session); the rotation engine assigns everyone a hall afresh.
 - **Validation (R1–R7):** no early hall repeats, no double-booked halls or staff, active staff and halls only, staff count equals hall count, rotation order.
 - **Controlled edits:** a manual change swaps two invigilators' halls, is offered only when the rules hold for both, and is recorded as "Admin Edited".
+- **Student seating:** a student master (roll number, register number, name, gender, department, batch such as 2023-2027, with Excel import). Each hall gets a bench grid (columns × rows, with missing benches tapped off). For every session, students sit in the session's invigilator halls under a seating configuration the administrator reviews before saving: hall order, boys' or girls' hall, permitted student categories (department + academic year, e.g. CSE – Final Year, worked out from the batch and the exam cycle's academic year), a category limit (with an optional default per hall) and requested quantities, with auto-configure and copy-from-session. Each hall's gender can be Fixed or left free: free halls may be swapped to the other group, or an unused one brought in, when that seats more students (the preview shows every such change). Two students per bench, always from different academic years; the rules are never relaxed, so students who cannot be seated are listed with the reason. Bench-grid seating plans, hall attendance sheets, a student seat list and the unallocated list export to PDF.
 - **Reports:** session allocation sheet, staff-wise duties, date-wise hall sheet, complete timetable grid and rotation audit, all exportable to PDF with the college letterhead.
 - **Offline and self-contained:** no server, no internet, no login; one-click backup and restore.
 
@@ -72,6 +73,7 @@ The same UI can be built for a browser with `npm run build:web` (Firebase Hostin
 - A batch's status is derived from its sessions (`refreshCycleStatus`): `draft` until every session is confirmed, then `confirmed`.
 - A manual edit is a swap (`src/shared/swap.ts`): R1 is checked for both people. A row counts as Admin Edited while it differs from its generated hall.
 - R4: a session can be confirmed only when every earlier session (lower `rotation_step`) of its batch is confirmed. Unconfirmed sessions are renumbered into date order after the confirmed ones (`src/shared/session-order.ts`); confirmed sessions are never renumbered.
+- Student seating (`src/shared/seating.ts`, stored by `src/shared/students.ts`, which both builds call with their own database) uses the halls of the session's invigilator allocation. Benches are numbered column by column, front to back (`src/shared/hall-layout.ts`). Hall-by-category counts are found with a min-cost max-flow (`src/shared/min-cost-flow.ts`), and every plan is re-checked by an independent validator before it is saved (`validateSeatingPlan`). Each session's configuration and its unallocated list are kept in `seating_configs`. Regenerating the invigilators with different halls removes that session's seating.
 - Copying a session's selection (`src/shared/copy-selection.ts`) copies staff and hall IDs only; generation always runs the engine afresh.
 
 ## Development
@@ -82,7 +84,7 @@ Requirements: Node.js 20+ on Windows.
 cd app
 npm install
 npm run dev          # run the desktop app with hot reload (or double-click start-hias-dev.bat)
-npm test             # 159 Vitest tests: engine, fairness suite, swaps, session order, copy selection, offline workflow, backup/restore, migrations
+npm test             # Vitest tests: engine, fairness suite, swaps, session order, copy selection, offline workflow, backup/restore, migrations
 npm run typecheck    # TypeScript, main + renderer
 npm run package      # build the Windows installer app/release/HIAS-Setup-<version>.exe
 npm run test:e2e     # drive the packaged app end to end with the network blocked (after npm run package)

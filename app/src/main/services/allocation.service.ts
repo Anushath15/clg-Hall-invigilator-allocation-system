@@ -12,6 +12,7 @@ function checkTimes(d: any): void {
   if (problem) throw new Error(problem)
 }
 import { STAFF_DUTY_HISTORY_SQL, type StaffDutyRow } from "../../shared/staff-duty"
+import { dropSeatingIfHallsChanged } from "../../shared/students"
 
 export async function getOrCreateAllocation(
   sessionId: number,
@@ -38,6 +39,7 @@ export async function getOrCreateAllocation(
   }
   // Update session to draft
   db.run("UPDATE exam_sessions SET status='draft' WHERE id=?", [sessionId])
+  dropSeatingIfHallsChanged(db, sessionId) // seating made for other halls no longer fits
 
   const validationEntries = entries.map(e => ({ ...e, sessionId }))
   const validation = validateAllocation(sessionId, validationEntries, hallIds, userIds)
@@ -295,6 +297,8 @@ export function deleteSession(id: number) {
   if (session.status === "confirmed" || session.status === "published") {
     return { success: false, error: "Cannot delete a confirmed or published session." }
   }
+  db.run("DELETE FROM seat_allocations WHERE session_id=?", [id])
+  db.run("DELETE FROM seating_configs WHERE session_id=?", [id])
   db.run("DELETE FROM allocations WHERE session_id=?", [id])
   db.run("DELETE FROM exam_sessions WHERE id=?", [id])
   renumberUnconfirmedSessions(session.cycle_id) // confirmed sessions keep their steps
@@ -446,6 +450,8 @@ export function deleteCycle(id: number, confirm: BatchDeletionConfirmation = {})
     for (const s of sessions) {
       // The rotation record (who had which hall) stays: only its link to the deleted session is cleared.
       db.run("UPDATE rotation_history SET session_id=NULL WHERE session_id=?", [s.id])
+      db.run("DELETE FROM seat_allocations WHERE session_id=?", [s.id])
+      db.run("DELETE FROM seating_configs WHERE session_id=?", [s.id])
       db.run("DELETE FROM allocations WHERE session_id=?", [s.id])
     }
     db.run("DELETE FROM exam_sessions WHERE cycle_id=?", [id])

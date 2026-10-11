@@ -11,6 +11,11 @@ import { planSwap } from "../../../shared/swap"
 import { unconfirmedStepChanges, type SessionOrderRow } from "../../../shared/session-order"
 import * as XLSX from "xlsx"
 import { webDb } from "./web-db"
+import {
+  listStudents, listStudentBatches, saveStudent, deleteStudent, importStudents, hallLayoutColumns,
+  generateSeating, getSessionSeating, clearSeating, getSeatingSelections, dropSeatingIfHallsChanged,
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
+} from "../../../shared/students"
 
 // In-memory cache for browser file selection
 let cachedSelectedFile: File | null = null
@@ -310,6 +315,7 @@ export const webApi = {
     await ensureDb()
     const inUse = webDb.queryOne("SELECT id FROM users WHERE department_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: staff assigned to this department." }
+    if (webDb.queryOne("SELECT id FROM students WHERE department_id=?", [id])) return { success: false, error: "Cannot delete: students belong to this department." }
     webDb.run("DELETE FROM departments WHERE id=?", [id])
     return { success: true }
   },
@@ -410,22 +416,26 @@ export const webApi = {
     // Halls are identified by code and floor; the NOT NULL name column just mirrors the code.
     const name = data.hall_code
     const floor = (data.floor && String(data.floor).trim()) || null
+    // Bench layout for student seating; with one, capacity = 2 seats per bench (same as the desktop).
+    const layout = hallLayoutColumns(data)
+    if ("error" in layout) return { success: false, error: layout.error }
+    const capacity = layout.capacity ?? data.capacity ?? 0
     if (data.id) {
-      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=? WHERE id=?",
-        [data.hall_code, name, floor, data.capacity??0, data.block??null, data.is_active?1:0, data.id])
+      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=?,default_max_categories=? WHERE id=?",
+        [data.hall_code, name, floor, capacity, data.block??null, data.is_active?1:0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories, data.id])
       writeAuditLog(null, "HALL_STATUS_CHANGE", `Hall ${data.hall_code} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = webDb.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?,?)",
-      [data.hall_code, name, floor, data.capacity??0, data.block??null, 1, (maxOrder?.m??0)+1])
+    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches,default_max_categories) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      [data.hall_code, name, floor, capacity, data.block??null, 1, (maxOrder?.m??0)+1, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories])
     writeAuditLog(null, "CREATE_HALL", `Hall created: ${data.hall_code}`, { id: lastInsertRowid, hall_code: data.hall_code })
     return webDb.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   },
 
   deleteHall: async (id: number) => {
     await ensureDb()
-    const inUse = webDb.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id])
+    const inUse = webDb.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id]) ?? webDb.queryOne("SELECT id FROM seat_allocations WHERE hall_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: hall has existing allocations." }
     webDb.run("DELETE FROM halls WHERE id=?", [id])
     writeAuditLog(null, "DELETE_HALL", `Hall ID ${id} deleted`, { id })
@@ -452,6 +462,7 @@ export const webApi = {
     const staffRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM users WHERE role='staff' AND is_active=1")
     const hallsRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM halls WHERE is_active=1")
     const cyclesRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_cycles")
+    const studentsRow = webDb.queryOne<any>("SELECT COUNT(*) as total, SUM(gender='M') as boys FROM students WHERE is_active=1")
     const confirmedRow = webDb.queryOne<any>("SELECT COUNT(*) as total FROM exam_sessions WHERE status IN ('confirmed','published')")
     // Upcoming = sessions from today (local date) onwards, whatever their status
     const upcomingRow = webDb.queryOne<any>(
@@ -475,6 +486,8 @@ export const webApi = {
     return {
       totalStaff: staffRow?.total ?? 0,
       totalHalls: hallsRow?.total ?? 0,
+      totalStudents: studentsRow?.total ?? 0,
+      totalBoys: studentsRow?.boys ?? 0,
       totalCycles: cyclesRow?.total ?? 0,
       confirmedSessions: confirmedRow?.total ?? 0,
       upcomingSessions: upcomingRow?.total ?? 0,
@@ -606,6 +619,8 @@ export const webApi = {
     if (session.status === "confirmed" || session.status === "published") {
       return { success: false, error: "Cannot delete a confirmed or published session. Reopen it first." }
     }
+    webDb.run("DELETE FROM seat_allocations WHERE session_id=?", [id])
+    webDb.run("DELETE FROM seating_configs WHERE session_id=?", [id])
     webDb.run("DELETE FROM allocations WHERE session_id=?", [id])
     webDb.run("DELETE FROM exam_sessions WHERE id=?", [id])
     renumberUnconfirmedSessions(session.cycle_id) // confirmed sessions keep their steps
@@ -633,6 +648,7 @@ export const webApi = {
       )
     }
     webDb.run("UPDATE exam_sessions SET status='draft' WHERE id=?", [sessionId])
+    dropSeatingIfHallsChanged(webDb, sessionId) // seating made for other halls no longer fits
     writeAuditLog(null, "GENERATE_ALLOCATION", `Draft allocation generated for session ${sessionId}`, { sessionId, staffCount: userIds.length, hallCount: hallIds.length })
 
     const validationEntries = entries.map(e => ({ ...e, sessionId }))
@@ -1002,6 +1018,23 @@ export const webApi = {
       [cycleId]
     )
   },
+
+  // Students and seating: the same shared functions as the desktop (shared/students.ts).
+  getStudents: async (filters?: any) => { await ensureDb(); return listStudents(webDb, filters ?? {}) },
+  getStudentBatches: async () => { await ensureDb(); return listStudentBatches(webDb) },
+  saveStudent: async (data: any) => { await ensureDb(); return saveStudent(webDb, data) },
+  deleteStudent: async (id: number) => { await ensureDb(); return deleteStudent(webDb, id) },
+  importStudents: async (rows: unknown[][]) => { await ensureDb(); return importStudents(webDb, rows) },
+  generateSeating: async (sessionId: number, studentIds: number[]) => { await ensureDb(); return generateSeating(webDb, sessionId, studentIds) },
+  getSeatingConfig: async (sessionId: number) => { await ensureDb(); return getSeatingConfig(webDb, sessionId) },
+  autoConfigureSeating: async (sessionId: number, studentIds: number[]) => { await ensureDb(); return autoConfigureSeating(webDb, sessionId, studentIds) },
+  previewSeating: async (sessionId: number, studentIds: number[], config: any) => { await ensureDb(); return previewSeating(webDb, sessionId, studentIds, config) },
+  confirmSeating: async (sessionId: number, studentIds: number[], config: any, options?: { acceptUnallocated?: boolean }) => {
+    await ensureDb(); return confirmSeating(webDb, sessionId, studentIds, config, options ?? {})
+  },
+  getSessionSeating: async (sessionId: number) => { await ensureDb(); return getSessionSeating(webDb, sessionId) },
+  clearSeating: async (sessionId: number) => { await ensureDb(); return clearSeating(webDb, sessionId) },
+  getSeatingSelections: async () => { await ensureDb(); return getSeatingSelections(webDb) },
 
   // File Dialogs & Storage
   openFileDialog: async (filters?: any[]): Promise<string | null> => {

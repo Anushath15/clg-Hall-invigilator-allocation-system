@@ -8,6 +8,7 @@
 import { db } from "../db/database"
 import { todayLocal, timeNowLocal } from "../../shared/session-dates"
 import { validateStaff, validateDepartmentCode, validateDepartmentName, validateHallPlace } from "../../shared/validation"
+import { hallLayoutColumns, type HallLayoutInput } from "../../shared/students"
 
 export interface DepartmentInput { id?: number; code: string; name: string; is_active?: boolean }
 
@@ -48,7 +49,7 @@ export function saveUser(data: StaffInput): any {
   return db.queryOne(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`, [lastInsertRowid])
 }
 
-export interface HallInput { id?: number; hall_code: string; floor?: string | null; capacity?: number; block?: string | null; is_active?: boolean }
+export interface HallInput extends HallLayoutInput { id?: number; hall_code: string; floor?: string | null; capacity?: number; block?: string | null; is_active?: boolean }
 
 /**
  * Add or edit a hall. Hall codes are unique ignoring case ("H101" and "h101" are the same hall)
@@ -60,7 +61,10 @@ export function saveHall(data: HallInput): any {
   if (!code) return { success: false, error: "Hall Code is required." }
   const place = validateHallPlace("Block", data.block) ?? validateHallPlace("Floor", data.floor)
   if (place) return { success: false, error: place }
-  const capacity = Number(data.capacity ?? 0)
+  // Bench layout for student seating (shared/hall-layout.ts); with one, capacity = 2 seats per bench.
+  const layout = hallLayoutColumns(data)
+  if ("error" in layout) return { success: false, error: layout.error }
+  const capacity = layout.capacity ?? Number(data.capacity ?? 0)
   if (!Number.isFinite(capacity) || !Number.isInteger(capacity)) return { success: false, error: "Capacity must be a whole number." }
   if (capacity < 0) return { success: false, error: "Capacity cannot be negative." }
   const clash = db.queryOne<any>("SELECT hall_code FROM halls WHERE hall_code = ? COLLATE NOCASE AND id != ?", [code, data.id ?? 0])
@@ -69,13 +73,13 @@ export function saveHall(data: HallInput): any {
   const floor = (data.floor && String(data.floor).trim()) || null
   const block = (data.block && String(data.block).trim()) || null
   if (data.id) {
-    db.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=? WHERE id=?",
-      [code, code, floor, capacity, block, data.is_active ? 1 : 0, data.id])
+    db.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=?,default_max_categories=? WHERE id=?",
+      [code, code, floor, capacity, block, data.is_active ? 1 : 0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories, data.id])
     return db.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
   }
   const maxOrder = db.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-  const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order) VALUES(?,?,?,?,?,?,?)",
-    [code, code, floor, capacity, block, 1, (maxOrder?.m ?? 0) + 1])
+  const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches,default_max_categories) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    [code, code, floor, capacity, block, 1, (maxOrder?.m ?? 0) + 1, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories])
   return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
 }
 
@@ -90,6 +94,8 @@ export function getDashboardStats(now: Date = new Date()) {
   return {
     totalStaff:         count("SELECT COUNT(*) as c FROM users WHERE is_active=1 AND role='staff'"),
     totalHalls:         count("SELECT COUNT(*) as c FROM halls WHERE is_active=1"),
+    totalStudents:      count("SELECT COUNT(*) as c FROM students WHERE is_active=1"),
+    totalBoys:          count("SELECT COUNT(*) as c FROM students WHERE is_active=1 AND gender='M'"),
     totalCycles:        count("SELECT COUNT(*) as c FROM exam_cycles"),
     confirmedSessions:  count("SELECT COUNT(*) as c FROM exam_sessions WHERE status IN ('confirmed','published')"),
     upcomingSessions:   count("SELECT COUNT(*) as c FROM exam_sessions WHERE exam_date > ? OR (exam_date = ? AND (exam_end IS NULL OR exam_end = '' OR exam_end > ?))", [today, today, time]),

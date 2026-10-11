@@ -5,6 +5,7 @@
 
 import initSqlJs, { Database, SqlJsStatic } from "sql.js"
 import bcrypt from "bcryptjs"
+import { migrateStudentsAndSeating, migrateSeatingConfig } from "../../../shared/students"
 
 let SQL: SqlJsStatic | null = null
 let _db: Database | null = null
@@ -302,7 +303,9 @@ function runMigrations(): void {
         is_read INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
       )`)
-    }
+    },
+    "008_students_seating": () => migrateStudentsAndSeating({ run, query }),
+    "009_seating_config": () => migrateSeatingConfig({ run, query })
   }
 
   for (const [name, fn] of Object.entries(migrations)) {

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Users, Building2, Calendar, CheckCircle, Clock, AlertCircle, Plus, ArrowRight, Activity } from "lucide-react"
+import { Users, Building2, Calendar, CheckCircle, Clock, AlertCircle, Plus, ArrowRight, Activity, GraduationCap } from "lucide-react"
 import { api } from "../lib/api"
 import { formatDate } from "../lib/utils"
 import { useAuthStore } from "../store/auth.store"
 import { useCollegeName } from "../hooks/useCollegeName"
 
 interface Stats {
-  totalStaff: number; totalHalls: number; totalCycles: number
+  totalStaff: number; totalHalls: number; totalCycles: number; totalStudents: number; totalBoys: number
   upcomingSessions: number; confirmedSessions: number; pendingAllocations: number
 }
 
@@ -93,8 +93,10 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         <StatCard icon={Users}        label="Total Invigilators"   value={stats?.totalStaff ?? 0}         color="bg-blue-50 text-blue-600" onClick={() => navigate("/master?tab=staff")} />
+        <StatCard icon={GraduationCap} label="Total Students"       value={stats?.totalStudents ?? 0}      color="bg-indigo-50 text-indigo-600" onClick={() => navigate("/master?tab=students")}
+          sub={stats ? `${stats.totalBoys} boys · ${stats.totalStudents - stats.totalBoys} girls` : undefined} />
         <StatCard icon={Building2}    label="Total Halls"           value={stats?.totalHalls ?? 0}         color="bg-purple-50 text-purple-600" onClick={() => navigate("/master?tab=halls")} />
         <StatCard icon={Calendar}     label="Allocation Batches"    value={stats?.totalCycles ?? 0}        color="bg-green-50 text-green-600" onClick={() => navigate("/cycles")} />
         <StatCard icon={Clock}        label="Upcoming Sessions"     value={stats?.upcomingSessions ?? 0}   color="bg-yellow-50 text-yellow-600" sub="Not finished yet" />

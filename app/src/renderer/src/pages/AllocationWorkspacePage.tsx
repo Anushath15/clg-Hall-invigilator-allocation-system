@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2 } from "lucide-react"
+import { Zap, CheckCircle, Download, AlertTriangle, Pencil, X, RefreshCw, LayoutGrid, List, Plus, Trash2, UserCheck, Armchair } from "lucide-react"
 import { api } from "../lib/api"
 import { currentSettings } from "../lib/college-settings"
 import { formatDate, formatDateWithDay, formatSession, formatTime12h, cn, hallLocation } from "../lib/utils"
@@ -12,6 +12,7 @@ import Tooltip from "../components/Tooltip"
 import EditSessionScheduleModal from "../components/EditSessionScheduleModal"
 import AddSessionModal from "../components/AddSessionModal"
 import StaffHallSelector from "../components/StaffHallSelector"
+import SeatingPanel from "../components/SeatingPanel"
 
 export default function AllocationWorkspacePage() {
   const { cycleId, sessionId: paramSessionId } = useParams()
@@ -31,6 +32,8 @@ export default function AllocationWorkspacePage() {
   const [allHallsMap, setAllHallsMap] = useState<Record<number, any>>({})
   const [editScheduleSession, setEditScheduleSession] = useState<any | null>(null)
   const [showAddSessionModal, setShowAddSessionModal] = useState(false)
+  // Within a session: the invigilator allocation, or the student seating (same halls).
+  const [panel, setPanel] = useState<"invigilators" | "seating">("invigilators")
 
   // Detect duplicate sessions (sessions with same date and session_type)
   const duplicateSessionKeys = useMemo(() => {
@@ -388,8 +391,22 @@ export default function AllocationWorkspacePage() {
                     Edit Schedule & Timings
                   </button>
                 </div>
-                <div className="min-w-0">{statusActions[effectiveStatus] ?? statusActions[activeSession.status]}</div>
+                {panel === "invigilators" && <div className="min-w-0">{statusActions[effectiveStatus] ?? statusActions[activeSession.status]}</div>}
               </div>
+
+              {/* Invigilators / Student seating */}
+              <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">
+                {([["invigilators", "Invigilators", UserCheck], ["seating", "Student Seating", Armchair]] as const).map(([key, label, Icon]) => (
+                  <button key={key} onClick={() => setPanel(key)}
+                    className={cn("px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2",
+                      panel === key ? "bg-white text-brand-textmain shadow-sm" : "text-brand-textsec hover:text-brand-textmain")}>
+                    <Icon className="w-4 h-4" /> {label}
+                  </button>
+                ))}
+              </div>
+
+              {panel === "seating" && <SeatingPanel cycle={cycle} session={activeSession} allocation={allocation} />}
+              {panel === "invigilators" && <>
 
               {/* Validation banners */}
               {validation && !validation.isValid && (
@@ -484,6 +501,7 @@ export default function AllocationWorkspacePage() {
                   <p className="text-sm mt-1">Click &quot;Select Staff {'&'} Generate&quot; to begin.</p>
                 </div>
               )}
+              </>}
             </>
           )}
         </>

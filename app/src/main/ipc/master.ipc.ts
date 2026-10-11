@@ -13,6 +13,7 @@ export function registerMasterHandlers() {
   ipcMain.handle("master:deleteDepartment", async (_, id) => {
     const inUse = db.queryOne("SELECT id FROM users WHERE department_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: staff assigned to this department." }
+    if (db.queryOne("SELECT id FROM students WHERE department_id=?", [id])) return { success: false, error: "Cannot delete: students belong to this department." }
     db.run("DELETE FROM departments WHERE id=?", [id]); return { success: true }
   })
 
@@ -46,7 +47,7 @@ export function registerMasterHandlers() {
   ipcMain.handle("master:getHalls", () => db.query("SELECT * FROM halls ORDER BY sort_order, id"))
   ipcMain.handle("master:saveHall", async (_, data) => saveHall(data))
   ipcMain.handle("master:deleteHall", async (_, id) => {
-    const inUse = db.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id])
+    const inUse = db.queryOne("SELECT id FROM allocations WHERE hall_id=?", [id]) ?? db.queryOne("SELECT id FROM seat_allocations WHERE hall_id=?", [id])
     if (inUse) return { success: false, error: "Cannot delete: hall has existing allocations." }
     db.run("DELETE FROM halls WHERE id=?", [id]); return { success: true }
   })
