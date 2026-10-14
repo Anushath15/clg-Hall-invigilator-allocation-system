@@ -73,13 +73,13 @@ export function saveHall(data: HallInput): any {
   const floor = (data.floor && String(data.floor).trim()) || null
   const block = (data.block && String(data.block).trim()) || null
   if (data.id) {
-    db.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=?,default_max_categories=? WHERE id=?",
-      [code, code, floor, capacity, block, data.is_active ? 1 : 0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories, data.id])
+    db.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=? WHERE id=?",
+      [code, code, floor, capacity, block, data.is_active ? 1 : 0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, data.id])
     return db.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
   }
   const maxOrder = db.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-  const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches,default_max_categories) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-    [code, code, floor, capacity, block, 1, (maxOrder?.m ?? 0) + 1, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories])
+  const { lastInsertRowid } = db.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches) VALUES(?,?,?,?,?,?,?,?,?,?)",
+    [code, code, floor, capacity, block, 1, (maxOrder?.m ?? 0) + 1, layout.bench_rows, layout.bench_cols, layout.disabled_benches])
   return db.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
 }
 

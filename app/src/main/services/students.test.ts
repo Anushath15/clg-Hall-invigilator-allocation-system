@@ -9,13 +9,12 @@ import { getOrCreateAllocation, deleteSession } from "./allocation.service"
 import {
   saveStudent, listStudents, listStudentBatches, deleteStudent, importStudents,
   generateSeating, getSessionSeating, getSeatingSelections, clearSeating,
-  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating,
-  listSeatingPatterns, saveSeatingPattern, deleteSeatingPattern
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
 } from "../../shared/students"
 
 beforeAll(async () => { await initDatabase({ inMemory: true }) })
 beforeEach(() => {
-  for (const t of ["seat_allocations", "seating_configs", "seating_patterns", "students", "rotation_history", "allocations", "exam_sessions", "exam_cycles", "halls"]) db.run(`DELETE FROM ${t}`)
+  for (const t of ["seat_allocations", "seating_configs", "students", "rotation_history", "allocations", "exam_sessions", "exam_cycles", "halls"]) db.run(`DELETE FROM ${t}`)
   db.run("DELETE FROM users WHERE role='staff'")
   db.run("DELETE FROM departments")
   db.run("INSERT INTO departments(code, name) VALUES('CSE', 'Computer Science'), ('ECE', 'Electronics')")
@@ -125,10 +124,11 @@ describe("Session seating", () => {
     const rows = getSessionSeating(db, session)
     expect(rows).toHaveLength(32)
     for (const hallId of [h1, h2]) expect(new Set(rows.filter(x => x.hallId === hallId).map(x => x.gender)).size).toBe(1)
-    // Bench mates are in different academic years (cycle 2026-27: 2023-2027 is Final Year, 2024-2028 Third Year).
+    // Bench mates are never of the same class (here: the same batch, all CSE).
     const benches = new Map<string, any[]>()
     for (const x of rows) benches.set(`${x.hallId}/${x.bench_no}`, [...(benches.get(`${x.hallId}/${x.bench_no}`) ?? []), x])
-    for (const b of benches.values()) if (b.length === 2) expect(b[0].year).not.toBe(b[1].year)
+    for (const b of benches.values()) if (b.length === 2) expect(b[0].batch).not.toBe(b[1].batch)
+    // Cycle 2026-27: 2023-2027 is Final Year, 2024-2028 Third Year.
     expect(new Set(rows.map(x => x.year))).toEqual(new Set(["Final Year", "Third Year"]))
     expect(rows.find(x => x.batch === "2023-2027")!.category).toBe("CSE – Final Year")
     expect(getSeatingSelections(db)).toMatchObject([{ id: session, studentCount: 32 }])
@@ -141,9 +141,9 @@ describe("Session seating", () => {
     const auto = autoConfigureSeating(db, session, ids)
     expect(auto.success).toBe(true)
     if (!auto.success) return
-    expect(auto.categories.map(c => c.label)).toEqual(["CSE – Final Year (2023-2027)", "CSE – Third Year (2024-2028)"])
+    expect(auto).toMatchObject({ boys: 2, girls: 2 })
     // The girls get the first hall.
-    const config = { ...auto.config, halls: [{ ...auto.config.halls[0], gender: "F" as const }, { ...auto.config.halls[1], gender: "M" as const }] }
+    const config = { halls: [{ hallId: h1, pattern: ["FF" as const] }, { hallId: h2, pattern: ["MM" as const] }] }
     const preview = previewSeating(db, session, ids, config)
     expect(preview.success && preview.errors).toEqual([])
     expect(preview.success && preview.plan.hallGender).toEqual({ [h1]: "F", [h2]: "M" })
@@ -153,7 +153,7 @@ describe("Session seating", () => {
     expect(r).toMatchObject({ success: true, seated: 4, unallocated: [] })
     const rows = getSessionSeating(db, session)
     expect(new Set(rows.filter(x => x.hallId === h1).map(x => x.gender))).toEqual(new Set(["F"]))
-    expect(getSeatingConfig(db, session)).toMatchObject({ studentIds: ids, unallocated: [], config: { halls: [{ hallId: h1, gender: "F" }, { hallId: h2, gender: "M" }] } })
+    expect(getSeatingConfig(db, session)).toMatchObject({ studentIds: ids, unallocated: [], config: { halls: [{ hallId: h1, pattern: ["FF"] }, { hallId: h2, pattern: ["MM"] }] } })
   })
 
   it("students who cannot be seated: nothing is saved until the list is accepted, then the list is kept", async () => {
@@ -161,7 +161,7 @@ describe("Session seating", () => {
     const ids = Array.from({ length: 6 }, () => addStudent("M", "2023-2027"))
     const { session } = await sessionWithHalls([h1])
     const r = await generateSeating(db, session, ids)
-    expect(r).toMatchObject({ success: false, needsConfirmation: true, error: "4 boys could not be seated under the seating rules." })
+    expect(r).toMatchObject({ success: false, needsConfirmation: true, error: "4 boys could not be seated: not enough seats for them in the halls." })
     expect(getSessionSeating(db, session)).toEqual([])
 
     const auto = autoConfigureSeating(db, session, ids)
@@ -171,35 +171,21 @@ describe("Session seating", () => {
     expect(getSessionSeating(db, session)).toHaveLength(2)
     const saved = getSeatingConfig(db, session)!
     expect(saved.unallocated).toHaveLength(4)
-    expect(saved.unallocated[0].reason).toMatch(/No compatible bench mate/)
+    expect(saved.unallocated[0].reason).toMatch(/two students of the same class never share a bench/)
     expect(getSeatingSelections(db)).toMatchObject([{ id: session, studentCount: 6 }]) // everyone selected, seated or not
     clearSeating(db, session)
     expect(getSeatingConfig(db, session)).toBeNull()
   })
 
   it("a configuration that breaks a rule is refused and nothing is saved", async () => {
-    const h1 = addHall("A1", 1, 2) // 4 seats
+    const h1 = addHall("A1", 1, 2), bare = addHall("A0", 0, 0)
     const ids = [addStudent("M", "2023-2027"), addStudent("M", "2024-2028")]
-    const { session } = await sessionWithHalls([h1])
-    const auto = autoConfigureSeating(db, session, ids)
-    if (!auto.success) throw new Error(auto.error)
-    const tooMany = { ...auto.config, halls: [{ ...auto.config.halls[0], categories: auto.config.halls[0].categories.map(c => ({ ...c, quantity: 3 })) }] }
-    const r = await confirmSeating(db, session, ids, tooMany)
-    expect(r).toMatchObject({ success: false, error: expect.stringMatching(/6 students requested, but it seats only 4/) })
+    const { session } = await sessionWithHalls([h1, bare])
+    const noLayout = { halls: [{ hallId: h1, pattern: ["MM" as const] }, { hallId: bare, pattern: ["MM" as const] }] }
+    const r = await confirmSeating(db, session, ids, noLayout)
+    expect(r).toMatchObject({ success: false, error: expect.stringMatching(/A0 has no bench layout/) })
     expect(getSessionSeating(db, session)).toEqual([])
     expect(getSeatingConfig(db, session)).toBeNull()
-  })
-
-  it("the hall's default category limit is saved and applies in seating", async () => {
-    const h = saveHall({ hall_code: "C1", bench_rows: 2, bench_cols: 2, default_max_categories: 1, is_active: true })
-    expect(h.default_max_categories).toBe(1)
-    expect(saveHall({ hall_code: "C2", bench_rows: 1, bench_cols: 1, default_max_categories: 0, is_active: true })).toMatchObject({ success: false, error: expect.stringMatching(/Default category limit/) })
-    expect(saveHall({ hall_code: "C3", bench_rows: 1, bench_cols: 1, default_max_categories: "", is_active: true }).default_max_categories).toBeNull()
-    const ids = [addStudent("M", "2023-2027"), addStudent("M", "2024-2028")]
-    const { session } = await sessionWithHalls([h.id])
-    const r = await generateSeating(db, session, ids)
-    expect(r).toMatchObject({ success: false, needsConfirmation: true })
-    expect(!r.success && "unallocated" in r && r.unallocated?.[0]?.reason).toMatch(/category limits/)
   })
 
   it("saving the same plan again replaces it: no duplicate seats or configurations", async () => {
@@ -225,7 +211,7 @@ describe("Session seating", () => {
 
     const auto = autoConfigureSeating(db, session, ids)
     if (!auto.success) throw new Error(auto.error)
-    const swapped = { ...auto.config, halls: auto.config.halls.map(h => ({ ...h, gender: h.gender === "M" ? "F" as const : "M" as const, genderFixed: true })) }
+    const swapped = { ...auto.config, halls: auto.config.halls.map(h => ({ ...h, pattern: [h.pattern[0] === "MM" ? "FF" as const : "MM" as const] })) }
     // The new seats are written, then saving the settings fails.
     const realRun = db.run
     const spy = vi.spyOn(db, "run").mockImplementation((sql: string, params?: any[]) => {
@@ -238,25 +224,6 @@ describe("Session seating", () => {
     } finally { spy.mockRestore() }
     expect(getSessionSeating(db, session)).toEqual(before)
     expect(getSeatingConfig(db, session)).toEqual(beforeConfig)
-  })
-
-  it("a hall left free by the settings is given to the group short of seats; a fixed hall is not", async () => {
-    const big = addHall("A1", 6, 2), small = addHall("A2", 1, 2) // 12 benches, 2 benches
-    const boys = [addStudent("M", "2023-2027"), addStudent("M", "2024-2028")]
-    const girls = Array.from({ length: 12 }, (_, i) => addStudent("F", i % 2 ? "2023-2027" : "2024-2028"))
-    const ids = [...boys, ...girls]
-    const { session } = await sessionWithHalls([big, small])
-    const auto = autoConfigureSeating(db, session, ids)
-    if (!auto.success) throw new Error(auto.error)
-    const set = (fixed: boolean) => ({ ...auto.config, halls: auto.config.halls.map(h => ({ ...h, gender: h.hallId === big ? "M" as const : "F" as const, genderFixed: fixed })) })
-
-    const fixedPreview = previewSeating(db, session, ids, set(true))
-    expect(fixedPreview.success && fixedPreview.plan.unallocated.length).toBe(8)
-    const free = await confirmSeating(db, session, ids, set(false))
-    expect(free).toMatchObject({ success: true, seated: 14, unallocated: [] })
-    expect(free.success && free.reassigned.map(r => r.hallId).sort()).toEqual([big, small].sort())
-    const rows = getSessionSeating(db, session)
-    expect(new Set(rows.filter(x => x.hallId === big).map(x => x.gender))).toEqual(new Set(["F"]))
   })
 
   it("needs the invigilator allocation first, and refuses inactive students", async () => {
@@ -289,42 +256,5 @@ describe("Session seating", () => {
     expect(db.query("SELECT * FROM seat_allocations")).toEqual([])
     expect(db.query("SELECT * FROM seating_configs")).toEqual([])
     expect(deleteStudent(db, id).success).toBe(true)
-  })
-})
-
-describe("Seating patterns", () => {
-  const pattern = () => ({
-    name: "CSE + ECE mix", rows: 2, cols: 1,
-    cells: {
-      "1-1": { L: { departmentId: dept("CSE"), deptCode: "CSE", year: "Final Year", gender: "M" }, R: { departmentId: dept("ECE"), deptCode: "ECE", year: "Third Year", gender: "M" } },
-      "2-1": { L: { departmentId: dept("CSE"), deptCode: "CSE", year: "Final Year", gender: "F" }, R: { departmentId: dept("ECE"), deptCode: "ECE", year: "Third Year", gender: "F" } }
-    }
-  })
-
-  it("saves a pattern by name, lists it, refuses a second one of the same name, and deletes it", () => {
-    const r = saveSeatingPattern(db, pattern())
-    expect(r.success).toBe(true)
-    const saved = (r as any).pattern
-    expect(listSeatingPatterns(db)).toEqual([saved])
-    expect(saveSeatingPattern(db, { ...pattern(), name: "cse + ece MIX" })).toMatchObject({ success: false, error: expect.stringMatching(/already exists/) })
-    expect(saveSeatingPattern(db, { ...saved, name: "Renamed" }).success).toBe(true)
-    expect(listSeatingPatterns(db).map(p => p.name)).toEqual(["Renamed"])
-    deleteSeatingPattern(db, saved.id)
-    expect(listSeatingPatterns(db)).toEqual([])
-  })
-
-  it("seats boys and girls of two departments in one hall by the pattern, and saves the plan", async () => {
-    const ids = [addStudent("M", "2023-2027", "CSE"), addStudent("M", "2024-2028", "ECE"), addStudent("F", "2023-2027", "CSE"), addStudent("F", "2024-2028", "ECE")]
-    const hall = addHall("P1", 2, 1)
-    const { session } = await sessionWithHalls([hall])
-    const p = (saveSeatingPattern(db, pattern()) as any).pattern
-    const config = { categoryOrder: [], halls: [{ hallId: hall, gender: null, genderFixed: true, maxCategories: null, categories: [], pattern: p }] }
-    const r = await confirmSeating(db, session, ids, config)
-    expect(r).toMatchObject({ success: true, seated: 4 })
-    const seats = getSessionSeating(db, session)
-    expect(seats.map(s => [s.bench_row, s.seat, s.deptCode, s.gender])).toEqual([
-      [1, "L", "CSE", "M"], [1, "R", "ECE", "M"], [2, "L", "CSE", "F"], [2, "R", "ECE", "F"]
-    ])
-    expect(getSeatingConfig(db, session)!.config.halls[0].pattern?.name).toBe("CSE + ECE mix")
   })
 })

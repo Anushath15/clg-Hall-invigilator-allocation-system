@@ -38,9 +38,9 @@ export interface SeatingExportArgs {
 
 const rollOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 export const seatLabel = (seat: "L" | "R") => (seat === "L" ? "Left" : "Right")
-export const groupLabel = (gender: "M" | "F" | null | undefined) => (gender === "M" ? "Boys" : gender === "F" ? "Girls" : "—")
-/** The group of a hall's students: "Boys", "Girls", or "Boys & Girls" for a hall seated by a pattern that mixes them. */
-export const hallGroupLabel = (seats: Pick<SeatRow, "gender">[]) => (new Set(seats.map(s => s.gender)).size > 1 ? "Boys & Girls" : groupLabel(seats[0]?.gender))
+export const groupLabel = (gender: "M" | "F" | "mixed" | null | undefined) => (gender === "M" ? "Boys" : gender === "F" ? "Girls" : gender === "mixed" ? "Boys & Girls" : "—")
+/** Who sits in a hall, from its seated students: "M", "F", or "mixed" when its bench pattern seats both. */
+export const seatsGroup = (seats: Pick<SeatRow, "gender">[]) => (new Set(seats.map(s => s.gender)).size > 1 ? "mixed" as const : seats[0]?.gender)
 
 /** College name, title and session line at the top of a page; returns the y below it. */
 function header(doc: jsPDF, title: string, { cycle, session, settings = {} }: SeatingExportArgs): number {
@@ -62,7 +62,7 @@ function hallLine(doc: jsPDF, y: number, hall: SeatingHallInfo, seats: SeatRow[]
   doc.text(title, 14, y + 5)
   const titleWidth = doc.getTextWidth(title)
   doc.setFont("helvetica", "normal"); doc.setFontSize(9)
-  const parts = [hallLocation(hall), hallGroupLabel(seats), `${seats.length} students`, hall.invigilators.length ? `Invigilator: ${hall.invigilators.join(", ")}` : ""].filter(Boolean)
+  const parts = [hallLocation(hall), groupLabel(seatsGroup(seats)), `${seats.length} students`, hall.invigilators.length ? `Invigilator: ${hall.invigilators.join(", ")}` : ""].filter(Boolean)
   doc.text(parts.join("  ·  "), 14 + titleWidth + 4, y + 5)
   return y + 9
 }

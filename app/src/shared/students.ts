@@ -7,13 +7,12 @@
  * rules live in one place.
  */
 import { validateStudent, parseGender, normalizeStudentBatch } from "./validation"
-import { hallLayout, cleanDisabled, benchCount, validateHallLayout, MAX_HALL_CATEGORIES } from "./hall-layout"
+import { hallLayout, cleanDisabled, benchCount, validateHallLayout } from "./hall-layout"
 import {
-  planSeating, validateSeatingPlan, checkConfig, normalizeConfig, autoConfigure, studentCategories, unallocatedMessage,
-  type SeatStudent, type SeatHall, type SeatingConfig, type UnallocatedStudent
+  planSeating, validateSeatingPlan, checkConfig, normalizeConfig, autoConfigure, studentCategory, unallocatedMessage, seatingShortfall,
+  type SeatStudent, type SeatHall, type SeatingConfig, type UnallocatedStudent, type ClassLimit
 } from "./seating"
 import { yearOfStudy, categoryLabel } from "./categories"
-import { normalizePattern, validatePattern, type SeatingPattern } from "./seating-pattern"
 
 export interface StudentDb {
   run(sql: string, params?: any[]): { lastInsertRowid: number; changes: number }
@@ -80,39 +79,22 @@ export function migrateSeatingConfig(db: Pick<StudentDb, "run" | "query">): void
   )`)
 }
 
-/** Migration 010 (both builds): seating patterns the administrator saves to use again. */
-export function migrateSeatingPatterns(db: Pick<StudentDb, "run" | "query">): void {
-  db.run(`CREATE TABLE IF NOT EXISTS seating_patterns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    pattern TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  )`)
-}
-
 // ── Hall bench layout ───────────────────────────────────────
 
-export interface HallLayoutInput { bench_rows?: unknown; bench_cols?: unknown; disabled_benches?: unknown; capacity?: unknown; default_max_categories?: unknown }
+export interface HallLayoutInput { bench_rows?: unknown; bench_cols?: unknown; disabled_benches?: unknown; capacity?: unknown }
 
 /**
- * The seating columns to save with a hall (bench layout and default category limit), or the
- * problem with them. When a layout is given, the hall's capacity becomes its seats (two per bench)
+ * The bench layout columns to save with a hall, or the problem with them. When a layout is given, the hall's capacity becomes its seats (two per bench)
  * so the two can never disagree.
  */
-export function hallLayoutColumns(data: HallLayoutInput): { error: string } | { bench_rows: number; bench_cols: number; disabled_benches: string; capacity: number | null; default_max_categories: number | null } {
+export function hallLayoutColumns(data: HallLayoutInput): { error: string } | { bench_rows: number; bench_cols: number; disabled_benches: string; capacity: number | null } {
   const problem = validateHallLayout(data.bench_rows, data.bench_cols)
   if (problem) return { error: problem }
-  const rawMax = data.default_max_categories
-  const maxCategories = rawMax === null || rawMax === undefined || String(rawMax).trim() === "" ? null : Number(rawMax)
-  if (maxCategories !== null && (!Number.isInteger(maxCategories) || maxCategories < 1 || maxCategories > MAX_HALL_CATEGORIES)) {
-    return { error: `Default category limit must be a whole number from 1 to ${MAX_HALL_CATEGORIES}, or left blank for no limit.` }
-  }
   const layout = hallLayout(data)
   const disabled = cleanDisabled(layout)
   const benches = benchCount({ ...layout, disabled })
   if (layout.rows > 0 && benches === 0) return { error: "Every bench is switched off. Keep at least one bench, or set rows and columns to 0." }
-  return { bench_rows: layout.rows, bench_cols: layout.cols, disabled_benches: JSON.stringify(disabled), capacity: layout.rows > 0 ? benches * 2 : null, default_max_categories: maxCategories }
+  return { bench_rows: layout.rows, bench_cols: layout.cols, disabled_benches: JSON.stringify(disabled), capacity: layout.rows > 0 ? benches * 2 : null }
 }
 
 // ── Student master ──────────────────────────────────────────
@@ -227,7 +209,7 @@ export function importStudents(db: StudentDb, rows: unknown[][]) {
 function sessionHalls(db: StudentDb, sessionId: number): SeatHall[] {
   return db.query<any>(
     `SELECT DISTINCT h.* FROM allocations a JOIN halls h ON h.id = a.hall_id WHERE a.session_id = ? ORDER BY h.sort_order, h.id`, [sessionId]
-  ).map(h => ({ id: h.id, hall_code: h.hall_code, ...hallLayout(h), default_max_categories: h.default_max_categories ?? null }))
+  ).map(h => ({ id: h.id, hall_code: h.hall_code, ...hallLayout(h) }))
 }
 
 /** The academic year of the session's exam cycle ("2025-2026"), from which students' years are worked out. */
@@ -254,38 +236,41 @@ function seatingInput(db: StudentDb, sessionId: number, studentIds: number[]): {
 }
 
 /** The session's halls as the configuration screen shows them. */
-const hallInfo = (halls: SeatHall[]) => halls.map(h => ({ id: h.id, hall_code: h.hall_code, benches: benchCount(h), capacity: benchCount(h) * 2, default_max_categories: h.default_max_categories ?? null }))
+const hallInfo = (halls: SeatHall[]) => halls.map(h => ({ id: h.id, hall_code: h.hall_code, benches: benchCount(h), capacity: benchCount(h) * 2 }))
 
 /** The saved configuration of a session, with the students selected and those left unallocated; null if none. */
 export function getSeatingConfig(db: StudentDb, sessionId: number): { config: SeatingConfig; studentIds: number[]; unallocated: UnallocatedStudent[] } | null {
   const row = db.queryOne<any>("SELECT config, student_ids, unallocated FROM seating_configs WHERE session_id = ?", [sessionId])
   if (!row) return null
   const parse = (text: string, fallback: any) => { try { return JSON.parse(text) ?? fallback } catch { return fallback } }
-  return { config: parse(row.config, { categoryOrder: [], halls: [] }), studentIds: parse(row.student_ids, []), unallocated: parse(row.unallocated, []) }
+  return { config: parse(row.config, { halls: [] }), studentIds: parse(row.student_ids, []), unallocated: parse(row.unallocated, []) }
 }
 
 /**
- * The starting point for the configuration screen: the session's halls, the categories of the
- * selected students, and a configuration made automatically (shared/seating.ts).
+ * The starting point for the configuration screen: the session's halls, how many boys and girls
+ * are selected, and the halls handed to boys and girls automatically (shared/seating.ts).
  */
-export function autoConfigureSeating(db: StudentDb, sessionId: number, studentIds: number[]) {
+export function autoConfigureSeating(db: StudentDb, sessionId: number, studentIds: number[], classLimit?: Partial<ClassLimit>) {
   const input = seatingInput(db, sessionId, studentIds)
   if ("error" in input) return { success: false as const, error: input.error }
-  const config = autoConfigure(input.students, input.halls, input.academicYear)
+  const boys = input.students.filter(s => s.gender === "M").length
   return {
-    success: true as const, config, academicYear: input.academicYear, halls: hallInfo(input.halls),
-    categories: studentCategories(input.students, input.academicYear, config.categoryOrder).categories
+    success: true as const, config: autoConfigure(input.students, input.halls, { classLimit }), academicYear: input.academicYear,
+    /** The best split into whole boys' and girls' halls, no hall shared (the "Separate halls" method). */
+    separateConfig: autoConfigure(input.students, input.halls, { separateOnly: true, classLimit }),
+    halls: hallInfo(input.halls), boys, girls: input.students.length - boys,
+    shortfall: seatingShortfall(input.students, input.halls, classLimit)
   }
 }
 
 function buildPlan(input: SeatingInput, rawConfig: SeatingConfig) {
   const config = normalizeConfig(rawConfig, input.halls)
   const plan = planSeating(input.students, input.halls, config, input.academicYear)
-  const checked = checkConfig(config, input.halls, plan.categories)
-  const valid = validateSeatingPlan(plan, input.students, input.halls, config, input.academicYear)
+  const checked = checkConfig(config, input.halls, input.students)
+  const valid = validateSeatingPlan(plan, input.students, input.halls, config)
   const students = input.students.map(s => {
     const y = yearOfStudy(s.batch, input.academicYear)
-    return { id: s.id, roll_no: s.roll_no, name: s.name, gender: s.gender, batch: s.batch, deptCode: s.dept_code ?? null, year: y.ok ? y.label : "" }
+    return { id: s.id, roll_no: s.roll_no, name: s.name, gender: s.gender, batch: s.batch, deptCode: s.dept_code ?? null, year: y.ok ? y.label : "", category: studentCategory(s, input.academicYear).label }
   })
   return {
     config, plan, students, academicYear: input.academicYear, halls: hallInfo(input.halls),
@@ -314,7 +299,7 @@ export async function confirmSeating(db: StudentDb, sessionId: number, studentId
   const built = buildPlan(input, config)
   const { plan, errors } = built
   if (errors.length) return { success: false as const, error: `The seating plan cannot be saved: ${errors[0]}`, errors }
-  if (plan.seats.length === 0) return { success: false as const, error: "No student can be seated with this configuration. Assign halls to boys or girls and select their categories." }
+  if (plan.seats.length === 0) return { success: false as const, error: "No student can be seated with this configuration. Give the halls a bench pattern: boys, girls, or both." }
   const shortfall = unallocatedMessage(plan)
   if (shortfall && !options.acceptUnallocated) {
     return { success: false as const, needsConfirmation: true as const, error: shortfall, unallocated: plan.unallocated }
@@ -336,7 +321,7 @@ export async function confirmSeating(db: StudentDb, sessionId: number, studentId
   } catch (e: any) {
     return { success: false as const, error: `The seating plan could not be saved, so the previous plan was kept unchanged. (${e?.message ?? e})` }
   }
-  return { success: true as const, warnings: plan.warnings, hallGender: plan.hallGender, reassigned: plan.reassigned, seated: plan.seats.length, unallocated: plan.unallocated }
+  return { success: true as const, warnings: plan.warnings, hallGender: plan.hallGender, seated: plan.seats.length, unallocated: plan.unallocated }
 }
 
 /**
@@ -396,41 +381,6 @@ export function getSeatingSelections(db: StudentDb) {
     try { selected = JSON.parse(student_ids ?? "null") } catch { /* an unreadable list counts the seated students */ }
     return { ...r, studentCount: Array.isArray(selected) ? selected.length : seated }
   })
-}
-
-// ── Seating patterns ────────────────────────────────────────
-
-/** The saved seating patterns, by name. */
-export function listSeatingPatterns(db: StudentDb): SeatingPattern[] {
-  return db.query<any>("SELECT id, name, pattern FROM seating_patterns ORDER BY name COLLATE NOCASE").flatMap(r => {
-    let raw: any = null
-    try { raw = JSON.parse(r.pattern) } catch { /* an unreadable pattern is left out */ }
-    const p = normalizePattern({ ...raw, id: r.id, name: r.name })
-    return p ? [p] : []
-  })
-}
-
-/** Saves a new pattern, or replaces the one with its id. Names are unique ignoring letter case. */
-export function saveSeatingPattern(db: StudentDb, data: unknown): { success: true; pattern: SeatingPattern } | { success: false; error: string } {
-  const p = normalizePattern(data)
-  const problem = validatePattern(p)
-  if (problem) return { success: false, error: problem }
-  const clash = db.queryOne<any>("SELECT id FROM seating_patterns WHERE name = ? COLLATE NOCASE AND id != ?", [p!.name, p!.id ?? 0])
-  if (clash) return { success: false, error: `A pattern named "${p!.name}" already exists. Choose another name.` }
-  const body = JSON.stringify({ rows: p!.rows, cols: p!.cols, cells: p!.cells })
-  if (p!.id) {
-    if (!db.queryOne("SELECT id FROM seating_patterns WHERE id = ?", [p!.id])) return { success: false, error: "That pattern no longer exists. Save it as a new one." }
-    db.run("UPDATE seating_patterns SET name = ?, pattern = ?, updated_at = datetime('now') WHERE id = ?", [p!.name, body, p!.id])
-    return { success: true, pattern: p! }
-  }
-  const { lastInsertRowid } = db.run("INSERT INTO seating_patterns(name, pattern) VALUES(?,?)", [p!.name, body])
-  return { success: true, pattern: { ...p!, id: lastInsertRowid } }
-}
-
-/** Deletes a saved pattern. Sessions that used it keep their own copy in their seating settings. */
-export function deleteSeatingPattern(db: StudentDb, id: number) {
-  db.run("DELETE FROM seating_patterns WHERE id = ?", [id])
-  return { success: true }
 }
 
 /**

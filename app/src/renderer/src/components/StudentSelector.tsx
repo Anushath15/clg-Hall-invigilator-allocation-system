@@ -175,11 +175,11 @@ export default function StudentSelector({ session, academicYear, seats, initialI
           <div className="text-sm">
             <b>{chosen.length}</b> selected <span className="text-brand-textsec">({boys} boys · {girls} girls)</span>
             <span className="text-brand-textsec"> · {seats} seats in this session's halls</span>
-            {chosen.length > seats && <p className="text-xs text-red-600 flex items-center gap-1 mt-1"><AlertTriangle className="w-3.5 h-3.5" /> More students than seats: some will be unallocated unless you add halls to the invigilator allocation.</p>}
+            {chosen.length > seats && <p className="text-xs text-red-600 flex items-center gap-1 mt-1"><AlertTriangle className="w-3.5 h-3.5" /> More students than seats: deselect students or add halls to the invigilator allocation to continue.</p>}
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary">Cancel</button>
-            <button onClick={() => onConfirm(chosen.map(s => s.id))} disabled={chosen.length === 0} className="btn-primary">Next: Configure Halls</button>
+            <button onClick={() => onConfirm(chosen.map(s => s.id))} disabled={chosen.length === 0 || chosen.length > seats} title={chosen.length > seats ? `Select at most ${seats} students to fit this session's halls` : undefined} className="btn-primary">Next: Configure Halls</button>
           </div>
         </div>
       </div>

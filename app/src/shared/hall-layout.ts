@@ -10,8 +10,6 @@
 
 export const MAX_BENCH_ROWS = 30
 export const MAX_BENCH_COLS = 20
-/** Most distinct student categories a hall's default category limit may allow. */
-export const MAX_HALL_CATEGORIES = 50
 
 export interface HallLayout { rows: number; cols: number; disabled: string[] }
 export interface Bench { row: number; col: number; benchNo: number }

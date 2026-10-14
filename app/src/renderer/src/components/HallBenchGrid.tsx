@@ -1,6 +1,6 @@
 import { cn } from "../lib/utils"
 import { hallLayout, benchKey, enabledBenches } from "../../../shared/hall-layout"
-import { hallGroupLabel, type SeatRow } from "../lib/export-seating-pdf"
+import { groupLabel, seatsGroup, type SeatRow } from "../lib/export-seating-pdf"
 
 // Academic-year colours on the bench grid (by the year's place in the list given).
 const YEAR_COLORS = [
@@ -8,7 +8,7 @@ const YEAR_COLORS = [
   "bg-emerald-100 text-emerald-800", "bg-rose-100 text-rose-800", "bg-slate-200 text-slate-800"
 ]
 
-/** The colour key of a seated student: their academic year (bench mates always differ), else batch. */
+/** The colour key of a seated student: their academic year, else batch. */
 export const colorKey = (s: Pick<SeatRow, "year" | "batch">) => s.year || s.batch
 
 /** A colour picker for a list of keys (academic years), stable for the list given. */
@@ -33,8 +33,8 @@ export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: 
     const k = benchKey(s.bench_row, s.bench_col)
     at.set(k, { ...at.get(k), [s.seat]: s })
   }
-  // In a hall that mixes boys and girls (a seating pattern), each seat shows whose it is.
-  const mixed = new Set(seats.map(s => s.gender)).size > 1
+  // In a hall whose bench pattern seats boys and girls, each seat shows whose it is.
+  const mixed = seatsGroup(seats) === "mixed"
   const seatCell = (s?: SeatRow) => s
     ? <div title={`${s.roll_no} · ${s.studentName} · ${s.deptCode ?? ""} ${s.year ?? ""} · ${s.batch}`}
         className={cn("rounded px-1 py-0.5 font-mono text-[10px] font-semibold truncate", colorOf(colorKey(s)), mixed && (s.gender === "F" ? "border-l-4 border-pink-500" : "border-l-4 border-sky-500"), highlight.includes(s.studentId) && "ring-2 ring-red-500")}>{s.roll_no}</div>
@@ -43,7 +43,7 @@ export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: 
   return (
     <div className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-        <h3 className="font-semibold">Hall {hall.hall_code} <span className="text-sm font-normal text-brand-textsec">· {hallGroupLabel(seats)} · {seats.length} students{hall.invigilators?.length ? ` · ${hall.invigilators.join(", ")}` : ""}</span></h3>
+        <h3 className="font-semibold">Hall {hall.hall_code} <span className="text-sm font-normal text-brand-textsec">· {groupLabel(seatsGroup(seats))} · {seats.length} students{hall.invigilators?.length ? ` · ${hall.invigilators.join(", ")}` : ""}</span></h3>
         <p className="text-xs text-brand-textsec">Each bench: number, left seat, right seat (as seen from the front). Colour = academic year.{mixed && " Left edge: blue = boy, pink = girl."}</p>
       </div>
       <div className="text-center text-[11px] font-semibold tracking-widest uppercase bg-gray-700 text-white rounded-md py-1 mb-2">Front · Board</div>

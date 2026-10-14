@@ -14,8 +14,7 @@ import { webDb } from "./web-db"
 import {
   listStudents, listStudentBatches, saveStudent, deleteStudent, importStudents, hallLayoutColumns,
   generateSeating, getSessionSeating, clearSeating, getSeatingSelections, dropSeatingIfHallsChanged,
-  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating,
-  listSeatingPatterns, saveSeatingPattern, deleteSeatingPattern
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
 } from "../../../shared/students"
 
 // In-memory cache for browser file selection
@@ -422,14 +421,14 @@ export const webApi = {
     if ("error" in layout) return { success: false, error: layout.error }
     const capacity = layout.capacity ?? data.capacity ?? 0
     if (data.id) {
-      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=?,default_max_categories=? WHERE id=?",
-        [data.hall_code, name, floor, capacity, data.block??null, data.is_active?1:0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories, data.id])
+      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=? WHERE id=?",
+        [data.hall_code, name, floor, capacity, data.block??null, data.is_active?1:0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, data.id])
       writeAuditLog(null, "HALL_STATUS_CHANGE", `Hall ${data.hall_code} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = webDb.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches,default_max_categories) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-      [data.hall_code, name, floor, capacity, data.block??null, 1, (maxOrder?.m??0)+1, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.default_max_categories])
+    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      [data.hall_code, name, floor, capacity, data.block??null, 1, (maxOrder?.m??0)+1, layout.bench_rows, layout.bench_cols, layout.disabled_benches])
     writeAuditLog(null, "CREATE_HALL", `Hall created: ${data.hall_code}`, { id: lastInsertRowid, hall_code: data.hall_code })
     return webDb.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   },
@@ -1028,7 +1027,7 @@ export const webApi = {
   importStudents: async (rows: unknown[][]) => { await ensureDb(); return importStudents(webDb, rows) },
   generateSeating: async (sessionId: number, studentIds: number[]) => { await ensureDb(); return generateSeating(webDb, sessionId, studentIds) },
   getSeatingConfig: async (sessionId: number) => { await ensureDb(); return getSeatingConfig(webDb, sessionId) },
-  autoConfigureSeating: async (sessionId: number, studentIds: number[]) => { await ensureDb(); return autoConfigureSeating(webDb, sessionId, studentIds) },
+  autoConfigureSeating: async (sessionId: number, studentIds: number[], classLimit?: { preferred: number; max: number }) => { await ensureDb(); return autoConfigureSeating(webDb, sessionId, studentIds, classLimit) },
   previewSeating: async (sessionId: number, studentIds: number[], config: any) => { await ensureDb(); return previewSeating(webDb, sessionId, studentIds, config) },
   confirmSeating: async (sessionId: number, studentIds: number[], config: any, options?: { acceptUnallocated?: boolean }) => {
     await ensureDb(); return confirmSeating(webDb, sessionId, studentIds, config, options ?? {})
@@ -1036,9 +1035,6 @@ export const webApi = {
   getSessionSeating: async (sessionId: number) => { await ensureDb(); return getSessionSeating(webDb, sessionId) },
   clearSeating: async (sessionId: number) => { await ensureDb(); return clearSeating(webDb, sessionId) },
   getSeatingSelections: async () => { await ensureDb(); return getSeatingSelections(webDb) },
-  getSeatingPatterns: async () => { await ensureDb(); return listSeatingPatterns(webDb) },
-  saveSeatingPattern: async (pattern: any) => { await ensureDb(); return saveSeatingPattern(webDb, pattern) },
-  deleteSeatingPattern: async (id: number) => { await ensureDb(); return deleteSeatingPattern(webDb, id) },
 
   // File Dialogs & Storage
   openFileDialog: async (filters?: any[]): Promise<string | null> => {

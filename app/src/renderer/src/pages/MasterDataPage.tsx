@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, Upload, CheckCircle, XCircle } from "lucide-react
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 import BenchLayoutEditor from "../components/BenchLayoutEditor"
 import StudentsTab from "../components/StudentsTab"
-import { hallLayout, benchCount, cleanDisabled, MAX_BENCH_ROWS, MAX_BENCH_COLS, MAX_HALL_CATEGORIES } from "../../../shared/hall-layout"
+import { hallLayout, benchCount, cleanDisabled, MAX_BENCH_ROWS, MAX_BENCH_COLS } from "../../../shared/hall-layout"
 import { IS_DESKTOP } from "../lib/platform"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
@@ -304,12 +304,6 @@ function HallsTab() {
                       </p>
                     </div>
                   )}
-                  <div className="mt-3">
-                    <label className="label">Default category limit</label>
-                    <input className="input-field" type="number" min={1} max={MAX_HALL_CATEGORIES} step={1} placeholder="No limit"
-                      value={form.default_max_categories ?? ""} onChange={e => setForm({ ...form, default_max_categories: e.target.value === "" ? null : Number(e.target.value) })} />
-                    <p className="text-xs text-brand-textsec mt-1">Most student categories (department + year, e.g. CSE – Final Year) this hall holds in one session. A session's seating settings can change it. Leave blank for no limit.</p>
-                  </div>
                 </div>
                 {formBenches > 0
                   ? <div><label className="label">Capacity</label><p className="text-sm text-brand-textsec">{formBenches * 2} seats (two per bench)</p></div>
