@@ -9,12 +9,13 @@ import { getOrCreateAllocation, deleteSession } from "./allocation.service"
 import {
   saveStudent, listStudents, listStudentBatches, deleteStudent, importStudents,
   generateSeating, getSessionSeating, getSeatingSelections, clearSeating,
-  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating,
+  listSeatingPatterns, saveSeatingPattern, deleteSeatingPattern
 } from "../../shared/students"
 
 beforeAll(async () => { await initDatabase({ inMemory: true }) })
 beforeEach(() => {
-  for (const t of ["seat_allocations", "seating_configs", "students", "rotation_history", "allocations", "exam_sessions", "exam_cycles", "halls"]) db.run(`DELETE FROM ${t}`)
+  for (const t of ["seat_allocations", "seating_configs", "seating_patterns", "students", "rotation_history", "allocations", "exam_sessions", "exam_cycles", "halls"]) db.run(`DELETE FROM ${t}`)
   db.run("DELETE FROM users WHERE role='staff'")
   db.run("DELETE FROM departments")
   db.run("INSERT INTO departments(code, name) VALUES('CSE', 'Computer Science'), ('ECE', 'Electronics')")
@@ -288,5 +289,42 @@ describe("Session seating", () => {
     expect(db.query("SELECT * FROM seat_allocations")).toEqual([])
     expect(db.query("SELECT * FROM seating_configs")).toEqual([])
     expect(deleteStudent(db, id).success).toBe(true)
+  })
+})
+
+describe("Seating patterns", () => {
+  const pattern = () => ({
+    name: "CSE + ECE mix", rows: 2, cols: 1,
+    cells: {
+      "1-1": { L: { departmentId: dept("CSE"), deptCode: "CSE", year: "Final Year", gender: "M" }, R: { departmentId: dept("ECE"), deptCode: "ECE", year: "Third Year", gender: "M" } },
+      "2-1": { L: { departmentId: dept("CSE"), deptCode: "CSE", year: "Final Year", gender: "F" }, R: { departmentId: dept("ECE"), deptCode: "ECE", year: "Third Year", gender: "F" } }
+    }
+  })
+
+  it("saves a pattern by name, lists it, refuses a second one of the same name, and deletes it", () => {
+    const r = saveSeatingPattern(db, pattern())
+    expect(r.success).toBe(true)
+    const saved = (r as any).pattern
+    expect(listSeatingPatterns(db)).toEqual([saved])
+    expect(saveSeatingPattern(db, { ...pattern(), name: "cse + ece MIX" })).toMatchObject({ success: false, error: expect.stringMatching(/already exists/) })
+    expect(saveSeatingPattern(db, { ...saved, name: "Renamed" }).success).toBe(true)
+    expect(listSeatingPatterns(db).map(p => p.name)).toEqual(["Renamed"])
+    deleteSeatingPattern(db, saved.id)
+    expect(listSeatingPatterns(db)).toEqual([])
+  })
+
+  it("seats boys and girls of two departments in one hall by the pattern, and saves the plan", async () => {
+    const ids = [addStudent("M", "2023-2027", "CSE"), addStudent("M", "2024-2028", "ECE"), addStudent("F", "2023-2027", "CSE"), addStudent("F", "2024-2028", "ECE")]
+    const hall = addHall("P1", 2, 1)
+    const { session } = await sessionWithHalls([hall])
+    const p = (saveSeatingPattern(db, pattern()) as any).pattern
+    const config = { categoryOrder: [], halls: [{ hallId: hall, gender: null, genderFixed: true, maxCategories: null, categories: [], pattern: p }] }
+    const r = await confirmSeating(db, session, ids, config)
+    expect(r).toMatchObject({ success: true, seated: 4 })
+    const seats = getSessionSeating(db, session)
+    expect(seats.map(s => [s.bench_row, s.seat, s.deptCode, s.gender])).toEqual([
+      [1, "L", "CSE", "M"], [1, "R", "ECE", "M"], [2, "L", "CSE", "F"], [2, "R", "ECE", "F"]
+    ])
+    expect(getSeatingConfig(db, session)!.config.halls[0].pattern?.name).toBe("CSE + ECE mix")
   })
 })

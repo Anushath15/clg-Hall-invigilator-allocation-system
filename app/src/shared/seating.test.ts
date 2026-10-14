@@ -6,6 +6,7 @@ import {
 import { categoryKey, yearOfStudy, academicStartYear } from "./categories"
 import { enabledBenches, benchKey, validateHallLayout, cleanDisabled } from "./hall-layout"
 import { validateStudent, validateStudentBatch, parseGender } from "./validation"
+import { patternSlotAt, validatePattern, type SeatingPattern, type PatternSlot } from "./seating-pattern"
 
 /** Academic year of every plan below: batch 2022-2026 is Final Year, 2023-2027 Third, 2024-2028 Second, 2025-2029 First. */
 const AY = "2025-2026"
@@ -520,5 +521,68 @@ describe("Seating plan: using spare seats across boys' and girls' halls", () => 
     checkPlan(all, halls, cfg, plan)
     expect(plan.unallocated).toEqual([])
     expect(plan.reassigned).toEqual([]) // the settings already hold the split in use
+  })
+})
+
+describe("Seating patterns", () => {
+  const slot = (dept: string, year: string, gender: Gender): PatternSlot => ({ departmentId: DEPTS[dept], deptCode: dept, year, gender })
+  /** Row 1: CSE Third Year | IT Second Year boys; row 2: the same departments' girls. One column, repeated to fit. */
+  const mix: SeatingPattern = {
+    id: 1, name: "CSE + IT, boys then girls", rows: 2, cols: 1,
+    cells: {
+      [benchKey(1, 1)]: { L: slot("CSE", "Third Year", "M"), R: slot("IT", "Second Year", "M") },
+      [benchKey(2, 1)]: { L: slot("CSE", "Third Year", "F"), R: slot("IT", "Second Year", "F") }
+    }
+  }
+  const patternHall = (hallId: number, pattern: SeatingPattern) => ({ ...cfgHall(hallId, null, []), pattern })
+
+  it("seats every student in the seat the pattern gives their department, year and gender, boys and girls in one hall", () => {
+    const all = [...students("M", THIRD, 2, "CSE"), ...students("M", SECOND, 2, "IT"), ...students("F", THIRD, 2, "CSE"), ...students("F", SECOND, 2, "IT")]
+    const halls = [hall(1, 2, 2)]
+    const cfg = config([patternHall(1, mix)])
+    const plan = planSeating(all, halls, cfg, AY)
+    checkPlan(all, halls, cfg, plan)
+    expect(plan.unallocated).toEqual([])
+    expect(plan.seats).toHaveLength(8)
+    const byId = new Map(all.map(s => [s.id, s]))
+    for (const seat of plan.seats) {
+      const s = byId.get(seat.studentId)!
+      const want = patternSlotAt(mix, seat.row, seat.col, seat.seat)!
+      expect([s.department_id, yearOf(s), s.gender]).toEqual([want.departmentId, want.year, want.gender])
+    }
+    expect(plan.halls[0]).toMatchObject({ pattern: mix.name, gender: null, occupied: 8 })
+    expect(plan.groups.M).toMatchObject({ seated: 4, unallocated: 0 })
+  })
+
+  it("repeats to fit a bigger hall and leaves a seat empty when its students run out; the rest go to the rule halls", () => {
+    expect(patternSlotAt(mix, 3, 2, "L")).toEqual(mix.cells[benchKey(1, 1)].L)
+    const all = students("M", THIRD, 5, "CSE")
+    const halls = [hall(1, 1, 1), hall(2, 3, 1)]
+    const cfg = config([patternHall(1, mix), cfgHall(2, "M", [["CSE", THIRD]])])
+    const plan = planSeating(all, halls, cfg, AY)
+    checkPlan(all, halls, cfg, plan)
+    expect(seatedIn(plan, 1)).toEqual([all[0].id])
+    expect(seatedIn(plan, 2)).toHaveLength(3) // one Third Year student per bench in a rule hall
+    expect(plan.unallocated).toHaveLength(1)
+    expect(plan.warnings.some(w => /1 pattern seat for IT – Second Year boys left empty/.test(w))).toBe(true)
+  })
+
+  it("never gives both seats of a bench the same academic year", () => {
+    const bad: SeatingPattern = { name: "Same year", rows: 1, cols: 1, cells: { [benchKey(1, 1)]: { L: slot("CSE", "Third Year", "M"), R: slot("IT", "Third Year", "F") } } }
+    expect(validatePattern(bad)).toMatch(/different academic years/)
+    const all = students("M", THIRD, 1, "CSE")
+    const halls = [hall(1, 1, 1)]
+    expect(checkConfig(normalizeConfig(config([patternHall(1, bad)]), halls), halls, studentCategories(all, AY).categories).errors[0]).toMatch(/different academic years/)
+    expect(validatePattern({ ...mix, name: " " })).toMatch(/name/)
+    expect(validatePattern({ ...mix, cells: {} })).toMatch(/no seats/)
+  })
+
+  it("the validator refuses a student in a seat the pattern gives to someone else", () => {
+    const all = [...students("M", THIRD, 1, "CSE"), ...students("M", SECOND, 1, "IT")]
+    const halls = [hall(1, 1, 1)]
+    const cfg = config([patternHall(1, mix)])
+    const plan = planSeating(all, halls, cfg, AY)
+    const swapped = { ...plan, seats: plan.seats.map(s => ({ ...s, seat: (s.seat === "L" ? "R" : "L") as "L" | "R" })) }
+    expect(validateSeatingPlan(swapped, all, halls, cfg, AY).errors.join(" ")).toMatch(/pattern gives to/)
   })
 })

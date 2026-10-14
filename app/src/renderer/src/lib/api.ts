@@ -2,6 +2,7 @@ import { webApi } from "./web-api"
 import type { StaffDutyRow } from "../../../shared/staff-duty"
 import type { SelectionSource } from "../../../shared/copy-selection"
 import type { SeatingConfig, UnallocatedStudent } from "../../../shared/seating"
+import type { SeatingPattern } from "../../../shared/seating-pattern"
 
 // Typed bridge: uses window.api in Electron desktop, or webApi in web browser / Firebase Hosting
 declare global {
@@ -101,6 +102,9 @@ export const api = apiBridge as {
   getSessionSeating: (sessionId: number) => Promise<any[]>
   clearSeating: (sessionId: number) => Promise<any>
   getSeatingSelections: () => Promise<any[]>
+  getSeatingPatterns: () => Promise<SeatingPattern[]>
+  saveSeatingPattern: (pattern: SeatingPattern) => Promise<{ success: true; pattern: SeatingPattern } | { success: false; error: string }>
+  deleteSeatingPattern: (id: number) => Promise<{ success: boolean }>
   // Reports
   getStaffWiseReport: (userId?: number, fromYear?: string, toYear?: string) => Promise<any[]>
   getDateWiseReport: (sessionId: number) => Promise<any[]>

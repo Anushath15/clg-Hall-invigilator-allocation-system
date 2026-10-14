@@ -61,6 +61,9 @@ const api = {
   getSessionSeating:(sessionId: number) => ipcRenderer.invoke("seating:get", sessionId),
   clearSeating:     (sessionId: number) => ipcRenderer.invoke("seating:clear", sessionId),
   getSeatingSelections: () => ipcRenderer.invoke("seating:selections"),
+  getSeatingPatterns: () => ipcRenderer.invoke("seating:patterns"),
+  saveSeatingPattern: (pattern: any) => ipcRenderer.invoke("seating:pattern-save", pattern),
+  deleteSeatingPattern: (id: number) => ipcRenderer.invoke("seating:pattern-delete", id),
   // Reports
   getStaffWiseReport:   (userId?: number, fromYear?: string, toYear?: string) => ipcRenderer.invoke("report:staffWise", userId, fromYear, toYear),
   getDateWiseReport:    (sessionId: number) => ipcRenderer.invoke("report:dateWise", sessionId),

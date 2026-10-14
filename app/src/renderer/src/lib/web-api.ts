@@ -14,7 +14,8 @@ import { webDb } from "./web-db"
 import {
   listStudents, listStudentBatches, saveStudent, deleteStudent, importStudents, hallLayoutColumns,
   generateSeating, getSessionSeating, clearSeating, getSeatingSelections, dropSeatingIfHallsChanged,
-  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating,
+  listSeatingPatterns, saveSeatingPattern, deleteSeatingPattern
 } from "../../../shared/students"
 
 // In-memory cache for browser file selection
@@ -1035,6 +1036,9 @@ export const webApi = {
   getSessionSeating: async (sessionId: number) => { await ensureDb(); return getSessionSeating(webDb, sessionId) },
   clearSeating: async (sessionId: number) => { await ensureDb(); return clearSeating(webDb, sessionId) },
   getSeatingSelections: async () => { await ensureDb(); return getSeatingSelections(webDb) },
+  getSeatingPatterns: async () => { await ensureDb(); return listSeatingPatterns(webDb) },
+  saveSeatingPattern: async (pattern: any) => { await ensureDb(); return saveSeatingPattern(webDb, pattern) },
+  deleteSeatingPattern: async (id: number) => { await ensureDb(); return deleteSeatingPattern(webDb, id) },
 
   // File Dialogs & Storage
   openFileDialog: async (filters?: any[]): Promise<string | null> => {

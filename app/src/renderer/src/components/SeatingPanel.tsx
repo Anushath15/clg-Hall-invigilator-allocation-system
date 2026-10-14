@@ -6,7 +6,7 @@ import { currentSettings } from "../lib/college-settings"
 import { cn, hallLocation } from "../lib/utils"
 import { hallLayout, enabledBenches } from "../../../shared/hall-layout"
 import {
-  exportSeatingPlanPDF, exportAttendanceSheetPDF, exportStudentSeatListPDF, exportUnallocatedListPDF, seatLabel, groupLabel,
+  exportSeatingPlanPDF, exportAttendanceSheetPDF, exportStudentSeatListPDF, exportUnallocatedListPDF, seatLabel, groupLabel, hallGroupLabel,
   type SeatRow, type SeatingHallInfo, type UnallocatedRow
 } from "../lib/export-seating-pdf"
 import StudentSelector from "./StudentSelector"
@@ -151,14 +151,15 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {sessionHalls.map(h => {
           const g = genderOf(h.id), n = seatsIn(h.id).length
+          const mixed = new Set(seatsIn(h.id).map(s => s.gender)).size > 1
           return (
             <div key={h.id} onClick={() => n && setViewHallId(h.id)}
               className={cn("card p-3 transition-all", n && "cursor-pointer hover:border-brand-primary", viewHall?.id === h.id && n && "border-brand-primary ring-1 ring-brand-primary")}>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono font-bold text-brand-primary">{h.hall_code}</span>
                 <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
-                  g === "M" ? "bg-sky-100 text-sky-700" : g === "F" ? "bg-pink-100 text-pink-700" : "bg-gray-100 text-gray-500")}>
-                  {h.benches === 0 ? "No layout" : g ? groupLabel(g) : seats.length ? "Not used" : "Empty"}
+                  mixed ? "bg-violet-100 text-violet-700" : g === "M" ? "bg-sky-100 text-sky-700" : g === "F" ? "bg-pink-100 text-pink-700" : "bg-gray-100 text-gray-500")}>
+                  {h.benches === 0 ? "No layout" : mixed ? hallGroupLabel(seatsIn(h.id)) : g ? groupLabel(g) : seats.length ? "Not used" : "Empty"}
                 </span>
               </div>
               <p className="text-xs text-brand-textsec mt-1 truncate">{hallLocation(h) || "—"} · {h.invigilators.join(", ")}</p>

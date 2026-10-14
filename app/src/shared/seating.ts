@@ -7,7 +7,8 @@
  * students of each category it should take.
  *
  * Mandatory rules, never relaxed to fit more students in:
- *  1. Boys and girls sit in separate halls; a hall only takes the group it is assigned to.
+ *  1. Boys and girls sit in separate halls; a hall only takes the group it is assigned to. (A hall
+ *     with a seating pattern is the exception: see below.)
  *  2. Two students per bench at most, and bench mates are in DIFFERENT ACADEMIC YEARS (a Final Year
  *     student never sits with another Final Year student, whatever their departments).
  *  3. A hall takes only the categories selected for it, no more distinct categories than its limit,
@@ -23,10 +24,17 @@
  * its students can be paired with different-year bench mates. Within each category students go to
  * the halls in roll-number order, so a category continues from one hall into the next. The result is
  * deterministic: the same input gives the same plan.
+ *
+ * A hall may instead follow a SEATING PATTERN (seating-pattern.ts): the administrator has said seat by
+ * seat which department, academic year and gender sits there, boys and girls together if they wish.
+ * Such halls take their students first, seat by seat in bench order, in roll-number order; the hall's
+ * gender, categories and limit do not apply. A seat whose students have run out stays empty. The
+ * remaining students go to the other halls as above.
  */
 import { enabledBenches, type Bench, type HallLayout } from "./hall-layout"
 import { categoryKey, categoryLabel, yearOfStudy } from "./categories"
 import { MinCostFlow } from "./min-cost-flow"
+import { normalizePattern, validatePattern, patternSlotAt, slotKey, slotLabel, type SeatingPattern, type PatternSlot } from "./seating-pattern"
 
 export type Gender = "M" | "F"
 export const GENDER_GROUP: Record<Gender, string> = { M: "Boys", F: "Girls" }
@@ -49,6 +57,8 @@ export interface HallSeatingConfig {
   maxCategories: number | null
   /** Categories this hall may hold; `quantity` null means "as many as fit". */
   categories: { key: string; quantity: number | null }[]
+  /** A seat-by-seat pattern; when set, gender, categories and limit are not used for this hall. */
+  pattern?: SeatingPattern | null
 }
 /** A session's seating configuration. The order of `halls` is the order halls are filled in. */
 export interface SeatingConfig { categoryOrder: string[]; halls: HallSeatingConfig[] }
@@ -69,6 +79,8 @@ export interface HallSummary {
   maxCategories: number | null
   categories: { key: string; label: string; requested: number | null; actual: number }[]
   warnings: string[]
+  /** The name of the seating pattern the hall follows, or null. */
+  pattern: string | null
 }
 export interface SeatingPlan {
   seats: Seat[]
@@ -146,7 +158,8 @@ export function normalizeConfig(config: Partial<SeatingConfig> | null | undefine
     out.push({
       hallId: id, gender: h.gender === "M" || h.gender === "F" ? h.gender : null, genderFixed: h.genderFixed !== false,
       maxCategories: wholeOrNull(h.maxCategories, 1),
-      categories: [...cats].map(([key, quantity]) => ({ key, quantity }))
+      categories: [...cats].map(([key, quantity]) => ({ key, quantity })),
+      pattern: h.pattern ? normalizePattern(h.pattern) : null
     })
   }
   for (const h of halls) if (!seen.has(h.id)) out.push({ hallId: h.id, gender: null, genderFixed: true, maxCategories: null, categories: [] })
@@ -167,7 +180,9 @@ export function checkConfig(config: SeatingConfig, halls: SeatHall[], categories
   const catOf = new Map(categories.map(c => [c.key, c]))
   for (const cfg of config.halls) {
     const hall = hallOf.get(cfg.hallId)
-    if (!hall || !cfg.gender) continue
+    if (!hall) continue
+    if (cfg.pattern) { checkPatternHall(cfg.pattern, hall, categories, errors, warnings); continue }
+    if (!cfg.gender) continue
     const benches = enabledBenches(hall).length
     const code = hall.hall_code
     if (benches === 0) { errors.push(`Hall ${code} has no bench layout. Set its rows and columns in Master Data → Halls, or mark it Not used.`); continue }
@@ -190,6 +205,25 @@ export function checkConfig(config: SeatingConfig, halls: SeatHall[], categories
     }
   }
   return { errors, warnings }
+}
+
+/** checkConfig for a hall that follows a seating pattern. */
+function checkPatternHall(pattern: SeatingPattern, hall: SeatHall, categories: StudentCategory[], errors: string[], warnings: string[]) {
+  const code = hall.hall_code
+  const benches = enabledBenches(hall)
+  if (benches.length === 0) { errors.push(`Hall ${code} has no bench layout. Set its rows and columns in Master Data → Halls, or remove its pattern.`); return }
+  const problem = validatePattern(pattern)
+  if (problem) { errors.push(`Hall ${code}, pattern "${pattern.name}": ${problem}`); return }
+  const used = new Map<string, PatternSlot>()
+  for (const b of benches) for (const side of ["L", "R"] as const) {
+    const slot = patternSlotAt(pattern, b.row, b.col, side)
+    if (slot) used.set(slotKey(slot), slot)
+  }
+  if (used.size === 0) warnings.push(`Hall ${code}: its pattern leaves every bench of this hall empty.`)
+  for (const slot of used.values()) {
+    const have = categories.filter(c => c.departmentId === slot.departmentId && c.year === slot.year).reduce((n, c) => n + (slot.gender === "M" ? c.boys : c.girls), 0)
+    if (have === 0) warnings.push(`Hall ${code}: the pattern has seats for ${slotLabel(slot)}, but none are selected, so those seats stay empty.`)
+  }
 }
 
 // ── Bench pairing ───────────────────────────────────────────
@@ -329,9 +363,45 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
   const queues: Record<Gender, Map<string, Placed[]>> = { M: new Map(), F: new Map() }
   for (const p of placed) queues[p.s.gender].set(p.key, [...(queues[p.s.gender].get(p.key) ?? []), p])
   for (const g of GENDERS) for (const q of queues[g].values()) q.sort((a, b) => byRoll(a.s, b.s))
+
+  // Halls with a pattern take their students first, seat by seat, in hall order.
+  const patternIntake = new Map<number, Placed[]>()
+  const emptySlots = new Map<number, Map<string, { slot: PatternSlot; n: number }>>()
+  const patternSeats: Record<Gender, number> = { M: 0, F: 0 }
+  const patternHalls: Record<Gender, Set<number>> = { M: new Set(), F: new Set() }
+  const takeFor = (slot: PatternSlot): Placed | undefined => {
+    for (const c of categories) {
+      if (c.departmentId !== slot.departmentId || c.year !== slot.year) continue
+      const q = queues[slot.gender].get(c.key)
+      if (q?.length) return q.shift()
+    }
+    return undefined
+  }
+  for (const cfg of config.halls) {
+    const benches = benchesOf.get(cfg.hallId)!
+    if (!cfg.pattern || validatePattern(cfg.pattern) || benches.length === 0) continue
+    const list: Placed[] = [], empty = new Map<string, { slot: PatternSlot; n: number }>()
+    for (const b of benches) for (const side of ["L", "R"] as const) {
+      const slot = patternSlotAt(cfg.pattern, b.row, b.col, side)
+      if (!slot) continue
+      patternSeats[slot.gender]++
+      patternHalls[slot.gender].add(cfg.hallId)
+      const p = takeFor(slot)
+      if (p) {
+        list.push(p)
+        seats.push({ studentId: p.s.id, hallId: cfg.hallId, row: b.row, col: b.col, benchNo: b.benchNo, seat: side })
+      } else {
+        const e = empty.get(slotKey(slot)) ?? { slot, n: 0 }
+        e.n++; empty.set(slotKey(slot), e)
+      }
+    }
+    patternIntake.set(cfg.hallId, list)
+    emptySlots.set(cfg.hallId, empty)
+  }
+
   const cats: Record<Gender, { key: string; year: string; count: number }[]> = {
-    M: categories.filter(c => queues.M.has(c.key)).map(c => ({ key: c.key, year: c.year, count: queues.M.get(c.key)!.length })),
-    F: categories.filter(c => queues.F.has(c.key)).map(c => ({ key: c.key, year: c.year, count: queues.F.get(c.key)!.length }))
+    M: categories.filter(c => queues.M.get(c.key)?.length).map(c => ({ key: c.key, year: c.year, count: queues.M.get(c.key)!.length })),
+    F: categories.filter(c => queues.F.get(c.key)?.length).map(c => ({ key: c.key, year: c.year, count: queues.F.get(c.key)!.length }))
   }
 
   // One group in the halls a split gives it (in hall order); remembered, as splits share groups.
@@ -353,8 +423,9 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
   }
 
   // Which group each hall holds: the configured split, improved where non-fixed halls allow it.
-  const configured = new Map(config.halls.map(c => [c.hallId, c.gender]))
-  const flexible = config.halls.filter(c => !c.genderFixed && benchesOf.get(c.hallId)!.length > 0).map(c => c.hallId)
+  // A hall with a pattern holds no group of its own: it is left out of the split.
+  const configured = new Map(config.halls.map(c => [c.hallId, c.pattern ? null : c.gender]))
+  const flexible = config.halls.filter(c => !c.pattern && !c.genderFixed && benchesOf.get(c.hallId)!.length > 0).map(c => c.hallId)
   const score = (split: Map<number, Gender | null>) => {
     let changes = 0
     for (const [id, g] of split) if (g !== configured.get(id)) changes++
@@ -381,6 +452,10 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
   for (const cfg of config.halls) {
     const hall = hallOf.get(cfg.hallId)!, g = split.get(cfg.hallId) ?? null
     hallGender[hall.id] = g
+    if (cfg.pattern) {
+      if (benchesOf.get(hall.id)!.length === 0) warnings.push(`Hall ${hall.hall_code} has no bench layout, so no students were seated there. Set its rows and columns in Master Data → Halls.`)
+      continue
+    }
     if (g !== cfg.gender) {
       reassigned.push({ hallId: hall.id, hall_code: hall.hall_code, from: cfg.gender, to: g })
       const word = (x: Gender | null) => (x ? `a ${groupWord(x)}' hall` : "not used")
@@ -406,7 +481,11 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
       for (const p of left) unallocated.push({ studentId: p.s.id, roll_no: p.s.roll_no, name: p.s.name, gender: g, categoryKey: c.key, category: catOf.get(c.key)!.label, reason })
     }
     const total = students.filter(s => s.gender === g).length
-    groups[g] = { students: total, seated, unallocated: total - seated, halls: runs.length, seats: runs.reduce((n, r) => n + r.benches.length * 2, 0) }
+    const inPatterns = [...patternIntake.values()].flat().filter(p => p.s.gender === g).length
+    groups[g] = {
+      students: total, seated: seated + inPatterns, unallocated: total - seated - inPatterns,
+      halls: runs.length + patternHalls[g].size, seats: runs.reduce((n, r) => n + r.benches.length * 2, 0) + patternSeats[g]
+    }
   }
 
   // Bench by bench: each year kept together (years in category order), then category, then roll number.
@@ -415,30 +494,37 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
     const hall = hallOf.get(cfg.hallId)!
     const gender = hallGender[hall.id]
     const benches = benchesOf.get(hall.id)!
-    const list = intake.get(hall.id) ?? []
-    const yearRank = new Map<string, number>()
-    for (const p of [...list].sort((a, b) => rank.get(a.key)! - rank.get(b.key)!)) if (!yearRank.has(p.year)) yearRank.set(p.year, yearRank.size)
-    list.sort((a, b) => yearRank.get(a.year)! - yearRank.get(b.year)! || rank.get(a.key)! - rank.get(b.key)! || byRoll(a.s, b.s))
-    benchUnits(list, p => p.year).forEach((u, i) => {
-      const b = benches[i]
-      seats.push({ studentId: u.left.s.id, hallId: hall.id, row: b.row, col: b.col, benchNo: b.benchNo, seat: "L" })
-      if (u.right) seats.push({ studentId: u.right.s.id, hallId: hall.id, row: b.row, col: b.col, benchNo: b.benchNo, seat: "R" })
-    })
+    const patterned = patternIntake.has(hall.id)
+    const list = patterned ? patternIntake.get(hall.id)! : intake.get(hall.id) ?? []
+    if (!patterned) {
+      const yearRank = new Map<string, number>()
+      for (const p of [...list].sort((a, b) => rank.get(a.key)! - rank.get(b.key)!)) if (!yearRank.has(p.year)) yearRank.set(p.year, yearRank.size)
+      list.sort((a, b) => yearRank.get(a.year)! - yearRank.get(b.year)! || rank.get(a.key)! - rank.get(b.key)! || byRoll(a.s, b.s))
+      benchUnits(list, p => p.year).forEach((u, i) => {
+        const b = benches[i]
+        seats.push({ studentId: u.left.s.id, hallId: hall.id, row: b.row, col: b.col, benchNo: b.benchNo, seat: "L" })
+        if (u.right) seats.push({ studentId: u.right.s.id, hallId: hall.id, row: b.row, col: b.col, benchNo: b.benchNo, seat: "R" })
+      })
+    }
 
     const counts = new Map<string, number>()
     for (const p of list) counts.set(p.key, (counts.get(p.key) ?? 0) + 1)
     const hallWarnings: string[] = []
-    const rows = cfg.categories.filter(c => catOf.has(c.key)).sort((a, b) => rank.get(a.key)! - rank.get(b.key)!).map(c => {
-      const actual = counts.get(c.key) ?? 0
-      if (gender && c.quantity !== null && actual !== c.quantity) hallWarnings.push(`${c.quantity} ${catOf.get(c.key)!.label} requested, ${actual} allocated.`)
-      return { key: c.key, label: catOf.get(c.key)!.label, requested: c.quantity, actual }
-    })
-    if (gender && benches.length > 0 && list.length === 0) hallWarnings.push("No students in this hall.")
+    const rows = patterned
+      ? [...counts.keys()].sort((a, b) => rank.get(a)! - rank.get(b)!).map(key => ({ key, label: catOf.get(key)!.label, requested: null, actual: counts.get(key)! }))
+      : cfg.categories.filter(c => catOf.has(c.key)).sort((a, b) => rank.get(a.key)! - rank.get(b.key)!).map(c => {
+        const actual = counts.get(c.key) ?? 0
+        if (gender && c.quantity !== null && actual !== c.quantity) hallWarnings.push(`${c.quantity} ${catOf.get(c.key)!.label} requested, ${actual} allocated.`)
+        return { key: c.key, label: catOf.get(c.key)!.label, requested: c.quantity, actual }
+      })
+    for (const { slot, n } of emptySlots.get(hall.id)?.values() ?? []) hallWarnings.push(`${n} pattern seat${n === 1 ? "" : "s"} for ${slotLabel(slot)} left empty: no more of these students are selected.`)
+    if ((gender || patterned) && benches.length > 0 && list.length === 0) hallWarnings.push("No students in this hall.")
     for (const w of hallWarnings) warnings.push(`Hall ${hall.hall_code}: ${w}`)
     summaries.push({
       hallId: hall.id, hall_code: hall.hall_code, gender, configuredGender: cfg.gender, genderFixed: cfg.genderFixed,
       benches: benches.length, capacity: benches.length * 2, occupied: list.length, empty: benches.length * 2 - list.length,
-      maxCategories: effectiveMaxCategories(cfg, hall), categories: rows, warnings: hallWarnings
+      maxCategories: effectiveMaxCategories(cfg, hall), categories: rows, warnings: hallWarnings,
+      pattern: cfg.pattern?.name ?? null
     })
   }
   return { seats, hallGender, halls: summaries, unallocated, categories, warnings, reassigned, groups }
@@ -461,7 +547,7 @@ export function validateSeatingPlan(plan: Pick<SeatingPlan, "seats" | "unallocat
   // The group each hall holds: the plan's, else the configuration's. A fixed hall must keep its own.
   const groupOf = new Map(config.halls.map(c => [c.hallId, plan.hallGender && c.hallId in plan.hallGender ? plan.hallGender[c.hallId] : c.gender]))
   for (const c of config.halls) {
-    if (c.genderFixed && groupOf.get(c.hallId) !== c.gender) errors.push(`Hall ${hallOf.get(c.hallId)?.hall_code}: its gender is fixed (${c.gender ? groupWord(c.gender) : "not used"}) but the plan changes it.`)
+    if (!c.pattern && c.genderFixed && groupOf.get(c.hallId) !== c.gender) errors.push(`Hall ${hallOf.get(c.hallId)?.hall_code}: its gender is fixed (${c.gender ? groupWord(c.gender) : "not used"}) but the plan changes it.`)
   }
 
   // 7, 8: every selected student once, either seated or listed as unallocated.
@@ -487,12 +573,26 @@ export function validateSeatingPlan(plan: Pick<SeatingPlan, "seats" | "unallocat
   for (const [hallId, list] of byHall) {
     const hall = hallOf.get(hallId)!, cfg = cfgOf.get(hallId)!, code = hall.hall_code
     const people = list.map(x => studentOf.get(x.studentId)!).filter(Boolean)
-    // 1. One group per hall, the one assigned.
-    const genders = new Set(people.map(s => s.gender))
-    if (genders.size > 1) errors.push(`Hall ${code} has both boys and girls.`)
-    const group = groupOf.get(hallId) ?? null
-    if (!group) errors.push(`Hall ${code} is not used in this session but has students.`)
-    else if ([...genders].some(g => g !== group)) errors.push(`Hall ${code} is a ${groupWord(group)}' hall but has ${groupWord(group === "M" ? "F" : "M")}.`)
+    const problem = cfg.pattern ? validatePattern(cfg.pattern) : null
+    if (problem) errors.push(`Hall ${code}: its seating pattern is not valid. ${problem}`)
+    const pattern = cfg.pattern && !problem ? cfg.pattern : null
+    if (pattern) {
+      // A pattern hall: every student sits in a seat the pattern gives to their department, year and gender.
+      for (const x of list) {
+        const s = studentOf.get(x.studentId)
+        if (!s) continue
+        const slot = patternSlotAt(pattern, x.row, x.col, x.seat)
+        if (!slot) errors.push(`Hall ${code}, bench ${x.benchNo}: the pattern leaves this seat empty, but ${s.roll_no} sits there.`)
+        else if (s.department_id !== slot.departmentId || yearOf(s) !== slot.year || s.gender !== slot.gender) errors.push(`Hall ${code}, bench ${x.benchNo}: ${s.roll_no} sits in a seat the pattern gives to ${slotLabel(slot)}.`)
+      }
+    } else {
+      // 1. One group per hall, the one assigned.
+      const genders = new Set(people.map(s => s.gender))
+      if (genders.size > 1) errors.push(`Hall ${code} has both boys and girls.`)
+      const group = groupOf.get(hallId) ?? null
+      if (!group) errors.push(`Hall ${code} is not used in this session but has students.`)
+      else if ([...genders].some(g => g !== group)) errors.push(`Hall ${code} is a ${groupWord(group)}' hall but has ${groupWord(group === "M" ? "F" : "M")}.`)
+    }
     // 2, 3. Benches: one student per seat, at most two, different academic years.
     const benches = new Map<number, Seat[]>()
     for (const x of list) benches.set(x.benchNo, [...(benches.get(x.benchNo) ?? []), x])
@@ -507,6 +607,7 @@ export function validateSeatingPlan(plan: Pick<SeatingPlan, "seats" | "unallocat
     // 4. Capacity.
     const capacity = enabledBenches(hall).length * 2
     if (list.length > capacity) errors.push(`Hall ${code} has ${list.length} students but only ${capacity} seats.`)
+    if (cfg.pattern) continue
     // 5, 6. Categories: only selected ones, no more than the limit.
     const present = new Map<string, number>()
     for (const s of people) present.set(keyOf(s), (present.get(keyOf(s)) ?? 0) + 1)

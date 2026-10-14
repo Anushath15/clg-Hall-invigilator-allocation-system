@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { X, ChevronUp, ChevronDown, Wand2, Copy, AlertTriangle, CheckCircle2, RefreshCw, ArrowLeft, Users, Lock, Shuffle } from "lucide-react"
+import { X, ChevronUp, ChevronDown, Wand2, Copy, AlertTriangle, CheckCircle2, RefreshCw, ArrowLeft, Users, Lock, Shuffle, LayoutGrid, Pencil } from "lucide-react"
 import toast from "react-hot-toast"
 import { api } from "../lib/api"
 import { cn, formatDateWithDay } from "../lib/utils"
@@ -8,6 +8,8 @@ import { checkConfig, mergeConfig, normalizeConfig, type SeatingConfig, type Hal
 import type { SeatRow } from "../lib/export-seating-pdf"
 import HallBenchGrid, { yearColors } from "./HallBenchGrid"
 import UnallocatedTable from "./UnallocatedTable"
+import SeatingPatternEditor from "./SeatingPatternEditor"
+import { slotKey, type SeatingPattern, type PatternSlot } from "../../../shared/seating-pattern"
 
 interface SessionHall { id: number; hall_code: string; benches: number; raw: any; invigilators: string[] }
 interface Props {
@@ -43,6 +45,9 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   const [confirmList, setConfirmList] = useState<any[] | null>(null)
   const [viewHallId, setViewHallId] = useState<number | null>(null)
   const [sources, setSources] = useState<any[]>([])
+  const [patterns, setPatterns] = useState<SeatingPattern[]>([])
+  /** The pattern being drawn, and the hall to give it to once saved. */
+  const [editing, setEditing] = useState<{ pattern: SeatingPattern; hallId: number | null } | null>(null)
 
   const seatHalls: SeatHall[] = useMemo(() => halls.map(h => ({ id: h.id, hall_code: h.hall_code, ...hallLayout(h.raw), default_max_categories: h.raw.default_max_categories ?? null })), [halls])
   const hallOf = (id: number) => halls.find(h => h.id === id)!
@@ -58,6 +63,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
       setConfig(saved ? mergeConfig(auto.config, normalizeConfig(saved.config, seatHalls), auto.categories.map((c: StudentCategory) => c.key)) : auto.config)
       setSources(sel.filter((s: any) => s.id !== session.id))
     })
+    api.getSeatingPatterns().then(p => { if (live) setPatterns(p) })
     return () => { live = false }
   }, [session.id, studentIds])
 
@@ -82,16 +88,38 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   }, [categories, config])
 
   const local = useMemo(() => config ? checkConfig(normalizeConfig(config, seatHalls), seatHalls, categories) : { errors: [], warnings: [] }, [config, seatHalls, categories])
+  // What a pattern seat can be: each department + academic year of the selected students, boys or girls.
+  const patternSlots = useMemo(() => {
+    const out = new Map<string, { slot: PatternSlot; students: number }>()
+    for (const c of orderedCats) {
+      if (!c.year || !c.departmentId) continue
+      for (const g of ["M", "F"] as Gender[]) {
+        const slot: PatternSlot = { departmentId: c.departmentId, deptCode: c.deptCode, year: c.year, gender: g }
+        const e = out.get(slotKey(slot)) ?? { slot, students: 0 }
+        e.students += g === "M" ? c.boys : c.girls
+        out.set(slotKey(slot), e)
+      }
+    }
+    return [...out.values()].filter(x => x.students > 0)
+  }, [orderedCats])
+  // Department + year + gender that some hall's pattern has seats for.
+  const patternTakes = useMemo(() => {
+    const keys = new Set<string>()
+    for (const h of config?.halls ?? []) for (const b of Object.values(h.pattern?.cells ?? {})) for (const s of [b.L, b.R]) if (s) keys.add(slotKey(s))
+    return keys
+  }, [config])
+
   // Categories with students of a group that no hall of that group permits: they cannot be seated.
   const unpermitted = useMemo(() => {
     if (!config) return []
     const out: string[] = []
     for (const c of orderedCats) for (const g of ["M", "F"] as Gender[]) {
       const n = g === "M" ? c.boys : c.girls
-      if (n > 0 && c.year && !config.halls.some(h => h.gender === g && h.categories.some(x => x.key === c.key))) out.push(`${n} ${g === "M" ? "boys" : "girls"} of ${c.label}: no ${g === "M" ? "boys'" : "girls'"} hall permits this category.`)
+      if (patternTakes.has(`${c.departmentId}|${c.year}|${g}`)) continue
+      if (n > 0 && c.year && !config.halls.some(h => !h.pattern && h.gender === g && h.categories.some(x => x.key === c.key))) out.push(`${n} ${g === "M" ? "boys" : "girls"} of ${c.label}: no ${g === "M" ? "boys'" : "girls'"} hall permits this category.`)
     }
     return out
-  }, [config, orderedCats])
+  }, [config, orderedCats, patternTakes])
 
   if (!config) {
     return (
@@ -107,6 +135,23 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
     setHall(h.hallId, { categories: on ? [...h.categories, { key, quantity: null }] : h.categories.filter(c => c.key !== key) })
   const setQty = (h: HallSeatingConfig, key: string, value: string) =>
     setHall(h.hallId, { categories: h.categories.map(c => c.key === key ? { ...c, quantity: value === "" ? null : Math.max(0, Math.floor(Number(value) || 0)) } : c) })
+
+  // A new pattern starts with the size of the hall it is drawn for.
+  const newPattern = (hallId: number): SeatingPattern => {
+    const layout = hallLayout(hallOf(hallId).raw)
+    return { name: "", rows: Math.max(1, layout.rows), cols: Math.max(1, layout.cols), cells: {} }
+  }
+  function patternSaved(p: SeatingPattern) {
+    setPatterns(list => [...list.filter(x => x.id !== p.id), p].sort((a, b) => a.name.localeCompare(b.name)))
+    // Halls already following this pattern take the new version; the hall it was drawn for starts following it.
+    setConfig({ ...config!, halls: config!.halls.map(h => (h.pattern?.id === p.id || h.hallId === editing?.hallId) ? { ...h, pattern: p } : h) })
+    setEditing(null)
+  }
+  function choosePattern(h: HallSeatingConfig, value: string) {
+    if (value === "") setHall(h.hallId, { pattern: null })
+    else if (value === "new") setEditing({ pattern: newPattern(h.hallId), hallId: h.hallId })
+    else if (value !== "own") setHall(h.hallId, { pattern: patterns.find(p => String(p.id) === value) ?? null })
+  }
 
   async function copyFrom(id: number) {
     const other = await api.getSeatingConfig(id)
@@ -183,7 +228,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                 const requested = h.categories.reduce((n, c) => n + (c.quantity ?? 0), 0)
                 const def = hall.raw.default_max_categories
                 return (
-                  <div key={h.hallId} className={cn("border rounded-lg p-2.5", h.gender ? "border-brand-border" : "border-dashed border-gray-300 bg-gray-50")}>
+                  <div key={h.hallId} className={cn("border rounded-lg p-2.5", h.pattern ? "border-violet-300 bg-violet-50/40" : h.gender ? "border-brand-border" : "border-dashed border-gray-300 bg-gray-50")}>
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-brand-primary">{hall.hall_code}</span>
                       <span className="text-xs text-brand-textsec">{hall.benches} benches · {hall.benches * 2} seats</span>
@@ -192,6 +237,24 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                         <button title="Move down" disabled={i === config.halls.length - 1} onClick={() => setConfig({ ...config, halls: move(config.halls, i, 1) })} className="p-0.5 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
                       </span>
                     </div>
+                    <div className="flex items-center gap-2 mt-2 text-xs">
+                      <LayoutGrid className="w-3.5 h-3.5 text-brand-textsec shrink-0" />
+                      <select className="input-field py-1 text-xs flex-1 min-w-0" title="Seat students by the boys/girls hall rules, or by a seating pattern you drew"
+                        value={h.pattern ? (patterns.some(p => p.id === h.pattern!.id) ? String(h.pattern.id) : "own") : ""} onChange={e => choosePattern(h, e.target.value)}>
+                        <option value="">Rules: boys' or girls' hall</option>
+                        {patterns.map(p => <option key={p.id} value={String(p.id)}>Pattern: {p.name}</option>)}
+                        {h.pattern && !patterns.some(p => p.id === h.pattern!.id) && <option value="own">Pattern: {h.pattern.name} (this session's copy)</option>}
+                        <option value="new">+ New pattern…</option>
+                      </select>
+                      {h.pattern && (
+                        <button title="Edit this pattern" onClick={() => setEditing({ pattern: h.pattern!, hallId: h.hallId })} className="p-1 rounded hover:bg-gray-100"><Pencil className="w-3.5 h-3.5" /></button>
+                      )}
+                    </div>
+                    {h.pattern ? (
+                      <p className="text-[11px] text-brand-textsec mt-1.5">
+                        Seats follow the pattern "{h.pattern.name}" ({h.pattern.rows} × {h.pattern.cols} benches, repeated to fill the hall). Boys and girls sit where the pattern puts them. This hall is filled before the halls that use the rules.
+                      </p>
+                    ) : <>
                     <div className="flex flex-wrap items-center gap-2 mt-2">
                       <div className="flex rounded-md border border-brand-border overflow-hidden text-xs">
                         {GENDER_OPTIONS.map(([g, label]) => (
@@ -227,7 +290,8 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                         {requested > 0 && <p className={cn("text-[11px]", requested > hall.benches * 2 ? "text-red-600" : "text-brand-textsec")}>Requested {requested} of {hall.benches * 2} seats</p>}
                       </div>
                     )}
-                    {h.gender && hall.benches === 0 && <p className="text-xs text-red-600 mt-2">No bench layout: set it in Master Data → Halls.</p>}
+                    </>}
+                    {(h.gender || h.pattern) && hall.benches === 0 && <p className="text-xs text-red-600 mt-2">No bench layout: set it in Master Data → Halls.</p>}
                   </div>
                 )
               })}
@@ -273,7 +337,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
               {errors.map((e, i) => <p key={i}>• {e}</p>)}
             </div>
           )}
-          {errors.length === 0 && plan && <p className="text-xs text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Every mandatory rule is met: separate halls for boys and girls, at most two per bench, bench mates in different academic years, capacities, category limits and selections.</p>}
+          {errors.length === 0 && plan && <p className="text-xs text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Every mandatory rule is met: separate halls for boys and girls{plan.halls.some((h: any) => h.pattern) && " (except where a pattern mixes them)"}, at most two per bench, bench mates in different academic years, capacities, category limits and selections.</p>}
           {warnings.length > 0 && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 max-h-40 overflow-y-auto">
               {warnings.filter(w => !/to seat more students \(its gender is not fixed\)/.test(w)).map((w, i) => <p key={i}>• {w}</p>)}
@@ -291,14 +355,15 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                     <tr key={h.hallId} onClick={() => h.occupied && setViewHallId(h.hallId)} className={cn("align-top", h.occupied && "cursor-pointer hover:bg-gray-50", viewHall?.id === h.hallId && "bg-brand-primary/5")}>
                       <td className="px-3 py-2 font-mono font-bold text-brand-primary">{h.hall_code}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {h.gender === "M" ? "Boys" : h.gender === "F" ? "Girls" : <span className="text-brand-textsec">Not used</span>}
-                        {h.gender !== h.configuredGender && <div className="text-[10px] text-sky-700">was {h.configuredGender === "M" ? "Boys" : h.configuredGender === "F" ? "Girls" : "Not used"}</div>}
+                        {h.pattern ? <span className="text-violet-700">Pattern<div className="text-[10px] truncate max-w-[8rem]" title={h.pattern}>{h.pattern}</div></span>
+                          : h.gender === "M" ? "Boys" : h.gender === "F" ? "Girls" : <span className="text-brand-textsec">Not used</span>}
+                        {!h.pattern && h.gender !== h.configuredGender && <div className="text-[10px] text-sky-700">was {h.configuredGender === "M" ? "Boys" : h.configuredGender === "F" ? "Girls" : "Not used"}</div>}
                       </td>
                       <td className="px-3 py-2">{h.benches}</td>
                       <td className="px-3 py-2">{h.capacity}</td>
                       <td className="px-3 py-2 font-semibold">{h.occupied}</td>
                       <td className="px-3 py-2">{h.empty}</td>
-                      <td className="px-3 py-2">{h.gender ? h.maxCategories ?? "—" : ""}</td>
+                      <td className="px-3 py-2">{h.gender && !h.pattern ? h.maxCategories ?? "—" : ""}</td>
                       <td className="px-3 py-2">
                         {h.categories.filter((c: any) => c.actual > 0 || c.requested).map((c: any) => (
                           <div key={c.key} className={cn("whitespace-nowrap", c.requested !== null && c.actual !== c.requested && "text-amber-700")}>{catOf.get(c.key)?.label ?? c.label}: <b>{c.actual}</b>{c.requested !== null && <> / {c.requested}</>}</div>
@@ -332,6 +397,11 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
           </button>
         </div>
       </div>
+
+      {editing && (
+        <SeatingPatternEditor pattern={editing.pattern} slots={patternSlots} onClose={() => setEditing(null)} onSaved={patternSaved}
+          onDeleted={id => { setPatterns(list => list.filter(p => p.id !== id)); setEditing(null) }} />
+      )}
 
       {confirmList && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">

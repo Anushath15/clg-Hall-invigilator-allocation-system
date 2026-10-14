@@ -3,7 +3,8 @@ import { db } from "../db/database"
 import {
   listStudents, listStudentBatches, saveStudent, deleteStudent, importStudents,
   generateSeating, getSessionSeating, clearSeating, getSeatingSelections,
-  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating,
+  listSeatingPatterns, saveSeatingPattern, deleteSeatingPattern
 } from "../../shared/students"
 
 // Students and seating: the rules live in shared/students.ts (the web build calls the same functions).
@@ -21,4 +22,7 @@ export function registerStudentHandlers() {
   ipcMain.handle("seating:get", async (_, sessionId) => getSessionSeating(db, sessionId))
   ipcMain.handle("seating:clear", async (_, sessionId) => clearSeating(db, sessionId))
   ipcMain.handle("seating:selections", async () => getSeatingSelections(db))
+  ipcMain.handle("seating:patterns", async () => listSeatingPatterns(db))
+  ipcMain.handle("seating:pattern-save", async (_, pattern) => saveSeatingPattern(db, pattern))
+  ipcMain.handle("seating:pattern-delete", async (_, id) => deleteSeatingPattern(db, id))
 }

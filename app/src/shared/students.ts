@@ -13,6 +13,7 @@ import {
   type SeatStudent, type SeatHall, type SeatingConfig, type UnallocatedStudent
 } from "./seating"
 import { yearOfStudy, categoryLabel } from "./categories"
+import { normalizePattern, validatePattern, type SeatingPattern } from "./seating-pattern"
 
 export interface StudentDb {
   run(sql: string, params?: any[]): { lastInsertRowid: number; changes: number }
@@ -75,6 +76,17 @@ export function migrateSeatingConfig(db: Pick<StudentDb, "run" | "query">): void
     config TEXT NOT NULL,
     student_ids TEXT NOT NULL DEFAULT '[]',
     unallocated TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`)
+}
+
+/** Migration 010 (both builds): seating patterns the administrator saves to use again. */
+export function migrateSeatingPatterns(db: Pick<StudentDb, "run" | "query">): void {
+  db.run(`CREATE TABLE IF NOT EXISTS seating_patterns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    pattern TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   )`)
 }
@@ -384,6 +396,41 @@ export function getSeatingSelections(db: StudentDb) {
     try { selected = JSON.parse(student_ids ?? "null") } catch { /* an unreadable list counts the seated students */ }
     return { ...r, studentCount: Array.isArray(selected) ? selected.length : seated }
   })
+}
+
+// ── Seating patterns ────────────────────────────────────────
+
+/** The saved seating patterns, by name. */
+export function listSeatingPatterns(db: StudentDb): SeatingPattern[] {
+  return db.query<any>("SELECT id, name, pattern FROM seating_patterns ORDER BY name COLLATE NOCASE").flatMap(r => {
+    let raw: any = null
+    try { raw = JSON.parse(r.pattern) } catch { /* an unreadable pattern is left out */ }
+    const p = normalizePattern({ ...raw, id: r.id, name: r.name })
+    return p ? [p] : []
+  })
+}
+
+/** Saves a new pattern, or replaces the one with its id. Names are unique ignoring letter case. */
+export function saveSeatingPattern(db: StudentDb, data: unknown): { success: true; pattern: SeatingPattern } | { success: false; error: string } {
+  const p = normalizePattern(data)
+  const problem = validatePattern(p)
+  if (problem) return { success: false, error: problem }
+  const clash = db.queryOne<any>("SELECT id FROM seating_patterns WHERE name = ? COLLATE NOCASE AND id != ?", [p!.name, p!.id ?? 0])
+  if (clash) return { success: false, error: `A pattern named "${p!.name}" already exists. Choose another name.` }
+  const body = JSON.stringify({ rows: p!.rows, cols: p!.cols, cells: p!.cells })
+  if (p!.id) {
+    if (!db.queryOne("SELECT id FROM seating_patterns WHERE id = ?", [p!.id])) return { success: false, error: "That pattern no longer exists. Save it as a new one." }
+    db.run("UPDATE seating_patterns SET name = ?, pattern = ?, updated_at = datetime('now') WHERE id = ?", [p!.name, body, p!.id])
+    return { success: true, pattern: p! }
+  }
+  const { lastInsertRowid } = db.run("INSERT INTO seating_patterns(name, pattern) VALUES(?,?)", [p!.name, body])
+  return { success: true, pattern: { ...p!, id: lastInsertRowid } }
+}
+
+/** Deletes a saved pattern. Sessions that used it keep their own copy in their seating settings. */
+export function deleteSeatingPattern(db: StudentDb, id: number) {
+  db.run("DELETE FROM seating_patterns WHERE id = ?", [id])
+  return { success: true }
 }
 
 /**
