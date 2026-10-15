@@ -31,7 +31,9 @@ describe("Seating PDFs", () => {
     const doc = buildSeatingPlanPDF(args)
     expect(Buffer.from(doc.output("arraybuffer")).subarray(0, 5).toString()).toBe("%PDF-")
     expect(doc.getNumberOfPages()).toBe(2)
-    expect(doc.output()).toContain("FRONT")
+    const text = doc.output()
+    // Laid out like the screen: column headings, row labels, bench cards with their roll numbers.
+    for (const t of ["FRONT", "Column 1", "Column 2", "R1", "R2", "Bench 1", "Bench 2"]) expect(text).toContain(t)
   })
 
   it("attendance sheets: a page per hall; the seat list: every student", () => {

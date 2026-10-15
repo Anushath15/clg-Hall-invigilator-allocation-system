@@ -28,25 +28,27 @@ interface Props {
 const HALL_MODES: { group: HallGroup; label: string; pattern: BenchType[] }[] = [
   { group: "M", label: "Boys", pattern: ["MM"] },
   { group: "F", label: "Girls", pattern: ["FF"] },
-  { group: "mixed", label: "Boys & Girls", pattern: ["MM", "FF", "MF"] },
+  { group: "mixed", label: "Boys & Girls", pattern: ["MM", "FF"] },
   { group: null, label: "Not used", pattern: [] }
 ]
 /**
- * How the whole session is seated: whole boys' and girls' halls; one bench pattern in every hall;
- * or each hall set on its own.
+ * How the whole session is seated: in roll number order with boys and girls together; whole boys'
+ * and girls' halls; one bench pattern in every hall; or each hall set on its own.
  */
-type Method = "separate" | "pattern" | "custom"
+type Method = "separate" | "pattern" | "custom" | "rollwise"
 const METHODS: { value: Method; label: string; hint: string }[] = [
+  { value: "rollwise", label: "Roll number order", hint: "Boys and girls together: each seat column follows roll numbers, whatever the gender (e.g. 102349 a boy, then 102350 a girl)." },
   { value: "separate", label: "Separate halls", hint: "Each hall holds only boys or only girls." },
-  { value: "pattern", label: "Same pattern in every hall", hint: "One bench pattern (e.g. Boy + Boy, Girl + Girl, Boy + Girl) repeated in every hall used." },
+  { value: "pattern", label: "Same pattern in every hall", hint: "One bench pattern (e.g. Boy + Boy, Girl + Girl) repeated in every hall used." },
   { value: "custom", label: "Custom per hall", hint: "Set each hall on its own: boys, girls, or its own bench pattern." }
 ]
-const DEFAULT_PATTERN: BenchType[] = ["MM", "FF", "MF"]
+const DEFAULT_PATTERN: BenchType[] = ["MM", "FF"]
 const samePattern = (a: BenchType[], b: BenchType[]) => a.length === b.length && a.every((t, i) => t === b[i])
 
 /** The method a configuration follows (used when the screen opens on saved or automatic settings). */
 function methodOf(config: SeatingConfig): { method: Method; pattern: BenchType[] } {
   const used = config.halls.filter(h => h.pattern.length > 0)
+  if (config.mixGenders) return { method: "rollwise", pattern: DEFAULT_PATTERN }
   if (used.every(h => h.pattern.length === 1 && (h.pattern[0] === "MM" || h.pattern[0] === "FF"))) return { method: "separate", pattern: DEFAULT_PATTERN }
   if (used.every(h => samePattern(h.pattern, used[0].pattern))) return { method: "pattern", pattern: used[0].pattern }
   return { method: "custom", pattern: DEFAULT_PATTERN }
@@ -54,17 +56,18 @@ function methodOf(config: SeatingConfig): { method: Method; pattern: BenchType[]
 
 const groupName = (g: HallGroup) => (g === "M" ? "Boys" : g === "F" ? "Girls" : g === "mixed" ? "Boys & Girls" : "Not used")
 const MODE_COLOR: Record<string, string> = { M: "bg-sky-600 text-white", F: "bg-pink-600 text-white", mixed: "bg-violet-600 text-white", null: "bg-gray-500 text-white" }
-const BENCH_CHIP: Record<BenchType, string> = { MM: "border-sky-300 bg-sky-50", FF: "border-pink-300 bg-pink-50", MF: "border-violet-300 bg-violet-50", FM: "border-violet-300 bg-violet-50" }
+const BENCH_CHIP: Record<BenchType, string> = { MM: "border-sky-300 bg-sky-50", FF: "border-pink-300 bg-pink-50" }
 
 /**
  * Seating configuration for one session: each hall gets a bench pattern, repeated bench by bench:
- * boys only, girls only, a pattern of both (Boy + Boy, Girl + Girl, Boy + Girl, Girl + Boy
- * benches), or not used. Students sit two to a bench, filling the halls in order (shared/seating.ts). A live preview shows
+ * boys only, girls only, a pattern of both (Boy + Boy and Girl + Girl benches; a boy and a girl
+ * never share a bench), or not used. Students sit two to a bench, filling the halls in order (shared/seating.ts). A live preview shows
  * the plan; saving re-checks everything on the other side.
  */
 export default function SeatingConfigEditor({ session, halls, studentIds, onBack, onClose, onSaved }: Props) {
   const [autoConfig, setAutoConfig] = useState<SeatingConfig | null>(null)
   const [separateConfig, setSeparateConfig] = useState<SeatingConfig | null>(null)
+  const [rollConfig, setRollConfig] = useState<SeatingConfig | null>(null)
   const [method, setMethod] = useState<Method>("separate")
   /** The bench pattern of the "Same pattern in every hall" method. */
   const [sharedPattern, setSharedPattern] = useState<BenchType[]>(DEFAULT_PATTERN)
@@ -95,7 +98,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
       if (!live) return
       if (!auto.success) { toast.error(auto.error, { duration: 7000 }); onClose(); return }
       setClassLimit(limit); setAutoLimit(limit)
-      setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setCounts({ boys: auto.boys, girls: auto.girls }); setShortfall(auto.shortfall)
+      setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setRollConfig(auto.rollConfig); setCounts({ boys: auto.boys, girls: auto.girls }); setShortfall(auto.shortfall)
       const sameStudents = !!saved && saved.studentIds.length === studentIds.length && studentIds.every(id => saved.studentIds.includes(id))
       const usable = saved && sameStudents && saved.unallocated.length === 0 && normalizeConfig(saved.config, seatHalls).halls.some(h => h.pattern.length > 0)
       const start: SeatingConfig = usable ? normalizeConfig(saved.config, seatHalls) : auto.config
@@ -112,7 +115,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
     let live = true
     api.autoConfigureSeating(session.id, studentIds, classLimit).then(auto => {
       if (!live || !auto.success) return
-      setAutoLimit(classLimit); setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setShortfall(auto.shortfall)
+      setAutoLimit(classLimit); setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setRollConfig(auto.rollConfig); setShortfall(auto.shortfall)
     })
     return () => { live = false }
   }, [classLimit])
@@ -139,21 +142,24 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   }
 
   const setPattern = (hallId: number, pattern: BenchType[]) =>
-    setConfig({ halls: config.halls.map(h => h.hallId === hallId ? { ...h, pattern } : h) })
+    setConfig({ ...config, halls: config.halls.map(h => h.hallId === hallId ? { ...h, pattern } : h) })
+  const totalSeats = config.halls.reduce((n, h) => n + (h.pattern.length ? hallOf(h.hallId).benches * 2 : 0), 0)
   const seatsFor = (g: Gender) => config.halls.reduce((n, h) => n + patternSeats(h.pattern, hallOf(h.hallId).benches)[g], 0)
   const need = { M: counts.boys, F: counts.girls }
   /** The automatic settings for a method: the halls needed, with that method's rule. */
   const autoFor = (m: Method, pattern = sharedPattern): SeatingConfig =>
-    m === "separate" ? separateConfig! : m === "pattern" ? configureWithPattern(need, seatHalls, pattern) : autoConfig!
+    m === "separate" ? separateConfig! : m === "pattern" ? configureWithPattern(need, seatHalls, pattern) : m === "rollwise" ? rollConfig! : autoConfig!
   function chooseMethod(m: Method) {
     if (m === method) return
     setMethod(m)
-    // Custom keeps the current settings to edit; the other methods start from their automatic settings.
+    // Custom keeps the current settings to edit (as boys' and girls' seats, when leaving roll number
+    // order); the other methods start from their automatic settings.
     if (m !== "custom") setConfig(autoFor(m))
+    else if (config!.mixGenders) setConfig(autoConfig!)
   }
   function changeSharedPattern(pattern: BenchType[]) {
     setSharedPattern(pattern)
-    setConfig({ halls: config!.halls.map(h => h.pattern.length ? { ...h, pattern } : h) })
+    setConfig({ ...config!, halls: config!.halls.map(h => h.pattern.length ? { ...h, pattern } : h) })
   }
 
   async function save(acceptUnallocated: boolean) {
@@ -224,7 +230,12 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
             <button onClick={() => { setConfig(autoFor(method)); toast.success("Halls assigned automatically.") }} className="btn-secondary text-sm flex items-center gap-2 mt-2"><Wand2 className="w-4 h-4" /> Auto-assign halls</button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          {method === "rollwise" ? (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs">
+              <b>Students</b>: {counts.boys + counts.girls} selected ({counts.boys} boys, {counts.girls} girls)
+              <div className={cn(counts.boys + counts.girls > totalSeats ? "text-red-600 font-semibold" : "text-brand-textsec")}>{totalSeats} seats in the halls used</div>
+            </div>
+          ) : <div className="grid grid-cols-2 gap-2 text-xs">
             {(["M", "F"] as Gender[]).map(g => {
               const need = g === "M" ? counts.boys : counts.girls, have = seatsFor(g)
               return (
@@ -234,7 +245,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                 </div>
               )
             })}
-          </div>
+          </div>}
 
           <div className="space-y-2">
             {config.halls.map(h => {
@@ -244,19 +255,20 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
               // The choices a hall card offers under the session's method.
               const modes = method === "separate" ? HALL_MODES.filter(m => m.group !== "mixed")
                 : method === "pattern" ? [{ group: "mixed" as HallGroup, label: "Use", pattern: sharedPattern }, HALL_MODES[3]]
+                : method === "rollwise" ? [{ group: "mixed" as HallGroup, label: "Use", pattern: ["MM"] as BenchType[] }, HALL_MODES[3]]
                 : HALL_MODES
-              const active = (m: { group: HallGroup }) => method === "pattern" ? (m.group === null) === (h.pattern.length === 0) : group === m.group
+              const active = (m: { group: HallGroup }) => method === "pattern" || method === "rollwise" ? (m.group === null) === (h.pattern.length === 0) : group === m.group
               return (
                 <div key={h.hallId} className={cn("border rounded-lg p-2.5", group ? "border-brand-border" : "border-dashed border-gray-300 bg-gray-50")}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-brand-primary">{hall.hall_code}</span>
                     <span className="text-xs text-brand-textsec">{hall.benches} benches · {hall.benches * 2} seats</span>
-                    {group && <span className="ml-auto text-[11px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
+                    {group && method !== "rollwise" && <span className="ml-auto text-[11px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
                   </div>
                   <div className="flex flex-wrap rounded-md border border-brand-border overflow-hidden text-xs mt-2 w-fit">
                     {modes.map(m => (
                       <button key={m.label} onClick={() => !active(m) && setPattern(h.hallId, m.pattern)}
-                        className={cn("px-2.5 py-1", active(m) ? MODE_COLOR[String(method === "pattern" && m.group ? "mixed" : m.group)] : "bg-white hover:bg-gray-50")}>{m.label}</button>
+                        className={cn("px-2.5 py-1", active(m) ? MODE_COLOR[String((method === "pattern" || method === "rollwise") && m.group ? "mixed" : m.group)] : "bg-white hover:bg-gray-50")}>{m.label}</button>
                     ))}
                   </div>
                   {method === "custom" && (group === "mixed" || h.pattern.length > 1) && (
@@ -302,7 +314,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
               {errors.map((e, i) => <p key={i}>• {e}</p>)}
             </div>
           )}
-          {errors.length === 0 && plan && <p className="text-xs text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Two students per bench, never two of the same class on a bench, at most {classLimit.max} classes in a hall, every seat as its hall's bench pattern says.</p>}
+          {errors.length === 0 && plan && <p className="text-xs text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Two students per bench, never two of the same class on a bench, at most {classLimit.max} classes in a hall, {config.mixGenders ? "seats in roll number order, boys and girls together." : "every seat as its hall's bench pattern says."}</p>}
           {warnings.length > 0 && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 max-h-40 overflow-y-auto">
               {warnings.map((w, i) => <p key={i}>• {w}</p>)}
@@ -396,7 +408,7 @@ function PatternEditor({ pattern, onChange }: { pattern: BenchType[]; onChange: 
               onClick={() => onChange(pattern.filter((_, j) => j !== i))} className="px-1 hover:text-red-600 disabled:opacity-30"><X className="w-3 h-3" /></button>
           </span>
         ))}
-        <button onClick={() => onChange([...pattern, "MF"])} title="Add a bench to the pattern"
+        <button onClick={() => onChange([...pattern, pattern[pattern.length - 1] === "MM" ? "FF" : "MM"])} title="Add a bench to the pattern"
           className="flex items-center gap-0.5 border border-dashed border-gray-300 rounded px-1.5 text-[11px] hover:bg-gray-50"><Plus className="w-3 h-3" /> Bench</button>
       </div>
     </div>

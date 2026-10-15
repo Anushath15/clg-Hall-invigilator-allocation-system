@@ -78,10 +78,41 @@ const hallsWithSeats = (args: SeatingExportArgs) => args.halls
   .map(h => ({ hall: h, seats: args.seats.filter(s => s.hallId === h.id) }))
   .filter(x => x.seats.length > 0)
 
-/** One landscape page per hall: the bench grid, front at the top. */
+type RGB = [number, number, number]
+/**
+ * Academic-year seat styles for a black-and-white print: years differ by grey shade and border
+ * (solid, dashed or none), never by colour, and the roll numbers are always black.
+ */
+interface SeatStyle { fill: number; border: "solid" | "dashed" | "none" }
+const YEAR_PDF_STYLES: SeatStyle[] = [
+  { fill: 255, border: "solid" }, { fill: 205, border: "none" }, { fill: 255, border: "dashed" },
+  { fill: 225, border: "solid" }, { fill: 180, border: "none" }, { fill: 235, border: "dashed" }
+]
+const CARD_BORDER: RGB = [120, 120, 120], LABEL_INK: RGB = [40, 40, 40]
+
+/** A seat box in a year's style. */
+function seatBox(doc: jsPDF, x: number, y: number, w: number, h: number, st: SeatStyle) {
+  doc.setFillColor(st.fill, st.fill, st.fill)
+  doc.roundedRect(x, y, w, h, 1, 1, "F")
+  if (st.border === "none") return
+  doc.setDrawColor(0); doc.setLineWidth(0.35)
+  if (st.border === "dashed") doc.setLineDashPattern([1, 0.7], 0)
+  doc.roundedRect(x, y, w, h, 1, 1, "S")
+  doc.setLineDashPattern([], 0)
+}
+
+/**
+ * One landscape page per hall: the benches as seen from the front, laid out like the screen. Each
+ * bench is a card with its number and its left and right seats; each seat shows the roll number in
+ * black, its box shaded by academic year (grey shades and borders, for a black-and-white print). Columns are headed "Column 1", "Column 2", …; rows "R1", "R2", ….
+ */
 export function buildSeatingPlanPDF(args: SeatingExportArgs): jsPDF {
   const doc = new jsPDF({ orientation: "landscape" })
-  const pageW = doc.internal.pageSize.width
+  const pageW = doc.internal.pageSize.width, pageH = doc.internal.pageSize.height
+  // Year colours are fixed for the whole session, so a year has the same colour in every hall.
+  const years = [...new Set(args.seats.map(s => s.year || s.batch))].sort()
+  const styleOf = (year: string) => YEAR_PDF_STYLES[Math.max(0, years.indexOf(year)) % YEAR_PDF_STYLES.length]
+
   hallsWithSeats(args).forEach(({ hall, seats }, i) => {
     if (i > 0) doc.addPage()
     let y = hallLine(doc, header(doc, "Student Seating Plan", args), hall, seats)
@@ -92,41 +123,84 @@ export function buildSeatingPlanPDF(args: SeatingExportArgs): jsPDF {
       const k = benchKey(s.bench_row, s.bench_col)
       at.set(k, { ...at.get(k), [s.seat]: s })
     }
-    doc.setFillColor(70, 70, 70); doc.rect(14, y, pageW - 28, 5, "F")
-    doc.setTextColor(255); doc.setFontSize(8); doc.setFont("helvetica", "bold")
-    doc.text("FRONT  ·  BOARD", pageW / 2, y + 3.6, { align: "center" })
-    doc.setTextColor(INK); doc.setFont("helvetica", "normal")
-    y += 6
+    const mixed = seatsGroup(seats) === "mixed"
 
-    const body = Array.from({ length: layout.rows }, (_, r) => [
-      `Row ${r + 1}`,
-      ...Array.from({ length: layout.cols }, (_, c) => {
-        const k = benchKey(r + 1, c + 1)
-        const n = numbers.get(k)
-        if (n === undefined) return ""
-        const b = at.get(k)
-        return `B${n}\n${b?.L?.roll_no ?? "—"}\n${b?.R?.roll_no ?? "—"}`
-      })
-    ])
-    const cellW = (pageW - 28 - 14) / Math.max(1, layout.cols)
-    autoTable(doc, {
-      startY: y,
-      margin: { left: 14, right: 14 },
-      head: [["", ...Array.from({ length: layout.cols }, (_, c) => `Column ${c + 1}`)]],
-      body,
-      theme: "grid",
-      tableLineColor: RULE, tableLineWidth: 0.25,
-      styles: { fontSize: layout.cols > 7 ? 6.5 : 7.5, cellPadding: 1.2, textColor: INK, lineColor: RULE, lineWidth: 0.25, halign: "center", valign: "middle" },
-      headStyles: { fillColor: HEAD_GREEN, textColor: 255, fontStyle: "bold" },
-      columnStyles: Object.fromEntries([[0, { cellWidth: 14, fontStyle: "bold" }], ...Array.from({ length: layout.cols }, (_, c) => [c + 1, { cellWidth: cellW }])]),
-      didParseCell: d => {
-        if (d.section === "body" && d.column.index > 0 && numbers.get(benchKey(d.row.index + 1, d.column.index)) === undefined) d.cell.styles.fillColor = [225, 225, 225]
+    doc.setFillColor(70, 70, 70); doc.roundedRect(14, y, pageW - 28, 5.5, 1, 1, "F")
+    doc.setTextColor(255); doc.setFontSize(8); doc.setFont("helvetica", "bold")
+    doc.text("FRONT  ·  BOARD", pageW / 2, y + 3.8, { align: "center" })
+    y += 8
+
+    // Card size: as large as fits the page (at most 52 x 17 mm), then everything scales with it.
+    const labelW = 10, gapX = 3, gapY = 2.5, headH = 6, footH = 16
+    const cols = Math.max(1, layout.cols), rows = Math.max(1, layout.rows)
+    const cardW = Math.min(52, (pageW - 28 - labelW - gapX * (cols - 1)) / cols)
+    const cardH = Math.min(17, cardW * 0.34, (pageH - y - headH - footH - gapY * (rows - 1)) / rows)
+    const k = Math.min(cardW / 52, cardH / 17)
+    const gridW = labelW + cols * cardW + (cols - 1) * gapX
+    const x0 = (pageW - gridW) / 2 + labelW
+
+    doc.setFontSize(9 * Math.max(k, 0.75)); doc.setFont("helvetica", "bold"); doc.setTextColor(...LABEL_INK)
+    for (let c = 0; c < cols; c++) doc.text(`Column ${c + 1}`, x0 + c * (cardW + gapX) + cardW / 2, y + 4, { align: "center" })
+    y += headH
+
+    const pad = 2 * k, pillGap = 1.6 * k, pillH = 7.5 * k
+    const pillW = (cardW - 2 * pad - pillGap) / 2
+    for (let r = 0; r < rows; r++) {
+      const cy = y + r * (cardH + gapY)
+      doc.setFontSize(9 * Math.max(k, 0.75)); doc.setFont("helvetica", "bold"); doc.setTextColor(...LABEL_INK)
+      doc.text(`R${r + 1}`, x0 - labelW / 2 - 1, cy + cardH / 2 + 1.2, { align: "center" })
+      for (let c = 0; c < cols; c++) {
+        const cx = x0 + c * (cardW + gapX)
+        const n = numbers.get(benchKey(r + 1, c + 1))
+        if (n === undefined) {
+          doc.setFillColor(235, 235, 235); doc.roundedRect(cx, cy, cardW, cardH, 1.5, 1.5, "F")
+          continue
+        }
+        doc.setDrawColor(...CARD_BORDER); doc.setLineWidth(0.3); doc.setFillColor(255, 255, 255)
+        doc.roundedRect(cx, cy, cardW, cardH, 1.5, 1.5, "FD")
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5 * k); doc.setTextColor(...LABEL_INK)
+        doc.text(`Bench ${n}`, cx + pad, cy + pad + 2.4 * k)
+        const py = cy + cardH - pad - pillH
+        const b = at.get(benchKey(r + 1, c + 1))
+        ;[b?.L, b?.R].forEach((s, side) => {
+          const px = cx + pad + side * (pillW + pillGap)
+          if (!s) {
+            doc.setDrawColor(150); doc.setLineWidth(0.25); doc.setLineDashPattern([0.3, 0.9], 0)
+            doc.roundedRect(px, py, pillW, pillH, 1, 1, "S"); doc.setLineDashPattern([], 0)
+            doc.setFont("helvetica", "italic"); doc.setFontSize(7 * k); doc.setTextColor(110)
+            doc.text("empty", px + pillW / 2, py + pillH / 2 + 1 * k, { align: "center" })
+            return
+          }
+          seatBox(doc, px, py, pillW, pillH, styleOf(s.year || s.batch))
+          // In a hall of boys and girls, a "B" or "G" at the right shows whose seat it is.
+          const tag = mixed ? (s.gender === "F" ? "G" : "B") : ""
+          doc.setFont("helvetica", "bold"); doc.setFontSize(7 * k)
+          const tagW = tag ? doc.getTextWidth(tag) + 1.2 * k : 0
+          if (tag) { doc.setTextColor(0); doc.text(tag, px + pillW - 1.4 * k, py + pillH / 2 + 7 * k * 0.12, { align: "right" }) }
+          doc.setFont("courier", "bold"); doc.setTextColor(0)
+          let size = 10.5 * k
+          doc.setFontSize(size)
+          while (size > 4 && doc.getTextWidth(s.roll_no) > pillW - 3 * k - tagW) doc.setFontSize(size -= 0.5)
+          doc.text(s.roll_no, px + 1.6 * k, py + pillH / 2 + size * 0.12)
+        })
       }
-    })
-    const finalY = (doc as any).lastAutoTable?.finalY ?? y
-    doc.setFontSize(8); doc.setTextColor(INK_NOTE)
-    doc.text(`Each bench: number, then the LEFT seat and the RIGHT seat (as seen from the front). Shaded: no bench.   ${categorySummary(seats)}`, 14, finalY + 6)
+    }
+
+    // Legend: what the colours mean, and how many of each class sit here.
+    let ly = y + rows * cardH + (rows - 1) * gapY + 6
+    let lx = x0 - labelW
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8)
+    const hallYears = years.filter(yr => seats.some(s => (s.year || s.batch) === yr))
+    for (const yr of hallYears) {
+      seatBox(doc, lx, ly - 3.2, 7, 4.4, styleOf(yr))
+      doc.setTextColor(0); doc.text(yr, lx + 8.5, ly)
+      lx += 8.5 + doc.getTextWidth(yr) + 7
+    }
+    if (mixed) { doc.setTextColor(0); doc.text("B = Boy    G = Girl", lx, ly) }
+    ly += 5
     doc.setTextColor(INK)
+    doc.text(`Each bench: left seat, right seat (as seen from the front).   ${categorySummary(seats)}`, x0 - labelW, ly, { maxWidth: pageW - 28 })
+    doc.setTextColor(INK); doc.setDrawColor(0); doc.setLineWidth(0.2)
   })
   return doc
 }

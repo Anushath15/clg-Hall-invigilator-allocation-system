@@ -3,9 +3,9 @@
  *
  * Each hall follows a BENCH PATTERN the administrator chooses: a sequence of bench types, repeated
  * bench by bench through the hall:
- *   "MM" both seats boys · "FF" both seats girls · "MF" boy left, girl right · "FM" girl left, boy right
+ *   "MM" both seats boys · "FF" both seats girls (a boy and a girl never share a bench)
  * A boys' hall is the pattern [MM], a girls' hall [FF], a hall not used []; a pattern such as
- * [MM, FF, MF] mixes them bench by bench. Rules:
+ * [MM, FF] mixes them bench by bench. Rules:
  *  1. At most two students per bench, one per seat.
  *  2. Every seat holds the gender its bench pattern gives it, nobody else.
  *  3. Two students of the same CLASS (department + batch, e.g. CSE – Third Year) never share a
@@ -47,10 +47,10 @@ export type Gender = "M" | "F"
 export const GENDER_GROUP: Record<Gender, string> = { M: "Boys", F: "Girls" }
 const GENDERS: Gender[] = ["M", "F"]
 
-/** A bench's two seats, left then right: "MF" is a boy on the left and a girl on the right. */
-export type BenchType = "MM" | "FF" | "MF" | "FM"
-export const BENCH_TYPES: BenchType[] = ["MM", "FF", "MF", "FM"]
-export const BENCH_TYPE_LABEL: Record<BenchType, string> = { MM: "Boy + Boy", FF: "Girl + Girl", MF: "Boy + Girl", FM: "Girl + Boy" }
+/** A bench's two seats, left then right: "MM" two boys, "FF" two girls. Boys and girls never share a bench. */
+export type BenchType = "MM" | "FF"
+export const BENCH_TYPES: BenchType[] = ["MM", "FF"]
+export const BENCH_TYPE_LABEL: Record<BenchType, string> = { MM: "Boy + Boy", FF: "Girl + Girl" }
 /** The longest pattern kept (longer ones are cut): enough to spell out every bench of a large hall. */
 export const MAX_PATTERN_LENGTH = 600
 
@@ -68,6 +68,12 @@ export interface SeatingConfig {
    * `max` in a hall where `preferred` would leave seats empty while students wait. Both 2 to 4.
    */
   classLimit?: ClassLimit
+  /**
+   * Roll number order, boys and girls together: gender is ignored, each seat column takes the next
+   * students of its class in roll-number order whatever their gender (102349 a boy, then 102350 a
+   * girl). Halls are only used or not used; their bench patterns do not apply.
+   */
+  mixGenders?: boolean
 }
 export interface ClassLimit { preferred: number; max: number }
 /** Fewest and most different classes a hall may be set to hold (a hall needs two for bench mates of different classes). */
@@ -107,7 +113,7 @@ export interface SeatingPlan {
 }
 
 const rollOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
-const groupWord = (g: Gender) => (g === "M" ? "boys" : "girls")
+const groupWordOf = (g: Gender) => (g === "M" ? "boys" : "girls")
 const seatsOf = (h: SeatHall) => enabledBenches(h).length * 2
 
 /** Seating order within a group: batch (oldest first), department, roll number. */
@@ -141,7 +147,10 @@ export function patternGroup(pattern: BenchType[]): HallGroup {
   return genders.size > 1 ? "mixed" : ([...genders][0] as Gender)
 }
 
-/** A hall's pattern from saved settings; older versions saved only `gender` (boys/girls/not used). */
+/**
+ * A hall's pattern from saved settings; older versions saved only `gender` (boys/girls/not used).
+ * Boy + girl benches saved by older versions are dropped: boys and girls no longer share a bench.
+ */
 export function hallPattern(h: any): BenchType[] {
   if (Array.isArray(h?.pattern)) return h.pattern.filter((t: unknown): t is BenchType => BENCH_TYPES.includes(t as BenchType)).slice(0, MAX_PATTERN_LENGTH)
   return h?.gender === "M" ? ["MM"] : h?.gender === "F" ? ["FF"] : []
@@ -162,7 +171,12 @@ export function normalizeConfig(config: Partial<SeatingConfig> | null | undefine
     const id = Number(h?.hallId)
     if (!given.has(id)) given.set(id, hallPattern(h))
   }
-  return { halls: halls.map(h => ({ hallId: h.id, pattern: given.get(h.id) ?? [] })), classLimit: normalizeClassLimit(config?.classLimit) }
+  const mixGenders = config?.mixGenders === true
+  return {
+    // In roll number order a used hall is just "used": its pattern is kept as [MM].
+    halls: halls.map(h => { const p = given.get(h.id) ?? []; return { hallId: h.id, pattern: mixGenders && p.length ? ["MM"] : p } }),
+    classLimit: normalizeClassLimit(config?.classLimit), ...(mixGenders ? { mixGenders } : {})
+  }
 }
 
 /**
@@ -243,10 +257,15 @@ function separateHalls(need: Record<Gender, number>, usable: SeatHall[]): Map<nu
  * A starting configuration that seats as many students as the halls can hold. Whole boys' and
  * girls' halls are tried first (every combination). If they leave someone out although there are
  * enough seats, the halls are filled in order instead: boys' halls, then ONE hall that holds both
- * (boy benches, a boy + girl bench if needed, then girl benches), then girls' halls, so that
+ * (boy benches, then girl benches; an odd boy leaves one seat empty), then girls' halls, so that
  * everyone is seated. With `separateOnly`, no hall is shared: whole boys' and girls' halls only.
  */
-export function autoConfigure(students: SeatStudent[], halls: SeatHall[], options: { separateOnly?: boolean; classLimit?: Partial<ClassLimit> } = {}): SeatingConfig {
+export function autoConfigure(students: SeatStudent[], halls: SeatHall[], options: { separateOnly?: boolean; mixGenders?: boolean; classLimit?: Partial<ClassLimit> } = {}): SeatingConfig {
+  // Roll number order: everyone as one group, in as few halls as seat them all.
+  if (options.mixGenders) {
+    const cfg = autoConfigure(asOneGroup(students), halls, { separateOnly: true, classLimit: options.classLimit })
+    return { ...cfg, mixGenders: true }
+  }
   const config: SeatingConfig = { ...hallSplit(students, halls, options), ...(options.classLimit ? { classLimit: normalizeClassLimit(options.classLimit) } : {}) }
   // Two of one class cannot share a bench and a hall holds only a few classes, so a group may need
   // more benches than its head count suggests: while someone is left out with every hall kept to
@@ -261,6 +280,9 @@ export function autoConfigure(students: SeatStudent[], halls: SeatHall[], option
     config.halls = config.halls.map(c => c.hallId === unused.id ? { ...c, pattern: [boys * 2 >= left.length ? "MM" : "FF"] } : c)
   }
 }
+
+/** The students as one group (all "M"), for roll number order where gender is ignored. */
+const asOneGroup = (students: SeatStudent[]): SeatStudent[] => students.map(s => ({ ...s, gender: "M" as Gender }))
 
 /** autoConfigure's split of the halls between boys and girls, by head count. */
 function hallSplit(students: SeatStudent[], halls: SeatHall[], options: { separateOnly?: boolean }): SeatingConfig {
@@ -279,15 +301,10 @@ function hallSplit(students: SeatStudent[], halls: SeatHall[], options: { separa
       const benches = enabledBenches(h).length
       if (boys >= benches * 2) { patterns.set(h.id, ["MM"]); boys -= benches * 2; continue }
       if (boys > 0) {
-        // The hall where boys end and girls begin: spelled out bench by bench.
-        const p: BenchType[] = []
-        for (let i = 0; i < benches; i++) {
-          const left: Gender = boys > 0 ? "M" : "F"
-          if (left === "M") boys--; else girls--
-          const right: Gender = boys > 0 ? "M" : "F"
-          if (right === "M") boys--; else girls--
-          p.push(`${left}${right}` as BenchType)
-        }
+        // The hall where boys end and girls begin: boy benches, then girl benches, spelled out bench by bench.
+        const boyBenches = Math.ceil(boys / 2)
+        const p: BenchType[] = Array.from({ length: benches }, (_, i) => (i < boyBenches ? "MM" : "FF"))
+        boys = 0; girls -= (benches - boyBenches) * 2
         patterns.set(h.id, p.every(t => t === p[0]) ? [p[0]] : p)
         continue
       }
@@ -429,12 +446,17 @@ export function checkConfig(rawConfig: Partial<SeatingConfig> | null | undefined
     const hall = hallOf.get(c.hallId)!
     if (c.pattern.length && seatsOf(hall) === 0) errors.push(`Hall ${hall.hall_code} has no bench layout. Set its rows and columns in Master Data → Halls, or mark it Not used.`)
   }
+  if (config.mixGenders) {
+    const seats = [...seatsIn.values()].reduce((sum, x) => sum + x.M + x.F, 0)
+    if (students.length > seats) warnings.push(`${students.length} students are selected, but the halls used have only ${seats} seats: ${students.length - seats} will be unallocated.`)
+    return { errors, warnings }
+  }
   for (const g of GENDERS) {
     const n = students.filter(s => s.gender === g).length
     if (n === 0) continue
     const seats = [...seatsIn.values()].reduce((sum, x) => sum + x[g], 0)
-    if (seats === 0) warnings.push(`${n} ${groupWord(g)} are selected, but no hall has seats for ${groupWord(g)}.`)
-    else if (n > seats) warnings.push(`${n} ${groupWord(g)} are selected, but the halls have only ${seats} seats for ${groupWord(g)}: ${n - seats} will be unallocated.`)
+    if (seats === 0) warnings.push(`${n} ${groupWordOf(g)} are selected, but no hall has seats for ${groupWordOf(g)}.`)
+    else if (n > seats) warnings.push(`${n} ${groupWordOf(g)} are selected, but the halls have only ${seats} seats for ${groupWordOf(g)}: ${n - seats} will be unallocated.`)
   }
   return { errors, warnings }
 }
@@ -446,8 +468,10 @@ export function checkConfig(rawConfig: Partial<SeatingConfig> | null | undefined
  * the next student of the gender its bench pattern gives it, or stays empty when that group has
  * run out. `academicYear` is only used to name each student's year in summaries and reasons.
  */
-export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfig: Partial<SeatingConfig> | null | undefined, academicYear: unknown): SeatingPlan {
+export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfig: Partial<SeatingConfig> | null | undefined, academicYear: unknown, together = false): SeatingPlan {
   const config = normalizeConfig(rawConfig, halls)
+  if (config.mixGenders) return planTogether(students, halls, config, academicYear)
+  const groupWord = together ? () => "students" : groupWordOf
   const hallOf = new Map(halls.map(h => [h.id, h]))
   const seatsIn = hallSeats(config, hallOf)
   // Each group's students by class, each class in seating order.
@@ -584,6 +608,28 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
   return { seats, hallGender, halls: summaries, unallocated, warnings, groups }
 }
 
+/**
+ * Roll number order: the students are seated as one group (gender ignored), then each keeps their
+ * own gender in the result: who each hall holds, the unallocated list and each group's totals.
+ */
+function planTogether(students: SeatStudent[], halls: SeatHall[], config: SeatingConfig, academicYear: unknown): SeatingPlan {
+  const plan = planSeating(asOneGroup(students), halls, { ...config, mixGenders: false }, academicYear, true)
+  const genderOf = new Map(students.map(s => [s.id, s.gender]))
+  const hallGender: Record<number, HallGroup> = {}
+  for (const h of plan.halls) {
+    const g = new Set(plan.seats.filter(x => x.hallId === h.hallId).map(x => genderOf.get(x.studentId)!))
+    hallGender[h.hallId] = h.pattern.length === 0 ? null : g.size === 1 ? [...g][0] : "mixed"
+  }
+  const unallocated = plan.unallocated.map(u => ({ ...u, gender: genderOf.get(u.studentId)! }))
+  const capacity = plan.halls.reduce((n, h) => n + (h.pattern.length ? h.capacity : 0), 0)
+  const groups = {} as SeatingPlan["groups"]
+  for (const g of GENDERS) {
+    const total = students.filter(s => s.gender === g).length, left = unallocated.filter(u => u.gender === g).length
+    groups[g] = { students: total, seated: total - left, unallocated: left, halls: plan.halls.filter(h => h.pattern.length).length, seats: capacity }
+  }
+  return { ...plan, hallGender, halls: plan.halls.map(h => ({ ...h, gender: hallGender[h.hallId] })), unallocated, groups }
+}
+
 // ── Validation ──────────────────────────────────────────────
 
 /**
@@ -623,6 +669,7 @@ export function validateSeatingPlan(plan: Pick<SeatingPlan, "seats" | "unallocat
     for (const x of list) {
       const i = index.get(`${x.row}-${x.col}-${x.benchNo}`)
       if (i === undefined) { errors.push(`Hall ${code}: bench ${x.benchNo} does not exist.`); continue }
+      if (config.mixGenders) continue // roll number order: any seat for anyone
       const s = studentOf.get(x.studentId), want = seatGender(pattern, i, x.seat)
       if (s && s.gender !== want) errors.push(`Hall ${code}, bench ${x.benchNo}: ${s.roll_no} sits in the ${x.seat === "L" ? "left" : "right"} seat, which the bench pattern gives to a ${want === "M" ? "boy" : "girl"}.`)
     }

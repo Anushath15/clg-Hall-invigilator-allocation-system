@@ -206,26 +206,27 @@ describe("Seating plan: boys and girls in separate halls", () => {
 })
 
 describe("Seating plan: bench patterns (boys and girls bench by bench)", () => {
-  it("repeats the pattern bench by bench: Boy + Boy, Girl + Girl, Boy + Girl, ...", () => {
+  it("repeats the pattern bench by bench: Boy + Boy, Girl + Girl, ...", () => {
     const boys = [...students("M", FINAL, 2), ...students("M", THIRD, 2)], girls = [...students("F", FINAL, 2), ...students("F", THIRD, 2)]
-    const halls = [hall(1, 6, 1)]
-    const cfg = config([[1, ["MM", "FF", "MF"]]])
+    const halls = [hall(1, 4, 1)]
+    const cfg = config([[1, ["MM", "FF"]]])
     const plan = planSeating([...boys, ...girls], halls, cfg, AY)
     checkPlan([...boys, ...girls], halls, cfg, plan)
     const byId = new Map([...boys, ...girls].map(s => [s.id, s.gender]))
-    // Left seats (M F M M F M) take all 4 boys and 2 girls; the right seats then have only girls left.
-    expect(plan.seats.map(s => `${s.benchNo}${s.seat}${byId.get(s.studentId)}`)).toEqual(["1LM", "2LF", "3LM", "4LM", "5LF", "6LM", "2RF", "3RF"])
+    // Benches 1 and 3 seat boys, 2 and 4 girls; a boy and a girl never share a bench.
+    expect(plan.seats.every(s => byId.get(s.studentId) === (s.benchNo % 2 ? "M" : "F"))).toBe(true)
+    expect(plan.unallocated).toEqual([])
     expect(plan.hallGender).toEqual({ 1: "mixed" })
   })
   it("a seat whose group has run out stays empty; the other group keeps its own seats", () => {
     const boys = solo("M", FINAL, 1), girls = solo("F", FINAL, 3)
-    const plan = planSeating([...boys, ...girls], [hall(1, 2, 1)], config([[1, ["MF"]]]), AY)
-    expect(plan.seats.map(s => `${s.benchNo}${s.seat}`)).toEqual(["1L", "1R", "2R"])
+    const plan = planSeating([...boys, ...girls], [hall(1, 2, 1)], config([[1, ["MM", "FF"]]]), AY)
+    expect(plan.seats.map(s => `${s.benchNo}${s.seat}`)).toEqual(["1L", "2L", "2R"])
     expect(plan.unallocated.map(u => u.studentId)).toEqual([girls[2].id])
   })
   it("counts the seats a pattern gives each group, and who the hall holds", () => {
-    expect(patternSeats(["MM", "FF", "MF"], 5)).toEqual({ M: 5, F: 5 }) // MM FF MF MM FF
-    expect(patternSeats(["FM"], 3)).toEqual({ M: 3, F: 3 })
+    expect(patternSeats(["MM", "FF"], 5)).toEqual({ M: 6, F: 4 }) // MM FF MM FF MM
+    expect(patternSeats(["FF"], 3)).toEqual({ M: 0, F: 6 })
     expect(patternSeats([], 3)).toEqual({ M: 0, F: 0 })
     expect([patternGroup(["MM"]), patternGroup(["FF"]), patternGroup(["MM", "FF"]), patternGroup([])]).toEqual(["M", "F", "mixed", null])
   })
@@ -233,8 +234,13 @@ describe("Seating plan: bench patterns (boys and girls bench by bench)", () => {
     const b = solo("M", FINAL, 1)[0], g = solo("F", FINAL, 1)[0]
     const halls = [hall(1, 1, 1)]
     const bad = { seats: [{ studentId: g.id, hallId: 1, row: 1, col: 1, benchNo: 1, seat: "L" as const }, { studentId: b.id, hallId: 1, row: 1, col: 1, benchNo: 1, seat: "R" as const }], unallocated: [] }
-    expect(validateSeatingPlan(bad, [b, g], halls, config([[1, ["MF"]]])).errors).toHaveLength(2)
-    expect(validateSeatingPlan(bad, [b, g], halls, config([[1, ["FM"]]])).errors).toEqual([])
+    expect(validateSeatingPlan(bad, [b, g], halls, config([[1, ["MM"]]])).errors).toHaveLength(1)
+    expect(validateSeatingPlan(bad, [b, g], halls, config([[1, ["FF"]]])).errors).toHaveLength(1)
+  })
+  it("drops boy + girl benches saved by an older version: boys and girls never share a bench", () => {
+    const halls = [hall(1, 1, 1), hall(2, 1, 1)]
+    expect(normalizeConfig({ halls: [{ hallId: 1, pattern: ["MM", "MF", "FF", "FM"] }, { hallId: 2, pattern: ["MF"] }] } as any, halls).halls)
+      .toEqual([{ hallId: 1, pattern: ["MM", "FF"] }, { hallId: 2, pattern: [] }])
   })
   it("reads settings saved as boys/girls halls by the previous version", () => {
     expect(normalizeConfig({ halls: [{ hallId: 1, gender: "M" }, { hallId: 2, gender: "F" }, { hallId: 3, gender: null }] } as any, [hall(1, 1, 1), hall(2, 1, 1), hall(3, 1, 1)]))
@@ -336,8 +342,11 @@ describe("Automatic configuration", () => {
       const cfg = autoConfigure(roster, hs)
       const plan = planSeating(roster, hs, cfg, AY)
       expect(validateSeatingPlan(plan, roster, hs, cfg).errors).toEqual([])
-      const seats = hs.reduce((n, h) => n + enabledBenches(h).length * 2, 0)
-      expect(plan.seats.length).toBe(Math.min(seats, roster.length))
+      // Boys and girls never share a bench: the most any split of the benches between them can seat.
+      const benches = hs.reduce((n, h) => n + enabledBenches(h).length, 0)
+      const boys = roster.filter(s => s.gender === "M").length, girls = roster.length - boys
+      const most = Math.max(...Array.from({ length: benches + 1 }, (_, b) => Math.min(boys, 2 * b) + Math.min(girls, 2 * (benches - b))))
+      expect(plan.seats.length).toBe(most)
       // A hall shared by boys and girls only when whole halls cannot seat as many.
       const mixed = cfg.halls.filter(h => patternGroup(h.pattern) === "mixed").length
       expect(mixed).toBe(bestSeparate === plan.seats.length ? 0 : 1)
@@ -354,7 +363,7 @@ describe("Automatic configuration", () => {
     const halls = [hall(1, 3, 1), hall(2, 1, 1)]
     const cfg = autoConfigure(all, halls)
     // Everyone would fit in the first hall with 4 classes; to keep to 3, the second hall is used too.
-    expect(cfg).toEqual(config([[1, ["MM", "MF", "FF"]], [2, "F"]]))
+    expect(cfg).toEqual(config([[1, ["MM", "MM", "FF"]], [2, "F"]]))
     const plan = planSeating(all, halls, cfg, AY)
     checkPlan(all, halls, cfg, plan)
     expect(plan.unallocated).toEqual([])
@@ -369,11 +378,11 @@ describe("Automatic configuration", () => {
     expect(planSeating(all, halls, cfg, AY).unallocated).toHaveLength(1)
   })
   it("one pattern for the session: halls take it in order until both groups have enough seats", () => {
-    const halls = [hall(1, 3, 1), hall(2, 3, 1), hall(3, 3, 1)] // 3 benches each: MM FF MF = 3 boy and 3 girl seats
-    expect(configureWithPattern({ M: 5, F: 2 }, halls, ["MM", "FF", "MF"])).toEqual(config([[1, ["MM", "FF", "MF"]], [2, ["MM", "FF", "MF"]], [3, null]]))
-    expect(configureWithPattern({ M: 2, F: 3 }, halls, ["MM", "FF", "MF"])).toEqual(config([[1, ["MM", "FF", "MF"]], [2, null], [3, null]]))
+    const halls = [hall(1, 3, 1), hall(2, 3, 1), hall(3, 3, 1)] // 3 benches each: MM FF MM = 4 boy and 2 girl seats
+    expect(configureWithPattern({ M: 5, F: 2 }, halls, ["MM", "FF"])).toEqual(config([[1, ["MM", "FF"]], [2, ["MM", "FF"]], [3, null]]))
+    expect(configureWithPattern({ M: 4, F: 2 }, halls, ["MM", "FF"])).toEqual(config([[1, ["MM", "FF"]], [2, null], [3, null]]))
     // Not enough seats even in every hall: every hall is used.
-    expect(configureWithPattern({ M: 20, F: 0 }, halls, ["MF"]).halls.every(h => h.pattern.length === 1)).toBe(true)
+    expect(configureWithPattern({ M: 20, F: 0 }, halls, ["MM"]).halls.every(h => h.pattern.length === 1)).toBe(true)
   })
   it("labels a student's department and year", () => {
     expect(studentCategory(students("M", THIRD, 1, "IT")[0], AY).label).toBe("IT – Third Year")
@@ -409,12 +418,6 @@ describe("Seating plan: two students of the same class never share a bench", () 
     const cfg = config([[1, "M"]])
     const benches = checkPlan(all, halls, cfg, planSeating(all, halls, cfg, AY))
     expect(benches.map(b => b.length)).toEqual([2, 2, 2, 2, 2])
-  })
-  it("applies to boy + girl benches too: a boy and a girl of the same class never share a bench", () => {
-    const b = students("M", THIRD, 1, "CSE"), g = [...students("F", THIRD, 1, "CSE"), ...students("F", FINAL, 1, "IT")]
-    const halls = [hall(1, 1, 1)]
-    const plan = planSeating([...b, ...g], halls, config([[1, ["MF"]]]), AY)
-    expect(plan.seats.map(x => x.studentId)).toEqual([b[0].id, g[1].id])
   })
   it("the validator rejects two students of one class on a bench", () => {
     const two = students("M", THIRD, 2, "CSE")
@@ -453,7 +456,7 @@ describe("Seating plan: one class per seat column, classes in turn (the administ
     const boys = [...students("M", FINAL, 2), ...students("M", THIRD, 2)], girls = [...students("F", FINAL, 2), ...students("F", THIRD, 2)]
     const all = [...boys, ...girls]
     const halls = [hall(1, 4, 1)]
-    const cfg = config([[1, ["MF", "FM"]]])
+    const cfg = config([[1, ["MM", "FF"]]])
     const plan = planSeating(all, halls, cfg, AY)
     checkPlan(all, halls, cfg, plan)
     expect(plan.unallocated).toEqual([])
@@ -505,5 +508,42 @@ describe("Seating plan: at most a few different classes (papers) per hall", () =
     expect(normalizeClassLimit({ preferred: 1, max: 9 })).toEqual({ preferred: 2, max: 4 })
     expect(normalizeClassLimit({ preferred: 4, max: 2 })).toEqual({ preferred: 4, max: 4 })
     expect(normalizeClassLimit({ preferred: 2, max: 2 })).toEqual({ preferred: 2, max: 2 })
+  })
+})
+
+describe("Seating plan: roll number order, boys and girls together", () => {
+  /** One class with boys and girls mixed in roll order: 102349 a boy, 102350 a girl, … */
+  const mixedClass = (dept: string, start: number, count: number): SeatStudent[] => Array.from({ length: count }, (_, i) => ({
+    id: nextId++, roll_no: String(start + i), gender: (i % 2 ? "F" : "M") as Gender, batch: THIRD, department_id: DEPTS[dept], dept_code: dept
+  }))
+  const rollCfg = (halls: [number, boolean][]): SeatingConfig => ({ halls: halls.map(([hallId, used]) => ({ hallId, pattern: used ? ["MM"] : [] })), mixGenders: true })
+
+  it("each seat column follows roll numbers whatever the gender", () => {
+    const A = mixedClass("CSE", 102349, 4), B = mixedClass("IT", 502349, 4)
+    const all = [...B, ...A], halls = [hall(1, 4, 1)], cfg = rollCfg([[1, true]])
+    const plan = planSeating(all, halls, cfg, AY)
+    checkPlan(all, halls, cfg, plan)
+    const roll = new Map(all.map(s => [s.id, s.roll_no]))
+    const column = (side: "L" | "R") => plan.seats.filter(x => x.seat === side).sort((a, b) => a.row - b.row).map(x => roll.get(x.studentId))
+    const cols = [column("L"), column("R")].sort()
+    expect(cols).toEqual([["102349", "102350", "102351", "102352"], ["502349", "502350", "502351", "502352"]])
+    expect(plan.unallocated).toEqual([])
+    expect(plan.hallGender).toEqual({ 1: "mixed" })
+    expect(plan.groups.F).toMatchObject({ students: 4, seated: 4, unallocated: 0 })
+  })
+  it("auto-assign uses as few halls as seat everyone, and the setting is kept", () => {
+    const all = [...mixedClass("CSE", 102301, 6), ...mixedClass("IT", 502301, 6)]
+    const halls = [hall(1, 3, 2), hall(2, 3, 2)]
+    const cfg = autoConfigure(all, halls, { mixGenders: true })
+    expect(cfg).toMatchObject({ mixGenders: true, halls: [{ hallId: 1, pattern: ["MM"] }, { hallId: 2, pattern: [] }] })
+    expect(normalizeConfig(cfg, halls).mixGenders).toBe(true)
+    expect(planSeating(all, halls, cfg, AY).seats).toHaveLength(12)
+  })
+  it("too few seats: the rest are unallocated, each with their own gender", () => {
+    const all = mixedClass("CSE", 102301, 3), halls = [hall(1, 1, 1)]
+    const plan = planSeating(all, halls, rollCfg([[1, true]]), AY)
+    expect(plan.seats).toHaveLength(1) // one class: one per bench
+    expect(plan.unallocated.map(u => u.gender)).toEqual(["F", "M"])
+    expect(checkConfig(rollCfg([[1, true]]), halls, [...all, ...mixedClass("IT", 502301, 1)]).warnings.join(" ")).toMatch(/4 students are selected, but the halls used have only 2 seats/)
   })
 })
