@@ -19,6 +19,8 @@ release/
 **/*.db
 **/*.db-shm
 **/*.db-wal
+*.db.bak-*
+**/*.db.bak-*
 
 # Environment variables
 .env
