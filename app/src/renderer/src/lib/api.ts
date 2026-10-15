@@ -100,6 +100,7 @@ export const api = apiBridge as {
   confirmSeating: (sessionId: number, studentIds: number[], config: SeatingConfig, options?: { acceptUnallocated?: boolean }) => Promise<any>
   getSessionSeating: (sessionId: number) => Promise<any[]>
   clearSeating: (sessionId: number) => Promise<any>
+  copySeating: (sessionId: number, fromSessionId: number) => Promise<any>
   getSeatingSelections: () => Promise<any[]>
   // Reports
   getStaffWiseReport: (userId?: number, fromYear?: string, toYear?: string) => Promise<any[]>

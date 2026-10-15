@@ -13,7 +13,7 @@ import * as XLSX from "xlsx"
 import { webDb } from "./web-db"
 import {
   listStudents, listStudentBatches, saveStudent, deleteStudent, importStudents, hallLayoutColumns,
-  generateSeating, getSessionSeating, clearSeating, getSeatingSelections, dropSeatingIfHallsChanged,
+  generateSeating, getSessionSeating, clearSeating, copySeating, getSeatingSelections, dropSeatingIfHallsChanged,
   getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
 } from "../../../shared/students"
 
@@ -416,19 +416,19 @@ export const webApi = {
     // Halls are identified by code and floor; the NOT NULL name column just mirrors the code.
     const name = data.hall_code
     const floor = (data.floor && String(data.floor).trim()) || null
-    // Bench layout for student seating; with one, capacity = 2 seats per bench (same as the desktop).
+    // Bench layout for student seating; with one, capacity = its seats (2 per bench, 1 per chair) (same as the desktop).
     const layout = hallLayoutColumns(data)
     if ("error" in layout) return { success: false, error: layout.error }
     const capacity = layout.capacity ?? data.capacity ?? 0
     if (data.id) {
-      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=? WHERE id=?",
-        [data.hall_code, name, floor, capacity, data.block??null, data.is_active?1:0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, data.id])
+      webDb.run("UPDATE halls SET hall_code=?,name=?,floor=?,capacity=?,block=?,is_active=?,bench_rows=?,bench_cols=?,disabled_benches=?,seat_kinds=? WHERE id=?",
+        [data.hall_code, name, floor, capacity, data.block??null, data.is_active?1:0, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.seat_kinds, data.id])
       writeAuditLog(null, "HALL_STATUS_CHANGE", `Hall ${data.hall_code} updated`, { id: data.id, is_active: data.is_active })
       return webDb.queryOne("SELECT * FROM halls WHERE id=?", [data.id])
     }
     const maxOrder = webDb.queryOne<any>("SELECT MAX(sort_order) as m FROM halls")
-    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches) VALUES(?,?,?,?,?,?,?,?,?,?)",
-      [data.hall_code, name, floor, capacity, data.block??null, 1, (maxOrder?.m??0)+1, layout.bench_rows, layout.bench_cols, layout.disabled_benches])
+    const { lastInsertRowid } = webDb.run("INSERT INTO halls(hall_code,name,floor,capacity,block,is_active,sort_order,bench_rows,bench_cols,disabled_benches,seat_kinds) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      [data.hall_code, name, floor, capacity, data.block??null, 1, (maxOrder?.m??0)+1, layout.bench_rows, layout.bench_cols, layout.disabled_benches, layout.seat_kinds])
     writeAuditLog(null, "CREATE_HALL", `Hall created: ${data.hall_code}`, { id: lastInsertRowid, hall_code: data.hall_code })
     return webDb.queryOne("SELECT * FROM halls WHERE id=?", [lastInsertRowid])
   },
@@ -1034,6 +1034,7 @@ export const webApi = {
   },
   getSessionSeating: async (sessionId: number) => { await ensureDb(); return getSessionSeating(webDb, sessionId) },
   clearSeating: async (sessionId: number) => { await ensureDb(); return clearSeating(webDb, sessionId) },
+  copySeating: async (sessionId: number, fromSessionId: number) => { await ensureDb(); return copySeating(webDb, sessionId, fromSessionId) },
   getSeatingSelections: async () => { await ensureDb(); return getSeatingSelections(webDb) },
 
   // File Dialogs & Storage

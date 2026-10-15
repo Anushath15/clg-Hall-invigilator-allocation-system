@@ -9,7 +9,7 @@ import { getOrCreateAllocation, deleteSession } from "./allocation.service"
 import {
   saveStudent, listStudents, listStudentBatches, deleteStudent, importStudents,
   generateSeating, getSessionSeating, getSeatingSelections, clearSeating,
-  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
+  getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating, copySeating
 } from "../../shared/students"
 
 beforeAll(async () => { await initDatabase({ inMemory: true }) })
@@ -22,9 +22,9 @@ beforeEach(() => {
 
 const dept = (code: string) => db.queryOne<any>("SELECT id FROM departments WHERE code = ?", [code])!.id
 let n = 0
-function addStudent(gender: "M" | "F", batch: string, code = "CSE") {
+function addStudent(gender: "M" | "F", batch: string, code = "CSE", section = "A") {
   n++
-  const r = saveStudent(db, { roll_no: `R${n}`, register_no: `REG${n}`, name: `Student ${String.fromCharCode(65 + (n % 26))}`, gender, batch, department_id: dept(code) })
+  const r = saveStudent(db, { roll_no: `R${n}`, register_no: `REG${n}`, name: `Student ${String.fromCharCode(65 + (n % 26))}`, gender, section, batch, department_id: dept(code) })
   if (!r.success) throw new Error(r.error)
   return r.student.id as number
 }
@@ -43,53 +43,64 @@ async function sessionWithHalls(hallIds: number[]) {
 }
 
 describe("Student master", () => {
-  it("saves a student with roll number, register number, gender, department and batch", () => {
-    const r = saveStudent(db, { roll_no: "23CS001", register_no: "961223104001", name: "Anu  S", gender: "Female", batch: "2023 - 2027", department_id: dept("CSE") })
+  it("saves a student with roll number, register number, gender, department, section and batch", () => {
+    const r = saveStudent(db, { roll_no: "23CS001", register_no: "961223104001", name: "Anu  S", gender: "Female", section: " a ", batch: "2023 - 2027", department_id: dept("CSE") })
     expect(r.success).toBe(true)
     const s = listStudents(db)[0]
-    expect(s).toMatchObject({ roll_no: "23CS001", register_no: "961223104001", name: "Anu S", gender: "F", batch: "2023-2027", department_code: "CSE" })
+    expect(s).toMatchObject({ roll_no: "23CS001", register_no: "961223104001", name: "Anu S", gender: "F", section: "A", batch: "2023-2027", department_code: "CSE" })
+  })
+
+  it("a section is required, and any short name can be used", () => {
+    const base = { roll_no: "1", register_no: "1", name: "Anu", gender: "F", batch: "2023-2027", department_id: dept("CSE") }
+    expect(saveStudent(db, { ...base, section: "" })).toEqual({ success: false, error: "Section is required." })
+    expect(saveStudent(db, { ...base, section: "A/B" })).toMatchObject({ success: false, error: expect.stringMatching(/Section can contain only/) })
+    expect(saveStudent(db, { ...base, section: "b2" })).toMatchObject({ success: true, student: { section: "B2" } })
   })
 
   it("roll and register numbers are unique ignoring case", () => {
-    saveStudent(db, { roll_no: "23CS001", register_no: "REG1", name: "Anu", gender: "F", batch: "2023-2027", department_id: dept("CSE") })
-    expect(saveStudent(db, { roll_no: "23cs001", register_no: "REG2", name: "Ben", gender: "M", batch: "2023-2027", department_id: dept("CSE") }))
+    saveStudent(db, { roll_no: "23CS001", register_no: "REG1", name: "Anu", gender: "F", section: "A", batch: "2023-2027", department_id: dept("CSE") })
+    expect(saveStudent(db, { roll_no: "23cs001", register_no: "REG2", name: "Ben", gender: "M", section: "A", batch: "2023-2027", department_id: dept("CSE") }))
       .toEqual({ success: false, error: "Roll Number 23CS001 is already used by Anu." })
-    expect(saveStudent(db, { roll_no: "23CS002", register_no: "reg1", name: "Ben", gender: "M", batch: "2023-2027", department_id: dept("CSE") }))
+    expect(saveStudent(db, { roll_no: "23CS002", register_no: "reg1", name: "Ben", gender: "M", section: "A", batch: "2023-2027", department_id: dept("CSE") }))
       .toEqual({ success: false, error: "Register Number REG1 is already used by Anu." })
   })
 
   it("a department is required", () => {
-    expect(saveStudent(db, { roll_no: "1", register_no: "1", name: "Anu", gender: "F", batch: "2023-2027" })).toEqual({ success: false, error: "Department is required." })
+    expect(saveStudent(db, { roll_no: "1", register_no: "1", name: "Anu", gender: "F", section: "A", batch: "2023-2027" })).toEqual({ success: false, error: "Department is required." })
   })
 
-  it("lists batches and filters by batch and gender", () => {
-    addStudent("M", "2024-2028"); addStudent("F", "2023-2027"); addStudent("M", "2023-2027")
+  it("lists batches and filters by batch, section and gender", () => {
+    addStudent("M", "2024-2028"); addStudent("F", "2023-2027"); addStudent("M", "2023-2027"); addStudent("M", "2023-2027", "CSE", "B")
     expect(listStudentBatches(db)).toEqual(["2023-2027", "2024-2028"])
-    expect(listStudents(db, { batch: "2023-2027", gender: "M" })).toHaveLength(1)
+    expect(listStudents(db, { batch: "2023-2027", gender: "M" })).toHaveLength(2)
+    expect(listStudents(db, { batch: "2023-2027", section: "b" })).toHaveLength(1)
   })
 
   it("imports from a sheet, reporting every skipped row with its reason", () => {
     const r = importStudents(db, [
-      ["Roll No", "Register No", "Name", "Gender", "Department", "Batch"],
-      ["23CS001", "961223104001", "Anu S", "F", "CSE", "2023-2027"],
-      ["23CS002", "961223104002", "Bala K", "Male", "Computer Science", "2023-2027"],
-      ["23CS003", "961223104003", "Chitra", "X", "CSE", "2023-2027"],
-      ["23CS004", "961223104004", "Devi", "F", "MECH", "2023-2027"],
-      ["23CS001", "961223104005", "Esak", "M", "CSE", "2023-2027"],
-      ["", "", "", "", "", ""]
+      ["Roll No", "Register No", "Name", "Gender", "Department", "Section", "Batch"],
+      ["23CS001", "961223104001", "Anu S", "F", "CSE", "A", "2023-2027"],
+      ["23CS002", "961223104002", "Bala K", "Male", "Computer Science", "b", "2023-2027"],
+      ["23CS003", "961223104003", "Chitra", "X", "CSE", "A", "2023-2027"],
+      ["23CS004", "961223104004", "Devi", "F", "MECH", "A", "2023-2027"],
+      ["23CS001", "961223104005", "Esak", "M", "CSE", "A", "2023-2027"],
+      ["23CS006", "961223104006", "Fathima", "F", "CSE", "", "2023-2027"],
+      ["", "", "", "", "", "", ""]
     ])
-    expect(r).toMatchObject({ success: true, inserted: 2, skipped: 3 })
+    expect(r).toMatchObject({ success: true, inserted: 2, skipped: 4 })
     if (!r.success) return
-    expect(r.issues.map(i => i.row)).toEqual([4, 5, 6])
+    expect(r.issues.map(i => i.row)).toEqual([4, 5, 6, 7])
     expect(r.issues[0].reason).toMatch(/Gender/)
     expect(r.issues[1].reason).toMatch(/MECH/)
     expect(r.issues[2].reason).toMatch(/already used/)
+    expect(r.issues[3].reason).toMatch(/Section is required/)
+    expect(listStudents(db).map(s => s.section)).toEqual(["A", "B"])
   })
 
   it("a sheet without the required columns is refused up front", () => {
     const r = importStudents(db, [["Roll No", "Name"], ["1", "Anu"]])
     expect(r.success).toBe(false)
-    expect(!r.success && r.missingColumns).toEqual(["Register No", "Gender", "Department", "Batch"])
+    expect(!r.success && r.missingColumns).toEqual(["Register No", "Gender", "Department", "Section", "Batch"])
   })
 })
 
@@ -98,6 +109,12 @@ describe("Hall bench layout", () => {
     const id = addHall("A101", 6, 6, ["6-3", "6-3", "9-9"])
     const h = db.queryOne<any>("SELECT * FROM halls WHERE id = ?", [id])
     expect(h).toMatchObject({ bench_rows: 6, bench_cols: 6, disabled_benches: '["6-3"]', capacity: 70 })
+  })
+
+  it("saves chairs, each seating one student; an old chair + table reads as a chair", () => {
+    const h = saveHall({ hall_code: "C201", bench_rows: 2, bench_cols: 2, disabled_benches: [], is_active: true,
+      seat_kinds: { "1-1": "chair", "1-2": "desk", "2-2": "sofa", "9-9": "chair" } })
+    expect(h).toMatchObject({ capacity: 6, seat_kinds: '{"1-1":"chair","1-2":"chair"}' })
   })
 
   it("rejects a layout with every bench switched off", () => {
@@ -131,7 +148,7 @@ describe("Session seating", () => {
     // Cycle 2026-27: 2023-2027 is Final Year, 2024-2028 Third Year.
     expect(new Set(rows.map(x => x.year))).toEqual(new Set(["Final Year", "Third Year"]))
     expect(rows.find(x => x.batch === "2023-2027")!.category).toBe("CSE – Final Year")
-    expect(getSeatingSelections(db)).toMatchObject([{ id: session, studentCount: 32 }])
+    expect(getSeatingSelections(db)).toMatchObject([{ id: session, studentCount: 32, hallIds: expect.arrayContaining([h1, h2]) }])
   })
 
   it("previews a configured plan without saving it; confirming saves the plan and its configuration", async () => {
@@ -256,5 +273,41 @@ describe("Session seating", () => {
     expect(db.query("SELECT * FROM seat_allocations")).toEqual([])
     expect(db.query("SELECT * FROM seating_configs")).toEqual([])
     expect(deleteStudent(db, id).success).toBe(true)
+  })
+
+  it("same as previous exam: copies every seat exactly, with the selection and settings", async () => {
+    const h1 = addHall("A1", 3, 4), h2 = addHall("A2", 3, 4)
+    const ids = [...Array.from({ length: 8 }, () => addStudent("M", "2023-2027")), ...Array.from({ length: 8 }, () => addStudent("F", "2024-2028"))]
+    const { session: prev } = await sessionWithHalls([h1, h2])
+    await generateSeating(db, prev, ids)
+    n++
+    const { session } = await sessionWithHalls([h1, h2])
+    expect(await copySeating(db, session, prev)).toMatchObject({ success: true, seated: 16 })
+    const seatOf = (rows: any[]) => rows.map(r => [r.studentId, r.hallId, r.bench_row, r.bench_col, r.bench_no, r.seat])
+    expect(seatOf(getSessionSeating(db, session))).toEqual(seatOf(getSessionSeating(db, prev)))
+    expect(getSeatingConfig(db, session)).toEqual(getSeatingConfig(db, prev))
+    // Copying again replaces the plan; no duplicates.
+    await copySeating(db, session, prev)
+    expect(getSessionSeating(db, session)).toHaveLength(16)
+  })
+
+  it("same as previous exam is refused unless the halls are exactly the same, or when benches changed", async () => {
+    const h1 = addHall("A1", 2, 2), h2 = addHall("A2", 2, 2)
+    const ids = [addStudent("M", "2023-2027"), addStudent("M", "2024-2028"), addStudent("M", "2023-2027")]
+    const { session: prev } = await sessionWithHalls([h1])
+    await generateSeating(db, prev, ids)
+    n++
+    const { session } = await sessionWithHalls([h2])
+    expect(await copySeating(db, session, prev)).toMatchObject({ success: false, error: expect.stringMatching(/same halls\. The previous exam has A1; this exam has A2/) })
+    expect(getSessionSeating(db, session)).toEqual([])
+    // More halls than before is not the same halls either.
+    n++
+    const { session: more } = await sessionWithHalls([h1, h2])
+    expect(await copySeating(db, more, prev)).toMatchObject({ success: false, error: expect.stringMatching(/has A1; this exam has A1, A2/) })
+    n++
+    const { session: same } = await sessionWithHalls([h1])
+    db.run("UPDATE halls SET bench_rows = 1, bench_cols = 1 WHERE id = ?", [h1])
+    expect(await copySeating(db, same, prev)).toMatchObject({ success: false, error: expect.stringMatching(/bench layout of A1 has changed/) })
+    expect(await copySeating(db, prev, prev)).toMatchObject({ success: false })
   })
 })

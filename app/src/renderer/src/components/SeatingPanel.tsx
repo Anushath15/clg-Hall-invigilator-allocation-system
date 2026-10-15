@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from "react"
-import { Users, RefreshCw, Trash2, FileText, AlertTriangle, Settings2, Search, LayoutGrid, UserX, X } from "lucide-react"
+import { Users, RefreshCw, Trash2, FileText, AlertTriangle, Settings2, Search, LayoutGrid, UserX, X, Copy } from "lucide-react"
 import toast from "react-hot-toast"
 import { api } from "../lib/api"
 import { currentSettings } from "../lib/college-settings"
-import { cn, hallLocation } from "../lib/utils"
-import { hallLayout, enabledBenches } from "../../../shared/hall-layout"
+import { cn, hallLocation, formatDateWithDay, formatSession } from "../lib/utils"
+import { hallLayout, enabledBenches, seatCount, type Bench } from "../../../shared/hall-layout"
 import {
   exportSeatingPlanPDF, exportAttendanceSheetPDF, exportStudentSeatListPDF, exportUnallocatedListPDF, seatLabel, groupLabel, seatsGroup,
   type SeatRow, type SeatingHallInfo, type UnallocatedRow
 } from "../lib/export-seating-pdf"
 import StudentSelector from "./StudentSelector"
 import SeatingConfigEditor from "./SeatingConfigEditor"
-import HallBenchGrid, { colorKey, yearColors } from "./HallBenchGrid"
+import HallBenchGrid, { colorKey, classColors } from "./HallBenchGrid"
 import UnallocatedTable from "./UnallocatedTable"
 import { hallPattern, patternGroup } from "../../../shared/seating"
 
@@ -24,7 +24,7 @@ interface Props {
 
 /**
  * Student seating for one session: students sit in the halls of the session's invigilator
- * allocation, two to a bench. The administrator selects the students, then gives each hall a
+ * allocation, two to a bench or one to a chair. The administrator selects the students, then gives each hall a
  * bench pattern (boys, girls, or boys and girls bench by bench) and reviews a preview before saving
  * (SeatingConfigEditor, shared/seating.ts). Shows each hall's bench grid, the students left
  * unallocated, and exports the seating PDFs.
@@ -40,29 +40,31 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
   const [showUnallocated, setShowUnallocated] = useState(false)
   const [viewHallId, setViewHallId] = useState<number | null>(null)
   const [find, setFind] = useState("")
+  const [others, setOthers] = useState<any[]>([])
 
   const load = async () => {
     const [s, h, c] = await Promise.all([api.getSessionSeating(session.id), api.getHalls(), api.getSeatingConfig(session.id)])
     setSeats(s); setHalls(h); setSaved(c)
+    api.getSeatingSelections().then(x => setOthers(x.filter((o: any) => o.id !== session.id))).catch(() => setOthers([]))
   }
   useEffect(() => { setWarnings([]); setViewHallId(null); setFind(""); setStep(null); setChosenIds([]); load() }, [session.id, allocation.length])
 
   // The session's halls in hall order, with their invigilators and bench layouts.
-  const sessionHalls: (SeatingHallInfo & { benches: number; raw: any })[] = useMemo(() => {
+  const sessionHalls: (SeatingHallInfo & { benches: number; seats: number; benchList: Bench[]; raw: any })[] = useMemo(() => {
     const ids = new Set(allocation.map((a: any) => a.hallId))
     return halls.filter(h => ids.has(h.id)).map(h => ({
       id: h.id, hall_code: h.hall_code, block: h.block, floor: h.floor,
-      bench_rows: h.bench_rows, bench_cols: h.bench_cols, disabled_benches: h.disabled_benches,
+      bench_rows: h.bench_rows, bench_cols: h.bench_cols, disabled_benches: h.disabled_benches, seat_kinds: h.seat_kinds,
       invigilators: allocation.filter((a: any) => a.hallId === h.id).map((a: any) => a.userName),
-      benches: enabledBenches(hallLayout(h)).length, raw: h
+      benches: enabledBenches(hallLayout(h)).length, seats: seatCount(hallLayout(h)), benchList: enabledBenches(hallLayout(h)), raw: h
     }))
   }, [halls, allocation])
-  const totalSeats = sessionHalls.reduce((n, h) => n + h.benches * 2, 0)
+  const totalSeats = sessionHalls.reduce((n, h) => n + h.seats, 0)
   const seatsIn = (hallId: number) => seats.filter(s => s.hallId === hallId)
   // The group a hall holds: its students', else the settings'.
   const genderOf = (hallId: number) => seatsGroup(seatsIn(hallId)) ?? patternGroup(hallPattern(saved?.config.halls.find(h => h.hallId === hallId)))
   const years = useMemo(() => [...new Set(seats.map(colorKey))].sort(), [seats])
-  const colorOf = yearColors(years)
+  const colorOf = classColors(years)
   const unallocated: UnallocatedRow[] = saved?.unallocated ?? []
   // Everyone selected last time, seated or not, for reselecting and re-configuring.
   const selectedIds = saved?.studentIds?.length ? saved.studentIds : seats.map(s => s.studentId)
@@ -74,6 +76,30 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
     toast.success(`${r.seated} students seated${r.unallocated?.length ? `, ${r.unallocated.length} unallocated` : ""}.`)
     setLoading(true)
     try { await load() } finally { setLoading(false) }
+  }
+
+  // The previous exam: the latest earlier session with seating whose invigilator allocation has
+  // exactly this session's halls (so its seats can be copied as they are). The list is newest first;
+  // FN comes before AN on the same day.
+  const isBefore = (o: any) => o.exam_date < session.exam_date || (o.exam_date === session.exam_date && o.session_type === "FN" && session.session_type === "AN")
+  const hallsHere = [...new Set(allocation.map((a: any) => a.hallId as number))].sort((a, b) => a - b).join(",")
+  const previous = others.find(o => isBefore(o) && (o.hallIds ?? []).join(",") === hallsHere) ?? null
+
+  /** Gives this session exactly the previous exam's seating: same hall, bench and seat for everyone. */
+  async function copyPrevious() {
+    if (!previous) return
+    const from = `${previous.cycleName} · ${formatDateWithDay(previous.exam_date)} · ${formatSession(previous.session_type)}`
+    if (!confirm(`Use the seating of the previous exam (${from}) for this exam? Every student keeps the same hall, bench and seat.${seats.length ? " This replaces the current seating plan." : ""}`)) return
+    setLoading(true)
+    try {
+      const r = await api.copySeating(session.id, previous.id)
+      if (!r.success) { toast.error(r.error); return }
+      setWarnings([])
+      toast.success(`Seating copied from ${from}: ${r.seated} students seated${r.unallocated?.length ? `, ${r.unallocated.length} unallocated` : ""}.`)
+      await load()
+    } catch (e: any) {
+      toast.error(`The seating could not be copied: ${e?.message ?? e}`)
+    } finally { setLoading(false) }
   }
 
   async function clear() {
@@ -121,6 +147,11 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
         </div>
         <div className="flex flex-wrap gap-2">
           {seats.length > 0 && <button onClick={clear} disabled={loading} className="btn-secondary text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Clear</button>}
+          {others.some(isBefore) && (
+            <button onClick={copyPrevious} disabled={loading || !previous}
+              title={previous ? `Copy the seating of ${previous.cycleName}, ${formatDateWithDay(previous.exam_date)} ${formatSession(previous.session_type)}` : "Only an earlier exam with exactly the same halls can be copied, and none has them. Use the same halls in the invigilator allocation."}
+              className="btn-secondary flex items-center gap-2"><Copy className="w-4 h-4" /> Same as Previous Exam</button>
+          )}
           <button onClick={() => setStep("select")} disabled={loading} className={cn(seats.length ? "btn-secondary" : "btn-primary", "flex items-center gap-2")}>
             {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
             {seats.length ? "Reselect Students" : "Select Students & Configure Seating"}
@@ -164,7 +195,7 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
               </div>
               <p className="text-xs text-brand-textsec mt-1 truncate">{hallLocation(h) || "—"} · {h.invigilators.join(", ")}</p>
               <div className="flex items-center justify-between mt-2">
-                <span className="text-xs"><b>{n}</b> / {h.benches * 2} seats</span>
+                <span className="text-xs"><b>{n}</b> / {h.seats} seats</span>
                 {n > 0 && <span className="text-[11px] text-brand-textsec truncate ml-2">{[...new Set(seatsIn(h.id).map(s => s.category ?? s.batch))].join(", ")}</span>}
               </div>
             </div>

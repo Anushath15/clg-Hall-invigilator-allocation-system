@@ -10,8 +10,8 @@ import { STUDENT_IMPORT_COLUMNS } from "../../../shared/students"
 const GENDER_LABEL: Record<string, string> = { M: "Male", F: "Female" }
 
 /**
- * Master Data → Students: roll number, register number, name, gender, department and batch
- * (2023-2027). Students are seated for each exam session in the Allocation Workspace.
+ * Master Data → Students: roll number, register number, name, gender, department, section (A, B,
+ * ...) and batch (2023-2027); CSE + section A + 2023-2027 is one class. Students are seated for each exam session in the Allocation Workspace.
  */
 export default function StudentsTab() {
   const [students, setStudents] = useState<any[]>([])
@@ -22,6 +22,7 @@ export default function StudentsTab() {
   const [query, setQuery] = useState("")
   const [batch, setBatch] = useState("")
   const [deptId, setDeptId] = useState("")
+  const [section, setSection] = useState("")
   const [gender, setGender] = useState("")
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -32,10 +33,11 @@ export default function StudentsTab() {
   useEffect(() => { load() }, [])
 
   const batches = useMemo(() => [...new Set(students.map(s => s.batch))].sort(), [students])
+  const sections = useMemo(() => [...new Set(students.map(s => s.section).filter(Boolean))].sort(), [students])
   const shown = useMemo(() => students.filter(s =>
-    (!batch || s.batch === batch) && (!deptId || s.department_id === Number(deptId)) && (!gender || s.gender === gender) &&
-    matchesSearch(query, s.roll_no, s.register_no, s.name)
-  ), [students, batch, deptId, gender, query])
+    (!batch || s.batch === batch) && (!deptId || s.department_id === Number(deptId)) && (!section || s.section === section) &&
+    (!gender || s.gender === gender) && matchesSearch(query, s.roll_no, s.register_no, s.name)
+  ), [students, batch, deptId, section, gender, query])
   const summary = useMemo(() => batches.map(b => {
     const inBatch = students.filter(s => s.batch === b && s.is_active)
     return { batch: b, boys: inBatch.filter(s => s.gender === "M").length, girls: inBatch.filter(s => s.gender === "F").length }
@@ -74,8 +76,8 @@ export default function StudentsTab() {
   }
 
   function downloadTemplate() {
-    const ws = XLSX.utils.aoa_to_sheet([STUDENT_IMPORT_COLUMNS, ["23CS001", "961223104001", "Anu S", "Female", depts[0]?.code ?? "CSE", "2023-2027"]])
-    ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 26 }, { wch: 9 }, { wch: 12 }, { wch: 11 }]
+    const ws = XLSX.utils.aoa_to_sheet([STUDENT_IMPORT_COLUMNS, ["23CS001", "961223104001", "Anu S", "Female", depts[0]?.code ?? "CSE", "A", "2023-2027"]])
+    ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 26 }, { wch: 9 }, { wch: 12 }, { wch: 9 }, { wch: 11 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Students")
     XLSX.writeFile(wb, "HIAS-Student-Import-Template.xlsx")
@@ -89,7 +91,7 @@ export default function StudentsTab() {
           <button onClick={downloadTemplate} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" /> Template</button>
           <button onClick={() => fileInput.current?.click()} className="btn-secondary flex items-center gap-2"><Upload className="w-4 h-4" /> Import Excel</button>
           <input ref={fileInput} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
-          <button onClick={() => setForm({ gender: "M", is_active: true, batch: batch || "" })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Student</button>
+          <button onClick={() => setForm({ gender: "M", is_active: true, section: section || "", batch: batch || "" })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Student</button>
         </div>
       </div>
 
@@ -116,6 +118,10 @@ export default function StudentsTab() {
         <select className="input-field w-auto" value={deptId} onChange={e => setDeptId(e.target.value)}>
           <option value="">All departments</option>
           {depts.map(d => <option key={d.id} value={d.id}>{d.code}</option>)}
+        </select>
+        <select className="input-field w-auto" value={section} onChange={e => setSection(e.target.value)}>
+          <option value="">All sections</option>
+          {sections.map(s => <option key={s} value={s}>Section {s}</option>)}
         </select>
         <select className="input-field w-auto" value={gender} onChange={e => setGender(e.target.value)}>
           <option value="">Boys and girls</option>
@@ -146,13 +152,18 @@ export default function StudentsTab() {
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="label">Department *</label>
                     <select className="input-field" value={form.department_id ?? ""} onChange={e => setForm({ ...form, department_id: Number(e.target.value) || null })}>
                       <option value="">— Select —</option>
                       {depts.map((d: any) => <option key={d.id} value={d.id}>{d.code}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label className="label">Section *</label>
+                    <input className="input-field" list="student-sections" value={form.section ?? ""} onChange={e => setForm({ ...form, section: e.target.value.toUpperCase() })} placeholder="e.g. A" maxLength={10} />
+                    <datalist id="student-sections">{sections.map(s => <option key={s} value={s} />)}</datalist>
                   </div>
                   <div>
                     <label className="label">Batch *</label>
@@ -174,7 +185,7 @@ export default function StudentsTab() {
       <div className="card p-0 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
-            <tr>{["Roll No", "Register No", "Name", "Gender", "Department", "Batch", "Status", ""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
+            <tr>{["Roll No", "Register No", "Name", "Gender", "Department", "Section", "Batch", "Status", ""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {shown.map((s: any) => (
@@ -186,6 +197,7 @@ export default function StudentsTab() {
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.gender === "F" ? "bg-pink-50 text-pink-700" : "bg-sky-50 text-sky-700"}`}>{GENDER_LABEL[s.gender]}</span>
                 </td>
                 <td className="px-4 py-3 text-brand-textsec">{s.department_code ?? "—"}</td>
+                <td className="px-4 py-3 text-brand-textsec">{s.section || "—"}</td>
                 <td className="px-4 py-3 text-brand-textsec whitespace-nowrap">{s.batch}</td>
                 <td className="px-4 py-3">
                   {s.is_active ? <span className="flex items-center gap-1 text-green-600 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Active</span>
@@ -197,7 +209,7 @@ export default function StudentsTab() {
                 </td>
               </tr>
             ))}
-            {shown.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-brand-textsec">
+            {shown.length === 0 && <tr><td colSpan={9} className="px-4 py-12 text-center text-brand-textsec">
               {students.length ? "No students match these filters." : "No students yet. Add them one by one or import an Excel sheet (download the template first)."}
             </td></tr>}
           </tbody>

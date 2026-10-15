@@ -60,7 +60,7 @@ describe("Offline desktop", () => {
     const tables = db.query<any>("SELECT name FROM sqlite_master WHERE type = 'table'").map(t => t.name)
     for (const t of ["departments", "users", "halls", "settings", "exam_cycles", "exam_sessions", "allocations", "rotation_history", "audit_log", "notifications", "students", "seat_allocations", "seating_configs"]) expect(tables).toContain(t)
     expect(db.query<any>("SELECT name FROM _migrations ORDER BY name").map(m => m.name))
-      .toEqual(["001_initial_schema", "002_rotation_global_order", "003_notifications", "004_hall_floor", "005_notification_session", "006_deleted_batches", "007_rotation_outlives_session", "008_students_seating", "009_seating_config"])
+      .toEqual(["001_initial_schema", "002_rotation_global_order", "003_notifications", "004_hall_floor", "005_notification_session", "006_deleted_batches", "007_rotation_outlives_session", "008_students_seating", "009_seating_config", "010_student_section", "011_seat_kinds"])
     expect(db.queryOne<any>("SELECT value FROM settings WHERE key = 'app.version'")?.value).toBe("9.9.9")
     expect(db.queryOne<any>("SELECT value FROM settings WHERE key = 'session.fn_start_time'")?.value).toBe("10:00")
 

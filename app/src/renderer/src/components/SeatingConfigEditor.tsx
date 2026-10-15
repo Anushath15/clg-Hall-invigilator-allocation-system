@@ -8,12 +8,12 @@ import {
   DEFAULT_CLASS_LIMIT, MIN_CLASSES_PER_HALL, MAX_CLASSES_PER_HALL,
   type SeatingConfig, type SeatHall, type Gender, type BenchType, type HallGroup, type ClassLimit
 } from "../../../shared/seating"
-import { hallLayout } from "../../../shared/hall-layout"
+import { hallLayout, kindSummary, type Bench } from "../../../shared/hall-layout"
 import type { SeatRow } from "../lib/export-seating-pdf"
-import HallBenchGrid, { yearColors } from "./HallBenchGrid"
+import HallBenchGrid, { classColors, colorKey } from "./HallBenchGrid"
 import UnallocatedTable from "./UnallocatedTable"
 
-interface SessionHall { id: number; hall_code: string; benches: number; raw: any; invigilators: string[] }
+interface SessionHall { id: number; hall_code: string; benches: number; seats: number; benchList: Bench[]; raw: any; invigilators: string[] }
 interface Props {
   session: { id: number; exam_date: string; session_type: string }
   /** The session's halls (its invigilator allocation), with their layouts. */
@@ -143,8 +143,8 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
 
   const setPattern = (hallId: number, pattern: BenchType[]) =>
     setConfig({ ...config, halls: config.halls.map(h => h.hallId === hallId ? { ...h, pattern } : h) })
-  const totalSeats = config.halls.reduce((n, h) => n + (h.pattern.length ? hallOf(h.hallId).benches * 2 : 0), 0)
-  const seatsFor = (g: Gender) => config.halls.reduce((n, h) => n + patternSeats(h.pattern, hallOf(h.hallId).benches)[g], 0)
+  const totalSeats = config.halls.reduce((n, h) => n + (h.pattern.length ? hallOf(h.hallId).seats : 0), 0)
+  const seatsFor = (g: Gender) => config.halls.reduce((n, h) => n + patternSeats(h.pattern, hallOf(h.hallId).benchList)[g], 0)
   const need = { M: counts.boys, F: counts.girls }
   /** The automatic settings for a method: the halls needed, with that method's rule. */
   const autoFor = (m: Method, pattern = sharedPattern): SeatingConfig =>
@@ -179,10 +179,10 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   const studentOf = new Map<number, any>((preview?.students ?? []).map((s: any) => [s.id, s]))
   const previewSeats = (hallId: number): SeatRow[] => (plan?.seats ?? []).filter((s: any) => s.hallId === hallId).map((s: any) => {
     const st = studentOf.get(s.studentId)
-    return { studentId: s.studentId, roll_no: st?.roll_no ?? "", register_no: "", studentName: st?.name ?? "", gender: st?.gender, batch: st?.batch ?? "", deptCode: st?.deptCode, year: st?.year,
+    return { studentId: s.studentId, roll_no: st?.roll_no ?? "", register_no: "", studentName: st?.name ?? "", gender: st?.gender, batch: st?.batch ?? "", deptCode: st?.deptCode, year: st?.year, category: st?.category,
       hallId: s.hallId, hall_code: hallOf(s.hallId)?.hall_code ?? "", bench_row: s.row, bench_col: s.col, bench_no: s.benchNo, seat: s.seat }
   })
-  const colorOf = yearColors([...new Set<string>((preview?.students ?? []).map((s: any) => s.year || s.batch))].sort())
+  const colorOf = classColors((preview?.students ?? []).map((s: any) => colorKey(s)))
   const viewHall = halls.find(h => h.id === viewHallId) ?? halls.find(h => previewSeats(h.id).length > 0)
   const unallocated = plan?.unallocated ?? []
 
@@ -251,7 +251,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
             {config.halls.map(h => {
               const hall = hallOf(h.hallId)
               const group = patternGroup(h.pattern)
-              const seats = patternSeats(h.pattern, hall.benches)
+              const seats = patternSeats(h.pattern, hall.benchList)
               // The choices a hall card offers under the session's method.
               const modes = method === "separate" ? HALL_MODES.filter(m => m.group !== "mixed")
                 : method === "pattern" ? [{ group: "mixed" as HallGroup, label: "Use", pattern: sharedPattern }, HALL_MODES[3]]
@@ -262,7 +262,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                 <div key={h.hallId} className={cn("border rounded-lg p-2.5", group ? "border-brand-border" : "border-dashed border-gray-300 bg-gray-50")}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-brand-primary">{hall.hall_code}</span>
-                    <span className="text-xs text-brand-textsec">{hall.benches} benches · {hall.benches * 2} seats</span>
+                    <span className="text-xs text-brand-textsec">{kindSummary(hallLayout(hall.raw))} · {hall.seats} seats</span>
                     {group && method !== "rollwise" && <span className="ml-auto text-[11px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
                   </div>
                   <div className="flex flex-wrap rounded-md border border-brand-border overflow-hidden text-xs mt-2 w-fit">

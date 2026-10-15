@@ -119,12 +119,25 @@ export function validateStudentBatch(value: unknown): string | null {
 /** The batch as stored: "2023 - 2027" becomes "2023-2027". */
 export const normalizeStudentBatch = (value: unknown) => String(value ?? "").trim().replace(/\s*-\s*/, "-")
 
+/** Student section: any name the college uses (A, B, A1, ...), letters, digits, spaces and - only, up to 10 characters. */
+export function validateStudentSection(value: unknown): string | null {
+  const v = String(value ?? "").trim()
+  if (!v) return "Section is required."
+  if (v.length > 10) return "Section can be at most 10 characters."
+  if (!/^[A-Za-z0-9 -]+$/.test(v)) return "Section can contain only letters, digits, spaces and - (for example A or B2)."
+  return null
+}
+
+/** The section as stored: trimmed, single-spaced and in capitals, so "a" and "A" are the same section. */
+export const normalizeStudentSection = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").toUpperCase()
+
 /** The first problem with a student record, or null. */
-export function validateStudent(d: { roll_no?: unknown; register_no?: unknown; name?: unknown; gender?: unknown; batch?: unknown }): string | null {
+export function validateStudent(d: { roll_no?: unknown; register_no?: unknown; name?: unknown; gender?: unknown; section?: unknown; batch?: unknown }): string | null {
   return validateStudentNumber("Roll Number", d.roll_no)
     ?? validateStudentNumber("Register Number", d.register_no)
     ?? validateStaffName(d.name)?.replace("Full Name", "Name")
     ?? (parseGender(d.gender) ? null : "Gender must be Male or Female.")
+    ?? validateStudentSection(d.section)
     ?? validateStudentBatch(d.batch)
 }
 

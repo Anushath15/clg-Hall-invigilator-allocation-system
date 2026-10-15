@@ -6,8 +6,8 @@
  * one (web-db.ts) provide. The desktop IPC handlers and web-api.ts call the same functions, so the
  * rules live in one place.
  */
-import { validateStudent, parseGender, normalizeStudentBatch } from "./validation"
-import { hallLayout, cleanDisabled, benchCount, validateHallLayout } from "./hall-layout"
+import { validateStudent, parseGender, normalizeStudentBatch, normalizeStudentSection } from "./validation"
+import { hallLayout, cleanDisabled, cleanKinds, benchCount, seatCount, validateHallLayout, enabledBenches, benchKey } from "./hall-layout"
 import {
   planSeating, validateSeatingPlan, checkConfig, normalizeConfig, autoConfigure, studentCategory, unallocatedMessage, seatingShortfall,
   type SeatStudent, type SeatHall, type SeatingConfig, type UnallocatedStudent, type ClassLimit
@@ -79,40 +79,63 @@ export function migrateSeatingConfig(db: Pick<StudentDb, "run" | "query">): void
   )`)
 }
 
-// ── Hall bench layout ───────────────────────────────────────
-
-export interface HallLayoutInput { bench_rows?: unknown; bench_cols?: unknown; disabled_benches?: unknown; capacity?: unknown }
+/**
+ * Migration 010 (both builds): the student's section (A, B, ...), so CSE + section A + 2023-2027
+ * names one class. Students saved before this have an empty section until they are edited.
+ */
+export function migrateStudentSection(db: Pick<StudentDb, "run" | "query">): void {
+  const cols = db.query<any>("PRAGMA table_info(students)").map((c: any) => c.name)
+  if (!cols.includes("section")) db.run("ALTER TABLE students ADD COLUMN section TEXT NOT NULL DEFAULT ''")
+}
 
 /**
- * The bench layout columns to save with a hall, or the problem with them. When a layout is given, the hall's capacity becomes its seats (two per bench)
- * so the two can never disagree.
+ * Migration 011 (both builds): what stands at each seating position of a hall — a bench (two
+ * students) or a chair (one student). Existing halls keep all benches.
  */
-export function hallLayoutColumns(data: HallLayoutInput): { error: string } | { bench_rows: number; bench_cols: number; disabled_benches: string; capacity: number | null } {
+export function migrateSeatKinds(db: Pick<StudentDb, "run" | "query">): void {
+  const cols = db.query<any>("PRAGMA table_info(halls)").map((c: any) => c.name)
+  if (!cols.includes("seat_kinds")) db.run("ALTER TABLE halls ADD COLUMN seat_kinds TEXT DEFAULT '{}'")
+}
+
+// ── Hall bench layout ───────────────────────────────────────
+
+export interface HallLayoutInput { bench_rows?: unknown; bench_cols?: unknown; disabled_benches?: unknown; seat_kinds?: unknown; capacity?: unknown }
+
+/**
+ * The bench layout columns to save with a hall, or the problem with them. When a layout is given, the hall's capacity becomes its seats (two per bench,
+ * one per chair) so the two can never disagree.
+ */
+export function hallLayoutColumns(data: HallLayoutInput): { error: string } | { bench_rows: number; bench_cols: number; disabled_benches: string; seat_kinds: string; capacity: number | null } {
   const problem = validateHallLayout(data.bench_rows, data.bench_cols)
   if (problem) return { error: problem }
   const layout = hallLayout(data)
   const disabled = cleanDisabled(layout)
+  const kinds = cleanKinds({ ...layout, disabled })
   const benches = benchCount({ ...layout, disabled })
-  if (layout.rows > 0 && benches === 0) return { error: "Every bench is switched off. Keep at least one bench, or set rows and columns to 0." }
-  return { bench_rows: layout.rows, bench_cols: layout.cols, disabled_benches: JSON.stringify(disabled), capacity: layout.rows > 0 ? benches * 2 : null }
+  if (layout.rows > 0 && benches === 0) return { error: "Every bench is switched off. Keep at least one bench or chair, or set rows and columns to 0." }
+  return {
+    bench_rows: layout.rows, bench_cols: layout.cols, disabled_benches: JSON.stringify(disabled), seat_kinds: JSON.stringify(kinds),
+    capacity: layout.rows > 0 ? seatCount({ ...layout, disabled, kinds }) : null
+  }
 }
 
 // ── Student master ──────────────────────────────────────────
 
 export interface StudentInput {
   id?: number; roll_no: string; register_no: string; name: string; gender: string
-  department_id?: number | null; batch: string; is_active?: boolean
+  department_id?: number | null; section: string; batch: string; is_active?: boolean
 }
 
-const STUDENT_SELECT = `SELECT s.id, s.roll_no, s.register_no, s.name, s.gender, s.department_id, s.batch, s.is_active,
+const STUDENT_SELECT = `SELECT s.id, s.roll_no, s.register_no, s.name, s.gender, s.department_id, s.section, s.batch, s.is_active,
   d.code as department_code, d.name as department_name
   FROM students s LEFT JOIN departments d ON s.department_id = d.id`
 
-export function listStudents(db: StudentDb, filters: { batch?: string; department_id?: number; gender?: string; is_active?: boolean } = {}) {
+export function listStudents(db: StudentDb, filters: { batch?: string; department_id?: number; section?: string; gender?: string; is_active?: boolean } = {}) {
   let sql = `${STUDENT_SELECT} WHERE 1=1`
   const params: any[] = []
   if (filters.batch) { sql += " AND s.batch = ?"; params.push(filters.batch) }
   if (filters.department_id) { sql += " AND s.department_id = ?"; params.push(filters.department_id) }
+  if (filters.section) { sql += " AND s.section = ?"; params.push(normalizeStudentSection(filters.section)) }
   if (filters.gender) { sql += " AND s.gender = ?"; params.push(filters.gender) }
   if (filters.is_active !== undefined) { sql += " AND s.is_active = ?"; params.push(filters.is_active ? 1 : 0) }
   sql += " ORDER BY s.batch, d.code COLLATE NOCASE, s.roll_no"
@@ -139,18 +162,18 @@ export function saveStudent(db: StudentDb, data: StudentInput): { success: true;
   const problem = validateStudent(data ?? {})
   if (problem) return { success: false, error: problem }
   const rollNo = String(data.roll_no).trim(), registerNo = String(data.register_no).trim(), name = String(data.name).trim().replace(/\s+/g, " ")
-  const gender = parseGender(data.gender)!, batch = normalizeStudentBatch(data.batch)
+  const gender = parseGender(data.gender)!, section = normalizeStudentSection(data.section), batch = normalizeStudentBatch(data.batch)
   const departmentId = data.department_id ? Number(data.department_id) : null
   if (!departmentId) return { success: false, error: "Department is required." }
   const clash = studentClash(db, rollNo, registerNo, data.id ?? 0)
   if (clash) return { success: false, error: clash }
   if (data.id) {
-    db.run(`UPDATE students SET roll_no=?, register_no=?, name=?, gender=?, department_id=?, batch=?, is_active=?, updated_at=datetime('now') WHERE id=?`,
-      [rollNo, registerNo, name, gender, departmentId, batch, data.is_active === false ? 0 : 1, data.id])
+    db.run(`UPDATE students SET roll_no=?, register_no=?, name=?, gender=?, department_id=?, section=?, batch=?, is_active=?, updated_at=datetime('now') WHERE id=?`,
+      [rollNo, registerNo, name, gender, departmentId, section, batch, data.is_active === false ? 0 : 1, data.id])
     return { success: true, student: db.queryOne(`${STUDENT_SELECT} WHERE s.id = ?`, [data.id]) }
   }
-  const { lastInsertRowid } = db.run("INSERT INTO students(roll_no, register_no, name, gender, department_id, batch, is_active) VALUES(?,?,?,?,?,?,1)",
-    [rollNo, registerNo, name, gender, departmentId, batch])
+  const { lastInsertRowid } = db.run("INSERT INTO students(roll_no, register_no, name, gender, department_id, section, batch, is_active) VALUES(?,?,?,?,?,?,?,1)",
+    [rollNo, registerNo, name, gender, departmentId, section, batch])
   return { success: true, student: db.queryOne(`${STUDENT_SELECT} WHERE s.id = ?`, [lastInsertRowid]) }
 }
 
@@ -169,8 +192,9 @@ const REGISTER_HEADERS = ["register no", "register number", "register_no", "regi
 const NAME_HEADERS = ["name", "student name", "full name"]
 const GENDER_HEADERS = ["gender", "sex"]
 const DEPT_HEADERS = ["department", "department code", "dept", "dept code", "department_code"]
+const SECTION_HEADERS = ["section", "sec", "class section"]
 const BATCH_HEADERS = ["batch", "student batch", "batch year", "batch years"]
-export const STUDENT_IMPORT_COLUMNS = ["Roll No", "Register No", "Name", "Gender", "Department", "Batch"]
+export const STUDENT_IMPORT_COLUMNS = ["Roll No", "Register No", "Name", "Gender", "Department", "Section", "Batch"]
 
 /**
  * Imports students from a sheet's rows (the first row is the header; the screen reads the file
@@ -179,7 +203,7 @@ export const STUDENT_IMPORT_COLUMNS = ["Roll No", "Register No", "Name", "Gender
 export function importStudents(db: StudentDb, rows: unknown[][]) {
   const header = (rows[0] ?? []).map(h => String(h ?? "").trim().toLowerCase())
   const col = (names: string[]) => header.findIndex(h => names.includes(h))
-  const idx = { roll: col(ROLL_HEADERS), reg: col(REGISTER_HEADERS), name: col(NAME_HEADERS), gender: col(GENDER_HEADERS), dept: col(DEPT_HEADERS), batch: col(BATCH_HEADERS) }
+  const idx = { roll: col(ROLL_HEADERS), reg: col(REGISTER_HEADERS), name: col(NAME_HEADERS), gender: col(GENDER_HEADERS), dept: col(DEPT_HEADERS), section: col(SECTION_HEADERS), batch: col(BATCH_HEADERS) }
   const missing = STUDENT_IMPORT_COLUMNS.filter((_, i) => Object.values(idx)[i] === -1)
   if (missing.length) {
     return { success: false as const, missingColumns: missing,
@@ -196,7 +220,7 @@ export function importStudents(db: StudentDb, rows: unknown[][]) {
     if (!deptValue) { issues.push({ row: excelRow, reason: "Missing Department" }); continue }
     const dept = db.queryOne<any>("SELECT id FROM departments WHERE code = ? COLLATE NOCASE OR name = ? COLLATE NOCASE ORDER BY (code = ? COLLATE NOCASE) DESC, id LIMIT 1", [deptValue, deptValue, deptValue])
     if (!dept) { issues.push({ row: excelRow, reason: `Department "${deptValue}" does not match any existing department (check Master Data → Departments).` }); continue }
-    const r2 = saveStudent(db, { roll_no: cell(idx.roll), register_no: cell(idx.reg), name: cell(idx.name), gender: cell(idx.gender), department_id: dept.id, batch: cell(idx.batch) })
+    const r2 = saveStudent(db, { roll_no: cell(idx.roll), register_no: cell(idx.reg), name: cell(idx.name), gender: cell(idx.gender), department_id: dept.id, section: cell(idx.section), batch: cell(idx.batch) })
     if (r2.success) inserted++
     else issues.push({ row: excelRow, reason: `${r2.error}${cell(idx.roll) ? ` (Roll No "${cell(idx.roll)}")` : ""}` })
   }
@@ -236,7 +260,7 @@ function seatingInput(db: StudentDb, sessionId: number, studentIds: number[]): {
 }
 
 /** The session's halls as the configuration screen shows them. */
-const hallInfo = (halls: SeatHall[]) => halls.map(h => ({ id: h.id, hall_code: h.hall_code, benches: benchCount(h), capacity: benchCount(h) * 2 }))
+const hallInfo = (halls: SeatHall[]) => halls.map(h => ({ id: h.id, hall_code: h.hall_code, benches: benchCount(h), capacity: seatCount(h) }))
 
 /** The saved configuration of a session, with the students selected and those left unallocated; null if none. */
 export function getSeatingConfig(db: StudentDb, sessionId: number): { config: SeatingConfig; studentIds: number[]; unallocated: UnallocatedStudent[] } | null {
@@ -364,13 +388,63 @@ export function clearSeating(db: StudentDb, sessionId: number) {
 }
 
 /**
- * Sessions that have a seating plan (to copy their student selection or hall settings), newest
- * first. `studentCount` counts everyone selected, seated or not.
+ * "Same as previous exam": gives this session exactly the seating of another one, every student on
+ * the same hall, bench and seat, with no reshuffling. The selected students, configuration and
+ * unallocated list are copied too. Allowed only when both sessions' invigilator allocations have
+ * exactly the same halls, and refused when a bench used then is no longer in its hall. The copy replaces this session's plan in one transaction.
+ */
+export async function copySeating(db: StudentDb, sessionId: number, fromSessionId: number) {
+  if (sessionId === fromSessionId) return { success: false as const, error: "Choose a different exam to copy the seating from." }
+  const rows = db.query<any>("SELECT student_id, hall_id, bench_row, bench_col, bench_no, seat FROM seat_allocations WHERE session_id = ?", [fromSessionId])
+  if (rows.length === 0) return { success: false as const, error: "That exam has no seating plan to copy." }
+  const hallsOf = (id: number) => db.query<any>(
+    "SELECT DISTINCT h.* FROM allocations a JOIN halls h ON h.id = a.hall_id WHERE a.session_id = ? ORDER BY h.hall_code", [id])
+  const here = hallsOf(sessionId), there = hallsOf(fromSessionId)
+  const codes = (list: any[]) => list.map(h => h.hall_code).join(", ") || "none"
+  if (codes(here) !== codes(there)) {
+    return { success: false as const, error: `The seating can be copied only between exams with the same halls. The previous exam has ${codes(there)}; this exam has ${codes(here)}.` }
+  }
+  const halls = new Map(here.map(h => [h.id, h]))
+  const usedHalls = [...new Set(rows.map(r => r.hall_id))]
+  // Each seat that exists now: "row-col-L", and "row-col-R" on a bench (a chair has one seat).
+  const benches = new Map(usedHalls.map(id => [id, new Set(enabledBenches(hallLayout(halls.get(id))).flatMap(b =>
+    (b.seats === 2 ? ["L", "R"] : ["L"]).map(side => `${benchKey(b.row, b.col)}-${side}`)))]))
+  const gone = rows.filter(r => !benches.get(r.hall_id)!.has(`${benchKey(r.bench_row, r.bench_col)}-${r.seat}`))
+  if (gone.length) {
+    const codes = [...new Set(gone.map(r => halls.get(r.hall_id).hall_code))]
+    return { success: false as const, error: `The bench layout of ${codes.join(", ")} has changed since the previous exam, so its seats cannot be reused. Configure the seating afresh.` }
+  }
+  const config = db.queryOne<any>("SELECT config, student_ids, unallocated FROM seating_configs WHERE session_id = ?", [fromSessionId])
+  try {
+    await db.runTransaction(() => {
+      db.run("DELETE FROM seat_allocations WHERE session_id = ?", [sessionId])
+      for (const r of rows) {
+        db.run("INSERT INTO seat_allocations(session_id, student_id, hall_id, bench_row, bench_col, bench_no, seat) VALUES(?,?,?,?,?,?,?)",
+          [sessionId, r.student_id, r.hall_id, r.bench_row, r.bench_col, r.bench_no, r.seat])
+      }
+      db.run("DELETE FROM seating_configs WHERE session_id = ?", [sessionId])
+      if (config) {
+        db.run("INSERT INTO seating_configs(session_id, config, student_ids, unallocated) VALUES(?,?,?,?)",
+          [sessionId, config.config, config.student_ids, config.unallocated])
+      }
+    })
+  } catch (e: any) {
+    return { success: false as const, error: `The seating could not be copied, so this exam's plan was kept unchanged. (${e?.message ?? e})` }
+  }
+  let unallocated: UnallocatedStudent[] = []
+  try { unallocated = JSON.parse(config?.unallocated ?? "[]") ?? [] } catch { /* none */ }
+  return { success: true as const, seated: rows.length, unallocated, warnings: [] as string[] }
+}
+
+/**
+ * Sessions that have a seating plan (to copy their student selection, hall settings or whole
+ * seating), newest first, with the halls of their invigilator allocation. `studentCount` counts everyone selected, seated or not.
  */
 export function getSeatingSelections(db: StudentDb) {
   return db.query<any>(
     `SELECT es.id, es.cycle_id as cycleId, ec.name as cycleName, es.exam_date, es.session_type,
-            COUNT(sa.id) as seated, sc.student_ids
+            COUNT(sa.id) as seated, sc.student_ids,
+            (SELECT GROUP_CONCAT(DISTINCT a.hall_id) FROM allocations a WHERE a.session_id = es.id) as halls
      FROM exam_sessions es
      JOIN exam_cycles ec ON es.cycle_id = ec.id
      LEFT JOIN seat_allocations sa ON sa.session_id = es.id
@@ -378,10 +452,12 @@ export function getSeatingSelections(db: StudentDb) {
      WHERE sa.id IS NOT NULL OR sc.session_id IS NOT NULL
      GROUP BY es.id
      ORDER BY es.exam_date DESC, CASE es.session_type WHEN 'FN' THEN 1 ELSE 0 END, es.id DESC`
-  ).map(({ seated, student_ids, ...r }) => {
+  ).map(({ seated, student_ids, halls, ...r }) => {
     let selected: unknown = null
     try { selected = JSON.parse(student_ids ?? "null") } catch { /* an unreadable list counts the seated students */ }
-    return { ...r, studentCount: Array.isArray(selected) ? selected.length : seated }
+    /** The halls of its invigilator allocation ("Same as previous exam" needs exactly the same). */
+    const hallIds = String(halls ?? "").split(",").filter(Boolean).map(Number).sort((a, b) => a - b)
+    return { ...r, studentCount: Array.isArray(selected) ? selected.length : seated, hallIds }
   })
 }
 

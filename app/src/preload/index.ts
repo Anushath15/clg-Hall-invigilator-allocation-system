@@ -60,6 +60,7 @@ const api = {
   confirmSeating:   (sessionId: number, studentIds: number[], config: any, options?: { acceptUnallocated?: boolean }) => ipcRenderer.invoke("seating:confirm", sessionId, studentIds, config, options),
   getSessionSeating:(sessionId: number) => ipcRenderer.invoke("seating:get", sessionId),
   clearSeating:     (sessionId: number) => ipcRenderer.invoke("seating:clear", sessionId),
+  copySeating:      (sessionId: number, fromSessionId: number) => ipcRenderer.invoke("seating:copy", sessionId, fromSessionId),
   getSeatingSelections: () => ipcRenderer.invoke("seating:selections"),
   // Reports
   getStaffWiseReport:   (userId?: number, fromYear?: string, toYear?: string) => ipcRenderer.invoke("report:staffWise", userId, fromYear, toYear),

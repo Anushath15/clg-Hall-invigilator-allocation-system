@@ -8,7 +8,7 @@ import path from "path"
 import fs from "fs"
 import { app } from "electron"
 import initSqlJs, { Database, SqlJsStatic } from "sql.js"
-import { migrateStudentsAndSeating, migrateSeatingConfig } from "../../shared/students"
+import { migrateStudentsAndSeating, migrateSeatingConfig, migrateStudentSection, migrateSeatKinds } from "../../shared/students"
 
 let SQL: SqlJsStatic
 let _db: Database
@@ -141,7 +141,9 @@ function runMigrations(): void {
     "006_deleted_batches": migration006,
     "007_rotation_outlives_session": migration007,
     "008_students_seating": () => migrateStudentsAndSeating({ run, query }),
-    "009_seating_config": () => migrateSeatingConfig({ run, query })
+    "009_seating_config": () => migrateSeatingConfig({ run, query }),
+    "010_student_section": () => migrateStudentSection({ run, query }),
+    "011_seat_kinds": () => migrateSeatKinds({ run, query })
   }
 
   for (const [name, fn] of Object.entries(migrations)) {

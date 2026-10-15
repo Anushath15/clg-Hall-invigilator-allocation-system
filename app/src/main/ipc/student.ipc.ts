@@ -2,7 +2,7 @@ import { ipcMain } from "electron"
 import { db } from "../db/database"
 import {
   listStudents, listStudentBatches, saveStudent, deleteStudent, importStudents,
-  generateSeating, getSessionSeating, clearSeating, getSeatingSelections,
+  generateSeating, getSessionSeating, clearSeating, copySeating, getSeatingSelections,
   getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
 } from "../../shared/students"
 
@@ -19,6 +19,7 @@ export function registerStudentHandlers() {
   ipcMain.handle("seating:preview", async (_, sessionId, studentIds, config) => previewSeating(db, sessionId, studentIds, config))
   ipcMain.handle("seating:confirm", async (_, sessionId, studentIds, config, options) => confirmSeating(db, sessionId, studentIds, config, options ?? {}))
   ipcMain.handle("seating:get", async (_, sessionId) => getSessionSeating(db, sessionId))
+  ipcMain.handle("seating:copy", async (_, sessionId, fromSessionId) => copySeating(db, sessionId, fromSessionId))
   ipcMain.handle("seating:clear", async (_, sessionId) => clearSeating(db, sessionId))
   ipcMain.handle("seating:selections", async () => getSeatingSelections(db))
 }

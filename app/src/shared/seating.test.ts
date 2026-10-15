@@ -4,7 +4,7 @@ import {
   type SeatStudent, type SeatHall, type Gender, type SeatingConfig, type SeatingPlan, type BenchType
 } from "./seating"
 import { yearOfStudy, academicStartYear } from "./categories"
-import { enabledBenches, benchKey, validateHallLayout, cleanDisabled } from "./hall-layout"
+import { enabledBenches, benchKey, validateHallLayout, cleanDisabled, seatCount, type SeatKind } from "./hall-layout"
 import { validateStudent, validateStudentBatch, parseGender } from "./validation"
 
 /** Academic year of every plan below: batch 2022-2026 is Final Year, 2023-2027 Third, 2024-2028 Second. */
@@ -40,7 +40,7 @@ const seatedIn = (plan: SeatingPlan, hallId: number) => plan.seats.filter(s => s
 describe("Hall bench layout", () => {
   it("numbers benches column by column, front to back, skipping switched-off ones", () => {
     const b = enabledBenches({ rows: 3, cols: 2, disabled: [benchKey(2, 1)] })
-    expect(b).toEqual([
+    expect(b.map(({ row, col, benchNo }) => ({ row, col, benchNo }))).toEqual([
       { row: 1, col: 1, benchNo: 1 }, { row: 3, col: 1, benchNo: 2 },
       { row: 1, col: 2, benchNo: 3 }, { row: 2, col: 2, benchNo: 4 }, { row: 3, col: 2, benchNo: 5 }
     ])
@@ -77,12 +77,13 @@ describe("Student fields", () => {
     expect(parseGender("other")).toBeNull()
   })
   it("a complete student passes; each missing field is reported", () => {
-    const ok = { roll_no: "23CS001", register_no: "961223104001", name: "Anu S", gender: "F", batch: "2023-2027" }
+    const ok = { roll_no: "23CS001", register_no: "961223104001", name: "Anu S", gender: "F", section: "A", batch: "2023-2027" }
     expect(validateStudent(ok)).toBeNull()
     expect(validateStudent({ ...ok, roll_no: "" })).toBe("Roll Number is required.")
     expect(validateStudent({ ...ok, register_no: "96 12" })).toMatch(/Register Number can contain only/)
     expect(validateStudent({ ...ok, name: "" })).toBe("Name is required.")
     expect(validateStudent({ ...ok, gender: "X" })).toMatch(/Gender/)
+    expect(validateStudent({ ...ok, section: " " })).toBe("Section is required.")
     expect(validateStudent({ ...ok, batch: "2023" })).toMatch(/Batch/)
   })
 })
@@ -545,5 +546,60 @@ describe("Seating plan: roll number order, boys and girls together", () => {
     expect(plan.seats).toHaveLength(1) // one class: one per bench
     expect(plan.unallocated.map(u => u.gender)).toEqual(["F", "M"])
     expect(checkConfig(rollCfg([[1, true]]), halls, [...all, ...mixedClass("IT", 502301, 1)]).warnings.join(" ")).toMatch(/4 students are selected, but the halls used have only 2 seats/)
+  })
+})
+
+describe("Chairs", () => {
+  /** A hall whose every position is `kind`. */
+  const chairs = (id: number, rows: number, cols: number, kind: SeatKind = "chair"): SeatHall => {
+    const kinds: Record<string, SeatKind> = {}
+    for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++) kinds[benchKey(r, c)] = kind
+    return hall(id, rows, cols, { kinds })
+  }
+
+  it("a chair seats one student, a bench two", () => {
+    expect(seatCount(chairs(1, 3, 4))).toBe(12)
+    expect(seatCount(hall(2, 2, 2, { kinds: { [benchKey(1, 1)]: "chair" } }))).toBe(7)
+    expect(enabledBenches(chairs(1, 1, 2)).map(b => [b.kind, b.seats])).toEqual([["chair", 1], ["chair", 1]])
+  })
+
+  it("seats one student per chair, only in the left seat, and fills every chair", () => {
+    const all = [...students("M", FINAL, 6), ...students("M", THIRD, 6, "IT")]
+    const halls = [chairs(1, 3, 4)]
+    const cfg = config([[1, "M"]])
+    const plan = planSeating(all, halls, cfg, AY)
+    checkPlan(all, halls, cfg, plan)
+    expect(plan.seats).toHaveLength(12)
+    expect(plan.seats.every(s => s.seat === "L")).toBe(true)
+    expect(plan.halls[0]).toMatchObject({ capacity: 12, occupied: 12, empty: 0 })
+  })
+
+  it("students of one class may sit on neighbouring chairs (no bench mate)", () => {
+    const all = students("F", FINAL, 5)
+    const halls = [chairs(1, 5, 1)]
+    const plan = planSeating(all, halls, config([[1, "F"]]), AY)
+    expect(plan.unallocated).toEqual([])
+    expect(plan.seats).toHaveLength(5)
+  })
+
+  it("a hall mixing benches and chairs uses both", () => {
+    const all = [...students("M", FINAL, 4), ...students("M", THIRD, 4, "IT")]
+    const halls = [hall(1, 2, 3, { kinds: { [benchKey(1, 3)]: "chair", [benchKey(2, 3)]: "chair" } })] // 4 benches + 2 chairs = 10 seats
+    const cfg = autoConfigure(all, halls)
+    const plan = planSeating(all, halls, cfg, AY)
+    checkPlan(all, halls, cfg, plan)
+    expect(plan.unallocated).toEqual([])
+    expect(plan.seats.filter(s => s.col === 3).every(s => s.seat === "L")).toBe(true)
+  })
+
+  it("the validator refuses a right seat on a chair", () => {
+    const all = students("M", FINAL, 1)
+    const halls = [chairs(1, 1, 1)]
+    const errors = validateSeatingPlan({ seats: [{ studentId: all[0].id, hallId: 1, row: 1, col: 1, benchNo: 1, seat: "R" }], unallocated: [] }, all, halls, config([[1, "M"]])).errors
+    expect(errors.join(" ")).toMatch(/single chair/)
+  })
+
+  it("patternSeats counts one seat per chair", () => {
+    expect(patternSeats(["MM", "FF"], enabledBenches(hall(1, 1, 3, { kinds: { [benchKey(1, 2)]: "chair" } })))).toEqual({ M: 4, F: 1 })
   })
 })

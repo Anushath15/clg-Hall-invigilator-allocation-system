@@ -41,16 +41,19 @@ export default function StudentSelector({ session, academicYear, seats, initialI
     api.getSeatingSelections().then(s => setSources(s.filter((x: any) => x.id !== session.id))).catch(() => setSources([]))
   }, [session.id])
 
-  // Groups: batch → department, each sorted by roll number.
+  // Groups: batch → department → section, each sorted by roll number.
   const groups = useMemo(() => {
     const m = new Map<string, any[]>()
     for (const s of students) {
       if (!matchesSearch(query, s.roll_no, s.register_no, s.name)) continue
-      const k = `${s.batch}|${s.department_code ?? "—"}`
+      const k = `${s.batch}|${s.department_code ?? "—"}|${s.section ?? ""}`
       m.set(k, [...(m.get(k) ?? []), s])
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, list]) => ({ key, batch: key.split("|")[0], dept: key.split("|")[1], list: list.sort((a, b) => rollOrder.compare(a.roll_no, b.roll_no)) }))
+      .map(([key, list]) => {
+        const [batch, dept, section] = key.split("|")
+        return { key, batch, dept, section, list: list.sort((a, b) => rollOrder.compare(a.roll_no, b.roll_no)) }
+      })
   }, [students, query])
   const batches = useMemo(() => [...new Set(students.map(s => s.batch))].sort(), [students])
 
@@ -150,7 +153,7 @@ export default function StudentSelector({ session, academicYear, seats, initialI
                   <input type="checkbox" checked={allOn(ids)} ref={el => { if (el) el.indeterminate = count > 0 && count < ids.length }}
                     onChange={e => setMany(ids, e.target.checked)} className="accent-brand-primary" />
                   <button onClick={() => toggleOpen(g.key)} className="flex-1 text-left text-sm">
-                    <b>{g.dept} – {yearText(g.batch)}</b> <span className="text-brand-textsec">({g.batch})</span>
+                    <b>{g.dept}{g.section && ` ${g.section}`} – {yearText(g.batch)}</b> <span className="text-brand-textsec">({g.batch})</span>
                     <span className="text-xs text-brand-textsec ml-2">{count}/{ids.length} selected · {g.list.filter(s => s.gender === "M").length} boys · {g.list.filter(s => s.gender === "F").length} girls</span>
                   </button>
                 </div>

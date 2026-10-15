@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, Upload, CheckCircle, XCircle } from "lucide-react
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 import BenchLayoutEditor from "../components/BenchLayoutEditor"
 import StudentsTab from "../components/StudentsTab"
-import { hallLayout, benchCount, cleanDisabled, MAX_BENCH_ROWS, MAX_BENCH_COLS } from "../../../shared/hall-layout"
+import { hallLayout, benchCount, seatCount, kindSummary, cleanDisabled, cleanKinds, MAX_BENCH_ROWS, MAX_BENCH_COLS } from "../../../shared/hall-layout"
 import { IS_DESKTOP } from "../lib/platform"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
@@ -237,13 +237,18 @@ function HallsTab() {
   const load = async () => setHalls(await api.getHalls())
   useEffect(() => { load() }, [])
 
-  // The form keeps the bench layout as numbers and a list of removed bench positions.
+  // The form keeps the bench layout as numbers, a list of removed positions and the chairs (positions that are not benches).
   const openForm = (h: any) => {
     const l = hallLayout(h)
-    setForm({ ...h, bench_rows: l.rows, bench_cols: l.cols, disabled_benches: l.disabled })
+    setForm({ ...h, bench_rows: l.rows, bench_cols: l.cols, disabled_benches: l.disabled, seat_kinds: l.kinds })
   }
-  const formLayout = form ? { rows: Number(form.bench_rows) || 0, cols: Number(form.bench_cols) || 0, disabled: form.disabled_benches ?? [] } : null
-  const formBenches = formLayout && formLayout.rows > 0 && formLayout.cols > 0 ? benchCount({ ...formLayout, disabled: cleanDisabled(formLayout) }) : 0
+  const formLayout = form ? { rows: Number(form.bench_rows) || 0, cols: Number(form.bench_cols) || 0, disabled: form.disabled_benches ?? [], kinds: form.seat_kinds ?? {} } : null
+  const cleanForm = formLayout && formLayout.rows > 0 && formLayout.cols > 0 ? (() => {
+    const disabled = cleanDisabled(formLayout)
+    return { ...formLayout, disabled, kinds: cleanKinds({ ...formLayout, disabled }) }
+  })() : null
+  const formBenches = cleanForm ? benchCount(cleanForm) : 0
+  const formSeats = cleanForm ? seatCount(cleanForm) : 0
   const setGrid = (key: "bench_rows" | "bench_cols", value: string) => {
     const max = key === "bench_rows" ? MAX_BENCH_ROWS : MAX_BENCH_COLS
     setForm({ ...form, [key]: Math.max(0, Math.min(max, Math.floor(Number(value) || 0))) })
@@ -253,7 +258,7 @@ function HallsTab() {
     if (!form?.hall_code?.trim()) return toast.error("Hall Code is required.")
     setLoading(true)
     try {
-      const r = await api.saveHall({ ...form, disabled_benches: formLayout ? cleanDisabled(formLayout) : [] })
+      const r = await api.saveHall({ ...form, disabled_benches: cleanForm?.disabled ?? [], seat_kinds: cleanForm?.kinds ?? {} })
       if (r?.success === false) return toast.error(r.error) // e.g. the hall code is already used
       toast.success("Saved!"); setForm(null); load()
     } finally { setLoading(false) }
@@ -269,7 +274,7 @@ function HallsTab() {
     <div>
       <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <p className="text-sm text-brand-textsec">{halls.length} halls · Listed in the order they were added; the allocation does not depend on this order</p>
-        <button onClick={() => setForm({ is_active: true, bench_rows: 0, bench_cols: 0, disabled_benches: [] })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
+        <button onClick={() => setForm({ is_active: true, bench_rows: 0, bench_cols: 0, disabled_benches: [], seat_kinds: {} })} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Hall</button>
       </div>
 
       {form && (
@@ -288,25 +293,25 @@ function HallsTab() {
                   </datalist>
                 </div>
                 <div className="border-t border-brand-border pt-3">
-                  <p className="text-sm font-semibold text-brand-textmain">Bench layout (student seating)</p>
-                  <p className="text-xs text-brand-textsec mb-2">Enter the number of columns, and as rows the most benches any column has. Then tap the benches that are not there to remove them. Two students sit on each bench.</p>
+                  <p className="text-sm font-semibold text-brand-textmain">Seating layout (student seating)</p>
+                  <p className="text-xs text-brand-textsec mb-2">Enter the number of columns, and as rows the most seats any column has. Then mark what stands at each place: a bench (two students), a chair (one student), or no seat.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div><label className="label">Columns (left to right)</label><input className="input-field" type="number" min={0} max={MAX_BENCH_COLS} step={1} value={form.bench_cols ?? 0} onChange={e => setGrid("bench_cols", e.target.value)} /></div>
                     <div><label className="label">Rows (front to back)</label><input className="input-field" type="number" min={0} max={MAX_BENCH_ROWS} step={1} value={form.bench_rows ?? 0} onChange={e => setGrid("bench_rows", e.target.value)} /></div>
                   </div>
                   {formLayout && formLayout.rows > 0 && formLayout.cols > 0 && (
                     <div className="mt-3">
-                      <BenchLayoutEditor rows={formLayout.rows} cols={formLayout.cols} disabled={formLayout.disabled}
-                        onChange={d => setForm({ ...form, disabled_benches: d })} />
+                      <BenchLayoutEditor rows={formLayout.rows} cols={formLayout.cols} disabled={formLayout.disabled} kinds={formLayout.kinds}
+                        onChange={(d, k) => setForm({ ...form, disabled_benches: d, seat_kinds: k })} />
                       <p className="text-xs text-brand-textsec mt-2 text-center">
-                        <b className="text-brand-textmain">{formBenches}</b> benches · <b className="text-brand-textmain">{formBenches * 2}</b> seats
+                        {cleanForm && kindSummary(cleanForm)} · <b className="text-brand-textmain">{formSeats}</b> seats
                         {formLayout.rows * formLayout.cols - formBenches > 0 && <> · {formLayout.rows * formLayout.cols - formBenches} removed</>}
                       </p>
                     </div>
                   )}
                 </div>
                 {formBenches > 0
-                  ? <div><label className="label">Capacity</label><p className="text-sm text-brand-textsec">{formBenches * 2} seats (two per bench)</p></div>
+                  ? <div><label className="label">Capacity</label><p className="text-sm text-brand-textsec">{formSeats} seats (two per bench, one per chair)</p></div>
                   : <div><label className="label">Capacity</label><input className="input-field" type="number" min={0} step={1} value={form.capacity ?? 0} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} /></div>}
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="accent-brand-primary" /><span className="text-sm">Active</span></label>
               </div>
@@ -322,7 +327,7 @@ function HallsTab() {
       <div className="card p-0 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-brand-border">
-            <tr>{["Order","Hall Code","Block","Floor","Benches","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
+            <tr>{["Order","Hall Code","Block","Floor","Seating","Capacity","Status",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-brand-textsec uppercase tracking-wider">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {halls.map((h: any, i: number) => (
@@ -354,7 +359,7 @@ function HallsTab() {
 function BenchSummary({ hall }: { hall: any }) {
   const l = hallLayout(hall)
   if (!l.rows) return <span className="text-amber-600">Not set</span>
-  return <>{benchCount(l)} <span className="text-gray-400">({l.cols} col × {l.rows} rows{l.disabled.length ? `, ${l.disabled.length} removed` : ""})</span></>
+  return <>{kindSummary(l)} <span className="text-gray-400">({l.cols} col × {l.rows} rows{l.disabled.length ? `, ${l.disabled.length} removed` : ""})</span></>
 }
 
 // ── DEPARTMENTS TAB ──────────────────────────────────────────
