@@ -28,15 +28,16 @@
   <li><span>5</span>Technology stack</li>
   <li><span>6</span>Database design</li>
   <li><span>7</span>Allocation algorithm and validation rules</li>
-  <li><span>8</span>Testing and quality</li>
-  <li><span>9</span>Screenshots</li>
-  <li><span>10</span>Limitations and future work</li>
-  <li><span>11</span>Conclusion</li>
+  <li><span>8</span>Student seating</li>
+  <li><span>9</span>Testing and quality</li>
+  <li><span>10</span>Screenshots</li>
+  <li><span>11</span>Limitations and future work</li>
+  <li><span>12</span>Conclusion</li>
 </ul>
 
 <h1>1. Abstract</h1>
 <p>Allocating invigilators to examination halls is a recurring, manual task in every college. Done by hand, it is slow and error-prone: the same person can be sent to the same hall repeatedly while others are not, a hall can be double-booked, and there is no record to check fairness against afterwards.</p>
-<p><b>HIAS (Hall Invigilator Allocation System)</b> is a Windows desktop application that automates this task. For every exam session it assigns each on-duty staff member to a hall using a <b>rotation algorithm</b> that remembers each person's previous halls, validates the result against seven rules, allows controlled manual edits (swaps between two invigilators, checked for both) with an audit trail, and produces printable PDF allocation sheets and reports. It runs completely offline with an embedded SQLite database, so it can be installed on any college computer without a server or internet connection.</p>
+<p><b>HIAS (Hall Invigilator Allocation System)</b> is a Windows desktop application that automates this task. For every exam session it assigns each on-duty staff member to a hall using a <b>rotation algorithm</b> that remembers each person's previous halls, validates the result against seven rules, allows controlled manual edits (swaps between two invigilators, checked for both) with an audit trail, and produces printable PDF allocation sheets and reports. It also seats the students of each session in the same halls, two to a bench, so that two students of the same class never share a bench, and prints a seating plan for every hall. It runs completely offline with an embedded SQLite database, so it can be installed on any college computer without a server or internet connection.</p>
 
 <h1>2. Problem statement and objectives</h1>
 <h2>Problem</h2>
@@ -53,6 +54,7 @@
   <li>Validate every allocation automatically before it is finalised.</li>
   <li>Allow justified manual changes while keeping a record of what was changed and why.</li>
   <li>Produce printable, college-branded reports.</li>
+  <li>Seat the students of each session in its halls under the college's seating rules, and print the seating plans and attendance sheets.</li>
   <li>Work offline on an ordinary Windows computer with simple installation and backup.</li>
 </ol>
 
@@ -65,6 +67,8 @@
   <div class="card"><b>Controlled edits</b><br>A manual change swaps two invigilators' halls, is offered only when the rules hold for both, and is recorded as "Admin Edited".</div>
   <div class="card"><b>Reports and PDF</b><br>Session allocation sheet, staff-wise duties, date-wise hall sheet, complete timetable grid and rotation audit, all exportable to PDF with the college letterhead.</div>
   <div class="card"><b>History and audit</b><br>Search past allocations by batch, session, staff or hall; key actions are written to an audit log.</div>
+  <div class="card"><b>Student seating</b><br>Students (with Excel import) are seated two to a bench in each session's halls, by one of four methods: roll number order, separate boys' and girls' halls, one bench pattern for all halls, or custom per hall. Seating plan (made for black-and-white printing), attendance sheet and student list PDFs.</div>
+  <div class="card"><b>Hall bench layouts</b><br>Each hall's benches as a column-by-row grid seen from the board; benches that are not there are tapped off, and the capacity follows from the layout.</div>
   <div class="card"><b>Offline and safe</b><br>No internet or server needed; one-click backup and restore; destructive actions require typed confirmation.</div>
 </div>
 
@@ -129,7 +133,10 @@
   <tr><th style="width:24%">Table</th><th>Purpose</th><th style="width:34%">Key columns</th></tr>
   <tr><td>departments</td><td>Academic departments</td><td>code (unique), name</td></tr>
   <tr><td>users</td><td>Staff/invigilators and the administrator</td><td>staff_id (unique), name, department_id, role, is_active</td></tr>
-  <tr><td>halls</td><td>Examination halls</td><td>hall_code (unique), block, floor, capacity, sort_order, is_active</td></tr>
+  <tr><td>halls</td><td>Examination halls, with their bench layout</td><td>hall_code (unique), block, floor, capacity, sort_order, is_active, bench_rows, bench_cols, disabled_benches</td></tr>
+  <tr><td>students</td><td>Students who can be seated</td><td>roll_no (unique), register_no (unique), name, gender, department_id, batch, is_active</td></tr>
+  <tr><td>seat_allocations</td><td>The saved seating plan: one seat per student per session</td><td>session_id, student_id, hall_id, bench_row, bench_col, bench_no, seat (L/R); unique per (session, student) and per seat</td></tr>
+  <tr><td>seating_configs</td><td>Each session's seating settings, the students selected and those left unallocated</td><td>session_id, config (method, hall patterns, classes per hall), student_ids, unallocated</td></tr>
   <tr><td>exam_cycles</td><td>Allocation batches (exam series)</td><td>name, academic_year, status</td></tr>
   <tr><td>exam_sessions</td><td>One FN/AN session on a date; rotation_step is the confirmation order (unconfirmed sessions are kept in date order; confirmed ones are never renumbered)</td><td>cycle_id, exam_date, session_type, rotation_step, timings, status</td></tr>
   <tr><td>allocations</td><td>Staff-to-hall assignments per session</td><td>session_id, user_id, hall_id, generated_hall_id, is_manually_edited, edit_reason; unique per (session, user) and (session, hall)</td></tr>
@@ -167,13 +174,37 @@
 <h2>Why a matching algorithm</h2>
 <p>An earlier version assigned halls one person at a time. Fairness testing showed that this worked perfectly for a fixed team but failed badly when more staff than halls take turns (the normal case in a college): two people competed for the same "next" hall and one was pushed into a recently used hall, so the system rejected its own allocation. With 10 staff sharing 6 halls, only 5 of 60 sessions could be confirmed; with a random duty list of 6 out of 12 staff, 9 of 80. Assigning everyone together as an optimal matching fixed this: all sessions in every tested scenario now confirm.</p>
 
-<h1>8. Testing and quality</h1>
+<h1>8. Student seating</h1>
+<p>Students are seated in the halls of a session's invigilator allocation. The seating engine (<code>src/shared/seating.ts</code>) is pure logic with no database access, so the same code runs in the desktop app's main process (for the live preview and for saving), in the browser build, and in the tests.</p>
+<h2>Rules</h2>
+<ol>
+  <li>At most two students per bench, one per seat.</li>
+  <li>Two students of the same <b>class</b> (department and batch, for example CSE – Third Year) never share a bench.</li>
+  <li>A hall holds at most a set number of different classes (papers): a <b>target</b> for every hall, and up to a <b>maximum</b> only where the target would leave students without a seat (2 to 4; default 3, up to 4).</li>
+  <li>In the gender-separated methods every seat holds the gender its hall's <b>bench pattern</b> gives it. Benches are <i>Boy + Boy</i> or <i>Girl + Girl</i>, so a boy and a girl never share a bench. In <b>Roll number order</b> gender is ignored.</li>
+</ol>
+<h2>Allocation methods</h2>
+<table>
+  <tr><th style="width:28%">Method</th><th>Configuration</th></tr>
+  <tr><td>Roll number order</td><td>Everyone as one group; halls are used or not. Each seat column follows roll numbers whatever the gender (102349 a boy, then 102350 a girl).</td></tr>
+  <tr><td>Separate halls</td><td>Whole boys' and girls' halls. The split is found by a subset-sum search over every combination of halls: the most students seated, then the fewest empty seats, then the fewest halls.</td></tr>
+  <tr><td>Same pattern in every hall</td><td>One bench pattern (for example Boy + Boy, Girl + Girl) repeated in every hall; halls are taken in order until both groups have enough seats.</td></tr>
+  <tr><td>Custom per hall</td><td>Each hall boys, girls, a pattern of both, or not used. The automatic setting uses whole halls and, only when no split of whole halls can seat everyone, shares one hall bench by bench (boy benches, then girl benches).</td></tr>
+</table>
+<h2>Filling the seats</h2>
+<p>Each column of benches has a left-seat and a right-seat column. Every seat column is given <b>one class</b>, whose students sit in it front to back in roll-number order; the classes take the seat columns in turn (largest class first, then by batch and department), each continuing from where it stopped, and the next hall carries on with the next class. Bench mates are therefore of different classes by construction. A hall is filled with the target number of classes; if that leaves seats empty while students wait, the hall is filled again allowing one more class, up to the maximum, and the first that fills it is kept. Students still left over then go through a <b>repair pass</b>: a leftover student takes the seat of a student of another class, who moves to an empty seat beside a student of yet another class, within the hall limits. Anyone left after that is listed as unallocated with the reason. The result is deterministic.</p>
+<p>Before a plan is saved it is checked again by an <b>independent validator</b>: every selected student seated once or listed as unallocated, at most two per bench and one per seat, no two of one class on a bench, no hall over its class limit, and every seat of the right gender for its pattern. A plan with any error is not saved, and the plan replaces the previous one inside a transaction.</p>
+<h2>Output</h2>
+<p>The <b>seating plan</b> PDF draws each hall as seen from the board, like the screen: bench cards in columns and rows, each with the roll numbers of its left and right seats. It is designed for black-and-white printing: roll numbers in bold black, and the years distinguished by grey shade and border style (solid, dashed or none) instead of colour, with a <b>B</b>/<b>G</b> mark in halls of boys and girls. Attendance sheets, a student seat list and the unallocated list are also exported.</p>
+
+<h1>9. Testing and quality</h1>
 <h2>Automated tests</h2>
-<p><b>159 automated tests</b> (Vitest, 16 files) run against in-memory and on-disk databases and all pass. They cover:</p>
+<p><b>305 automated tests</b> (Vitest, 27 files) run against in-memory and on-disk databases and all pass. They cover:</p>
 <ul>
   <li>The rotation algorithm: rotation cycles (no hall repeats until every hall of the pool has been visited, then the cycle resets), the seeded random draw (the same selection gives the same draft; different sessions give different orders), staff who join later, pools smaller than the total number of halls, and reading history in the correct order across batches.</li>
   <li>Every validation rule, including a regression test for a full-cycle restart that an earlier version wrongly blocked.</li>
   <li>The allocation lifecycle: generate, swap (with R1 checked for both people), confirm strictly in order, keep unconfirmed sessions in date order, delete draft sessions, permanent staff deletion, rotation restart, whole-batch deletion (from Settings, confirmed by typing the batch name plus the name and Staff ID of an active person in the Staff list, checked against the database, and kept in a permanent record of deleted batches; the rotation history is retained so completed duties still count), and batch status updates.</li>
+  <li>Student seating: the seat-column fill and the class turn order, the same-class rule, the class limit per hall, the repair pass, every allocation method including roll number order, the automatic hall split (checked against a brute-force search over every assignment of halls in 300 random cases), the independent validator, student import and validation, and the seating PDFs.</li>
   <li>A <b>fairness suite</b> of 30 multi-session scenarios run through the real engine, validator and database (below).</li>
   <li>The selection window and output: copying a previous session's selection (identifiers only; the allocation generated afterwards is a fresh draw, also across batches), the staff and hall search, report row order, department validation, and HTML escaping of the printable duty slip.</li>
   <li>Offline operation: the complete administrator workflow and PDF generation with every network function disabled, creation of a fresh database, opening a database from the first version with all its records, and backup and restore, including refusing a file that is not a HIAS backup.</li>
@@ -232,13 +263,13 @@
 <p>A separate large-data run of the packaged application used 200 staff, 100 halls and 50 sessions with a random 100 staff on duty in each (5,000 allocations). Every session generated (on average in 178 ms, at most 347 ms) and confirmed (on average in 13 ms) with no hall repeat and no back-to-back repeat. The History page listed every record in about 1.4 s, the largest report PDFs (132 to 201 pages) exported in about 1.5 s, the swap dialog for a 100-hall session opened in 0.1 s, and the 0.86 MB database reopened with every allocation intact.</p>
 <p>The quality-assurance pass before this release found and fixed, among others: a confirmed session that could still be regenerated or edited; manual edits that could never change a hall (now swaps, checked for both people); sessions that could be confirmed out of order; sessions added later that were placed out of date order; Afternoon listed before Forenoon in two reports; an unescaped name in the printable duty slip; and several smaller display issues.</p>
 
-<h1>9. Screenshots</h1>
+<h1>10. Screenshots</h1>
 <figure><img src="images/allocation.png" alt="Allocation workspace"><figcaption>Allocation workspace: a confirmed session with its generated hall assignments.</figcaption></figure>
 <figure><img src="images/report-timetable.png" alt="Timetable report"><figcaption>Complete timetable grid: every staff member against every session of a batch.</figcaption></figure>
 <figure><img src="images/dashboard.png" alt="Dashboard"><figcaption>Dashboard.</figcaption></figure>
 <p class="small">All names shown are sample data used for testing.</p>
 
-<h1>10. Limitations and future work</h1>
+<h1>11. Limitations and future work</h1>
 <h2>Current limitations</h2>
 <ul>
   <li><b>Single computer.</b> Data lives on the computer where HIAS is installed; several computers cannot share it live. Backup and restore move data between computers.</li>
@@ -257,8 +288,8 @@
   <li>Turning on Electron's renderer sandbox (<code>sandbox: true</code>) as further hardening.</li>
 </ul>
 
-<h1>11. Conclusion</h1>
-<p>HIAS replaces a slow, manual and error-prone process with a reliable tool: an entire session is allocated in one click, fairness is enforced by a rotation that remembers every confirmed duty, mistakes are caught by automatic rule checks before anything is finalised, and every change is recorded. Delivered as an offline Windows application with printable reports, backup and a user guide, it is ready to be used by the examination cell.</p>
+<h1>12. Conclusion</h1>
+<p>HIAS replaces a slow, manual and error-prone process with a reliable tool: an entire session is allocated in one click, its students are seated under the college's rules with printable plans, fairness is enforced by a rotation that remembers every confirmed duty, mistakes are caught by automatic rule checks before anything is finalised, and every change is recorded. Delivered as an offline Windows application with printable reports, backup and a user guide, it is ready to be used by the examination cell.</p>
 
 </body>
 </html>
