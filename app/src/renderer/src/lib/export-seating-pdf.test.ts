@@ -37,6 +37,20 @@ describe("Seating PDFs", () => {
     for (const t of ["FRONT", "Column 1", "Column 2", "R1", "R2", "Bench 1", "Bench 2"]) expect(text).toContain(t)
   })
 
+  it("a hall's benches, legend and class table always fit on one sheet", () => {
+    // Big halls, many classes, and class names long enough to wrap in the table.
+    for (const [rows, cols, nClasses, name] of [[5, 4, 3, "CSE"], [12, 6, 8, "CSE"], [20, 6, 6, "CSE"], [8, 8, 12, "Computer Science and Engineering (Artificial Intelligence and Machine Learning)"]] as const) {
+      const seats: SeatRow[] = []
+      for (let r = 1, id = 0; r <= rows; r++) for (let c = 1; c <= cols; c++) for (const side of ["L", "R"] as const) {
+        id++
+        seats.push({ ...seat(id, 1, "A101", (r - 1) * cols + c, r, c, side, "M", "2023-2027"), category: `${name} ${id % nClasses} – Final Year` })
+      }
+      const doc = buildSeatingPlanPDF({ ...args, halls: [{ id: 1, hall_code: "A101", bench_rows: rows, bench_cols: cols, disabled_benches: "[]", invigilators: [] }], seats })
+      expect(doc.getNumberOfPages(), `${rows}x${cols}, ${nClasses} classes`).toBe(1)
+      expect((doc as any).lastAutoTable.finalY).toBeLessThanOrEqual(doc.internal.pageSize.height - 6)
+    }
+  })
+
   it("each hall page has a class table: roll number range, who, how many, and a total", () => {
     const hall1 = args.seats.filter(s => s.hallId === 1)
     expect(classSummary(hall1)).toEqual([

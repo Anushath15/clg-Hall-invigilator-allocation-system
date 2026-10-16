@@ -117,6 +117,43 @@ function seatBox(doc: jsPDF, x: number, y: number, w: number, h: number, st: Sea
   doc.setLineDashPattern([], 0)
 }
 
+const TABLE_BOTTOM = 6
+/**
+ * The class table under a hall's benches: which classes sit there, their roll numbers, and how many.
+ * Draws it at `startY` and returns its height.
+ */
+function classTable(doc: jsPDF, startY: number, classes: { label: string; range: string; count: number }[], total: number,
+  styleOf: (c: string) => SeatStyle, classNo: (c: string) => number): number {
+  const pageW = doc.internal.pageSize.width
+  const tableW = Math.min(170, pageW - 28)
+  autoTable(doc, {
+    startY,
+    margin: { left: (pageW - tableW) / 2, right: (pageW - tableW) / 2, bottom: TABLE_BOTTOM },
+    showFoot: "lastPage",
+    tableWidth: tableW,
+    head: [["KEY", "CLASS", "ROLL NUMBERS SPACE", "TOTAL"]],
+    body: classes.map(c => ["", c.label, c.range, String(c.count).padStart(2, "0")]),
+    foot: [[{ content: "TOTAL", colSpan: 3, styles: { halign: "right" } }, String(total).padStart(2, "0")]],
+    theme: "grid",
+    tableLineColor: 0, tableLineWidth: 0.3,
+    styles: { fontSize: 9, cellPadding: 1.2, textColor: 0, lineColor: 0, lineWidth: 0.3, halign: "center", valign: "middle" },
+    headStyles: { fillColor: 255, textColor: 0, fontStyle: "bold" },
+    footStyles: { fillColor: 255, textColor: 0, fontStyle: "bold" },
+    columnStyles: { 0: { cellWidth: tableW * 0.1 }, 1: { cellWidth: tableW * 0.35 }, 2: { cellWidth: tableW * 0.4 }, 3: { cellWidth: tableW * 0.15 } },
+    // KEY: a seat swatch in the class's style with its number, as on the benches.
+    didDrawCell: d => {
+      if (d.section !== "body" || d.column.index !== 0) return
+      const c = classes[d.row.index].label
+      const w = Math.min(14, d.cell.width - 3), h = Math.min(4.6, d.cell.height - 1.4)
+      const bx = d.cell.x + (d.cell.width - w) / 2, by = d.cell.y + (d.cell.height - h) / 2
+      seatBox(doc, bx, by, w, h, styleOf(c))
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(0)
+      doc.text(String(classNo(c)), bx + w / 2, by + h / 2 + 1, { align: "center" })
+    }
+  })
+  return ((doc as any).lastAutoTable?.finalY ?? startY) - startY
+}
+
 /**
  * One landscape page per hall: the benches as seen from the front, laid out like the screen. Each
  * bench is a card with its number and its left and right seats; each seat shows the roll number in
@@ -150,8 +187,11 @@ export function buildSeatingPlanPDF(args: SeatingExportArgs): jsPDF {
     y += 8
 
     // Card size: as large as fits the page (at most 52 x 17 mm), then everything scales with it.
-    // The footer holds the legend and the class table (a heading, a row per class and a total).
-    const labelW = 10, gapX = 3, gapY = 2.5, headH = 6, footH = 16 + (classes.length + 2) * 7.5
+    // The footer holds the legend line and the class table, measured by drawing it on a scratch page,
+    // so the grid, legend and table always share one sheet.
+    const scratch = new jsPDF({ orientation: "landscape" })
+    const tableH = classTable(scratch, 0, classes, seats.length, styleOf, classNo)
+    const labelW = 10, gapX = 3, gapY = 2.5, headH = 6, footH = 6 + 3 + tableH + TABLE_BOTTOM + 1
     const cols = Math.max(1, layout.cols), rows = Math.max(1, layout.rows)
     const cardW = Math.min(52, (pageW - 28 - labelW - gapX * (cols - 1)) / cols)
     const cardH = Math.min(17, cardW * 0.34, (pageH - y - headH - footH - gapY * (rows - 1)) / rows)
@@ -215,33 +255,7 @@ export function buildSeatingPlanPDF(args: SeatingExportArgs): jsPDF {
     doc.setTextColor(INK)
     doc.text(`Each bench: left seat, right seat (as seen from the front)${hasChairs ? "; each chair: one seat" : ""}.   The number in a seat is its class (see KEY below).`, lx, ly)
 
-    // Class table: which classes sit here, their roll numbers, and how many of each.
-    const tableW = Math.min(170, pageW - 28)
-    autoTable(doc, {
-      startY: ly + 3,
-      margin: { left: (pageW - tableW) / 2, right: (pageW - tableW) / 2, bottom: 6 },
-      showFoot: "lastPage",
-      tableWidth: tableW,
-      head: [["KEY", "CLASS", "ROLL NUMBERS SPACE", "TOTAL"]],
-      body: classes.map(c => ["", c.label, c.range, String(c.count).padStart(2, "0")]),
-      foot: [[{ content: "TOTAL", colSpan: 3, styles: { halign: "right" } }, String(seats.length).padStart(2, "0")]],
-      theme: "grid",
-      tableLineColor: 0, tableLineWidth: 0.3,
-      styles: { fontSize: 9, cellPadding: 1.2, textColor: 0, lineColor: 0, lineWidth: 0.3, halign: "center", valign: "middle" },
-      headStyles: { fillColor: 255, textColor: 0, fontStyle: "bold" },
-      footStyles: { fillColor: 255, textColor: 0, fontStyle: "bold" },
-      columnStyles: { 0: { cellWidth: tableW * 0.1 }, 1: { cellWidth: tableW * 0.35 }, 2: { cellWidth: tableW * 0.4 }, 3: { cellWidth: tableW * 0.15 } },
-      // KEY: a seat swatch in the class's style with its number, as on the benches.
-      didDrawCell: d => {
-        if (d.section !== "body" || d.column.index !== 0) return
-        const c = classes[d.row.index].label
-        const w = Math.min(14, d.cell.width - 3), h = Math.min(4.6, d.cell.height - 1.4)
-        const bx = d.cell.x + (d.cell.width - w) / 2, by = d.cell.y + (d.cell.height - h) / 2
-        seatBox(doc, bx, by, w, h, styleOf(c))
-        doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(0)
-        doc.text(String(classNo(c)), bx + w / 2, by + h / 2 + 1, { align: "center" })
-      }
-    })
+    classTable(doc, ly + 3, classes, seats.length, styleOf, classNo)
     doc.setTextColor(INK); doc.setDrawColor(0); doc.setLineWidth(0.2)
   })
   return doc
