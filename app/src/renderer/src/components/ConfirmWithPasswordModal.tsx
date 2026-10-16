@@ -92,7 +92,7 @@ export default function ConfirmWithPasswordModal({
             type="button"
             onClick={handleCancel}
             disabled={loading}
-            className="p-1.5 rounded-lg hover:bg-gray-200/60 text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-gray-200/60 text-gray-600 hover:text-gray-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>

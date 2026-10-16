@@ -129,7 +129,7 @@ export default function StaffHallSelector({ session, allUsers, allHalls, onConfi
         {/* Toolbar: search + Excel duty list */}
         <div className="px-6 py-3 border-b border-brand-border flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-gray-600 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -139,7 +139,7 @@ export default function StaffHallSelector({ session, allUsers, allHalls, onConfi
             />
             {query && (
               <button onClick={() => setQuery("")} title="Clear search"
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 text-gray-400">
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 text-gray-600">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -182,7 +182,7 @@ export default function StaffHallSelector({ session, allUsers, allHalls, onConfi
                 {skipped ? <AlertTriangle className="w-4 h-4 flex-shrink-0" /> : <CheckCircle className="w-4 h-4 flex-shrink-0" />}
                 Copied from {copied.label}: {copied.staff} staff and {copied.halls} halls ticked. Generate Allocation draws their halls afresh.
               </p>
-              <button onClick={() => setCopied(null)} className="p-0.5 rounded hover:bg-black/5 text-gray-400"><X className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setCopied(null)} className="p-0.5 rounded hover:bg-black/5 text-gray-600"><X className="w-3.5 h-3.5" /></button>
             </div>
             {skippedNote && <p className="mt-1 ml-6 text-xs text-amber-700">{skippedNote}</p>}
           </div>
@@ -198,7 +198,7 @@ export default function StaffHallSelector({ session, allUsers, allHalls, onConfi
                 {upload.result.hasHallColumn && `, ${upload.result.hallIds.length} hall(s)`}
                 {issues.length ? `; ${issues.length} row(s) need attention` : ""}
               </p>
-              <button onClick={() => setUpload(null)} className="p-0.5 rounded hover:bg-black/5 text-gray-400"><X className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setUpload(null)} className="p-0.5 rounded hover:bg-black/5 text-gray-600"><X className="w-3.5 h-3.5" /></button>
             </div>
             {issues.length > 0 && (
               <ul className="mt-1.5 ml-6 list-disc text-amber-700 text-xs max-h-24 overflow-y-auto">
@@ -254,7 +254,7 @@ export default function StaffHallSelector({ session, allUsers, allHalls, onConfi
           {/* Halls list */}
           <div className="w-80 overflow-y-auto p-4">
             <div className="relative mb-3">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-gray-600 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={hallQuery}
                 onChange={e => setHallQuery(e.target.value)}
@@ -263,7 +263,7 @@ export default function StaffHallSelector({ session, allUsers, allHalls, onConfi
               />
               {hallQuery && (
                 <button onClick={() => setHallQuery("")} title="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 text-gray-400">
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 text-gray-600">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}

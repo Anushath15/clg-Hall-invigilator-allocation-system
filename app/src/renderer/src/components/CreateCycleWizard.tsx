@@ -254,7 +254,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
               <p className="text-xs text-brand-textsec truncate">{collegeName} — Allocation Batch Setup</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -399,7 +399,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                       <span className="font-bold text-brand-textmain block">Default FN (Forenoon)</span>
                       <div className="grid grid-cols-3 gap-2">
                         <div>
-                          <label className="text-[10px] text-brand-textsec block">Report</label>
+                          <label className="text-[12px] text-brand-textsec block">Report</label>
                           <input
                             type="time"
                             value={fnReportDefault}
@@ -408,7 +408,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-brand-textsec block">Start</label>
+                          <label className="text-[12px] text-brand-textsec block">Start</label>
                           <input
                             type="time"
                             value={fnStartDefault}
@@ -417,7 +417,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-brand-textsec block">End</label>
+                          <label className="text-[12px] text-brand-textsec block">End</label>
                           <input
                             type="time"
                             value={fnEndDefault}
@@ -432,7 +432,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                       <span className="font-bold text-brand-textmain block">Default AN (Afternoon)</span>
                       <div className="grid grid-cols-3 gap-2">
                         <div>
-                          <label className="text-[10px] text-brand-textsec block">Report</label>
+                          <label className="text-[12px] text-brand-textsec block">Report</label>
                           <input
                             type="time"
                             value={anReportDefault}
@@ -441,7 +441,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-brand-textsec block">Start</label>
+                          <label className="text-[12px] text-brand-textsec block">Start</label>
                           <input
                             type="time"
                             value={anStartDefault}
@@ -450,7 +450,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-brand-textsec block">End</label>
+                          <label className="text-[12px] text-brand-textsec block">End</label>
                           <input
                             type="time"
                             value={anEndDefault}
@@ -497,7 +497,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                             {formatFullDate(date)}
                           </span>
                           {holiday && (
-                            <span className="inline-flex items-center gap-1 text-[11px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md font-semibold">
+                            <span className="inline-flex items-center gap-1 text-[13px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md font-semibold">
                               <AlertCircle className="w-3 h-3" />
                               {holiday.name}
                             </span>
@@ -522,7 +522,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           <button
                             type="button"
                             onClick={() => removeDate(date)}
-                            className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            className="p-1 rounded-lg text-gray-600 hover:text-red-500 hover:bg-red-50 transition-colors"
                             title="Remove this date"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -549,12 +549,12 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                             <div className="flex-1 space-y-1">
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-bold text-brand-textmain">FN — Forenoon</span>
-                                <span className="text-[11px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
+                                <span className="text-[13px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
                                   Step
                                 </span>
                               </div>
                               <div className="flex items-center gap-1 text-xs text-brand-textsec">
-                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                <Clock className="w-3.5 h-3.5 text-gray-600" />
                                 <span>Reporting: <strong>{formatTime12h(effectiveFnReport)}</strong></span>
                               </div>
                               <div className="text-xs text-brand-textsec">
@@ -567,7 +567,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           {isExpanded && cfg.fn && (
                             <div className="mt-3 pt-3 border-t border-brand-border/60 grid grid-cols-3 gap-2">
                               <div>
-                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Report</label>
+                                <label className="text-[12px] font-medium text-brand-textsec block mb-0.5">Report</label>
                                 <input
                                   type="time"
                                   value={effectiveFnReport}
@@ -576,7 +576,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Start</label>
+                                <label className="text-[12px] font-medium text-brand-textsec block mb-0.5">Start</label>
                                 <input
                                   type="time"
                                   value={effectiveFnStart}
@@ -585,7 +585,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">End</label>
+                                <label className="text-[12px] font-medium text-brand-textsec block mb-0.5">End</label>
                                 <input
                                   type="time"
                                   value={effectiveFnEnd}
@@ -614,12 +614,12 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                             <div className="flex-1 space-y-1">
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-bold text-brand-textmain">AN — Afternoon</span>
-                                <span className="text-[11px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
+                                <span className="text-[13px] bg-brand-light text-brand-dark px-1.5 py-0.2 rounded font-medium">
                                   Step
                                 </span>
                               </div>
                               <div className="flex items-center gap-1 text-xs text-brand-textsec">
-                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                <Clock className="w-3.5 h-3.5 text-gray-600" />
                                 <span>Reporting: <strong>{formatTime12h(effectiveAnReport)}</strong></span>
                               </div>
                               <div className="text-xs text-brand-textsec">
@@ -632,7 +632,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                           {isExpanded && cfg.an && (
                             <div className="mt-3 pt-3 border-t border-brand-border/60 grid grid-cols-3 gap-2">
                               <div>
-                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Report</label>
+                                <label className="text-[12px] font-medium text-brand-textsec block mb-0.5">Report</label>
                                 <input
                                   type="time"
                                   value={effectiveAnReport}
@@ -641,7 +641,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">Start</label>
+                                <label className="text-[12px] font-medium text-brand-textsec block mb-0.5">Start</label>
                                 <input
                                   type="time"
                                   value={effectiveAnStart}
@@ -650,7 +650,7 @@ export default function CreateCycleWizard({ onClose, onCreated }: Props) {
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] font-medium text-brand-textsec block mb-0.5">End</label>
+                                <label className="text-[12px] font-medium text-brand-textsec block mb-0.5">End</label>
                                 <input
                                   type="time"
                                   value={effectiveAnEnd}

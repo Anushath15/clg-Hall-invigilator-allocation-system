@@ -301,7 +301,7 @@ export default function AllocationWorkspacePage() {
                         : "bg-white text-brand-textsec border-brand-border hover:border-brand-primary")}>
                   {formatDate(s.exam_date)} {s.session_type}
                   {isDupe && (
-                    <span className="px-1.5 py-0.2 bg-red-100 text-red-700 text-[10px] font-bold rounded-full border border-red-200 uppercase tracking-tight">
+                    <span className="px-1.5 py-0.2 bg-red-100 text-red-700 text-[12px] font-bold rounded-full border border-red-200 uppercase tracking-tight">
                       Duplicate
                     </span>
                   )}
@@ -557,17 +557,17 @@ export default function AllocationWorkspacePage() {
                             {hallInfo?.hall_code ?? `H${vh.hallId}`}
                           </div>
                           {hallLocation(hallInfo) && (
-                            <div className="text-[9px] font-normal text-brand-textsec mt-0.5 truncate">
+                            <div className="text-[11px] font-normal text-brand-textsec mt-0.5 truncate">
                               {hallLocation(hallInfo)}
                             </div>
                           )}
                           {vh.isValid && vh.swapWithUserId && (
-                            <div className="text-[9px] font-normal text-brand-textsec mt-0.5 truncate" title={staffName(vh.swapWithUserId)}>
+                            <div className="text-[11px] font-normal text-brand-textsec mt-0.5 truncate" title={staffName(vh.swapWithUserId)}>
                               ↔ {staffName(vh.swapWithUserId)}
                             </div>
                           )}
                           {!vh.isValid && (
-                            <div className="text-[9px] font-normal text-red-400 mt-0.5 no-underline">
+                            <div className="text-[11px] font-normal text-red-400 mt-0.5 no-underline">
                               {vh.reason === "Current hall" ? "Current"
                                 : vh.reason?.startsWith("Swap blocked") ? "Swap blocked"
                                 : vh.reason?.includes("cycle") ? "In cycle" : "Occupied"}

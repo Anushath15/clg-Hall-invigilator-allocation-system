@@ -189,14 +189,14 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono font-bold text-brand-primary">{h.hall_code}</span>
                 <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
-                  g === "M" ? "bg-sky-100 text-sky-700" : g === "F" ? "bg-pink-100 text-pink-700" : g === "mixed" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500")}>
+                  g === "M" ? "bg-sky-100 text-sky-700" : g === "F" ? "bg-pink-100 text-pink-700" : g === "mixed" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-700")}>
                   {h.benches === 0 ? "No layout" : g ? groupLabel(g) : seats.length ? "Not used" : "Empty"}
                 </span>
               </div>
               <p className="text-xs text-brand-textsec mt-1 truncate">{hallLocation(h) || "—"} · {h.invigilators.join(", ")}</p>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs"><b>{n}</b> / {h.seats} seats</span>
-                {n > 0 && <span className="text-[11px] text-brand-textsec truncate ml-2">{[...new Set(seatsIn(h.id).map(s => s.category ?? s.batch))].join(", ")}</span>}
+                {n > 0 && <span className="text-[13px] text-brand-textsec truncate ml-2">{[...new Set(seatsIn(h.id).map(s => s.category ?? s.batch))].join(", ")}</span>}
               </div>
             </div>
           )
@@ -207,7 +207,7 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
       {seats.length > 0 && (
         <div className="card py-3">
           <div className="relative max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
             <input className="input-field pl-9" placeholder="Find a student's seat (roll no, register no, name)" value={find} onChange={e => setFind(e.target.value)} />
           </div>
           {found.length > 0 && (

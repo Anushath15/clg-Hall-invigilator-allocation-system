@@ -105,14 +105,14 @@ export default function StudentSelector({ session, academicYear, seats, initialI
         <div className="px-6 py-3 border-b border-brand-border space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
               <input className="input-field pl-9" placeholder="Search roll no, register no or name" value={query} onChange={e => setQuery(e.target.value)} />
             </div>
             <button onClick={() => fileInput.current?.click()} className="btn-secondary flex items-center gap-2 text-sm"><Upload className="w-4 h-4" /> Upload list</button>
             <input ref={fileInput} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
             {sources.length > 0 && (
               <div className="relative">
-                <Copy className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <Copy className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none" />
                 <select className="input-field pl-9 w-auto text-sm" value="" onChange={e => e.target.value && copyFrom(Number(e.target.value))}>
                   <option value="">Copy from session…</option>
                   {sources.map(s => <option key={s.id} value={s.id}>{formatDateWithDay(s.exam_date)} · {s.session_type} ({s.studentCount}) — {s.cycleName}</option>)}
@@ -164,7 +164,7 @@ export default function StudentSelector({ session, academicYear, seats, initialI
                         <input type="checkbox" checked={selected.has(s.id)} onChange={e => setMany([s.id], e.target.checked)} className="accent-brand-primary" />
                         <span className="font-mono font-semibold">{s.roll_no}</span>
                         <span className="truncate">{s.name}</span>
-                        <span className={cn("ml-auto text-[10px] px-1.5 rounded", s.gender === "F" ? "bg-pink-50 text-pink-700" : "bg-sky-50 text-sky-700")}>{s.gender === "F" ? "F" : "M"}</span>
+                        <span className={cn("ml-auto text-[12px] px-1.5 rounded", s.gender === "F" ? "bg-pink-50 text-pink-700" : "bg-sky-50 text-sky-700")}>{s.gender === "F" ? "F" : "M"}</span>
                       </label>
                     ))}
                   </div>

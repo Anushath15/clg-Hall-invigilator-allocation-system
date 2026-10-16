@@ -197,7 +197,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
               {METHODS.map(m => (
                 <label key={m.value} className={cn("flex items-start gap-2 border rounded-lg px-2.5 py-2 cursor-pointer", method === m.value ? "border-brand-primary bg-brand-primary/5" : "border-brand-border hover:bg-gray-50")}>
                   <input type="radio" name="seating-method" className="accent-brand-primary mt-0.5" checked={method === m.value} onChange={() => chooseMethod(m.value)} />
-                  <span><span className="text-sm font-medium">{m.label}</span><span className="block text-[11px] text-brand-textsec">{m.hint}</span></span>
+                  <span><span className="text-sm font-medium">{m.label}</span><span className="block text-[13px] text-brand-textsec">{m.hint}</span></span>
                 </label>
               ))}
             </div>
@@ -208,7 +208,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
             )}
             <div className="mt-3 border border-brand-border rounded-lg px-2.5 py-2">
               <h4 className="text-sm font-semibold">Classes per hall</h4>
-              <p className="text-[11px] text-brand-textsec">Different classes (papers, e.g. CSE – Final Year) in one hall.</p>
+              <p className="text-[13px] text-brand-textsec">Different classes (papers, e.g. CSE – Final Year) in one hall.</p>
               <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
                 <label className="flex items-center gap-1">Target
                   <select className="input-field py-0.5 text-xs w-auto" value={classLimit.preferred}
@@ -224,7 +224,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                   if needed
                 </label>
               </div>
-              <p className="text-[11px] text-brand-textsec mt-1">Every hall keeps to the target. Only if that leaves students without a seat may a hall take more classes, up to the second number.</p>
+              <p className="text-[13px] text-brand-textsec mt-1">Every hall keeps to the target. Only if that leaves students without a seat may a hall take more classes, up to the second number.</p>
             </div>
             <p className="text-xs text-brand-textsec mt-2">Two students sit on each bench. Halls fill in the order shown, bench by bench.</p>
             <button onClick={() => { setConfig(autoFor(method)); toast.success("Halls assigned automatically.") }} className="btn-secondary text-sm flex items-center gap-2 mt-2"><Wand2 className="w-4 h-4" /> Auto-assign halls</button>
@@ -263,7 +263,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-brand-primary">{hall.hall_code}</span>
                     <span className="text-xs text-brand-textsec">{kindSummary(hallLayout(hall.raw))} · {hall.seats} seats</span>
-                    {group && method !== "rollwise" && <span className="ml-auto text-[11px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
+                    {group && method !== "rollwise" && <span className="ml-auto text-[13px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
                   </div>
                   <div className="flex flex-wrap rounded-md border border-brand-border overflow-hidden text-xs mt-2 w-fit">
                     {modes.map(m => (
@@ -274,7 +274,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
                   {method === "custom" && (group === "mixed" || h.pattern.length > 1) && (
                     <div className="mt-2">
                       <PatternEditor pattern={h.pattern} onChange={p => setPattern(h.hallId, p)} />
-                      {h.pattern.length > hall.benches && hall.benches > 0 && <p className="text-[11px] text-brand-textsec mt-1">Only the first {hall.benches} benches of the pattern are used.</p>}
+                      {h.pattern.length > hall.benches && hall.benches > 0 && <p className="text-[13px] text-brand-textsec mt-1">Only the first {hall.benches} benches of the pattern are used.</p>}
                     </div>
                   )}
                   {group && hall.benches === 0 && <p className="text-xs text-red-600 mt-2">No bench layout: set it in Master Data → Halls.</p>}
@@ -395,10 +395,10 @@ const range = (from: number, to: number) => Array.from({ length: Math.max(0, to 
 function PatternEditor({ pattern, onChange }: { pattern: BenchType[]; onChange: (pattern: BenchType[]) => void }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] text-brand-textsec">Bench pattern, repeated from bench 1 (left seat + right seat):</p>
+      <p className="text-[13px] text-brand-textsec">Bench pattern, repeated from bench 1 (left seat + right seat):</p>
       <div className="flex flex-wrap gap-1">
         {pattern.map((t, i) => (
-          <span key={i} className={cn("flex items-center gap-0.5 border rounded pl-1 text-[11px]", BENCH_CHIP[t])}>
+          <span key={i} className={cn("flex items-center gap-0.5 border rounded pl-1 text-[13px]", BENCH_CHIP[t])}>
             <span className="text-brand-textsec">{i + 1}.</span>
             <select className="bg-transparent py-0.5 outline-none" value={t} title="Who sits on this bench: left seat + right seat"
               onChange={e => onChange(pattern.map((x, j) => j === i ? e.target.value as BenchType : x))}>
@@ -409,7 +409,7 @@ function PatternEditor({ pattern, onChange }: { pattern: BenchType[]; onChange: 
           </span>
         ))}
         <button onClick={() => onChange([...pattern, pattern[pattern.length - 1] === "MM" ? "FF" : "MM"])} title="Add a bench to the pattern"
-          className="flex items-center gap-0.5 border border-dashed border-gray-300 rounded px-1.5 text-[11px] hover:bg-gray-50"><Plus className="w-3 h-3" /> Bench</button>
+          className="flex items-center gap-0.5 border border-dashed border-gray-300 rounded px-1.5 text-[13px] hover:bg-gray-50"><Plus className="w-3 h-3" /> Bench</button>
       </div>
     </div>
   )

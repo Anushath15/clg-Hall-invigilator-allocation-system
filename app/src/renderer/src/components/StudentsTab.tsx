@@ -108,7 +108,7 @@ export default function StudentsTab() {
 
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
           <input className="input-field pl-9" placeholder="Search roll no, register no or name" value={query} onChange={e => setQuery(e.target.value)} />
         </div>
         <select className="input-field w-auto" value={batch} onChange={e => setBatch(e.target.value)}>

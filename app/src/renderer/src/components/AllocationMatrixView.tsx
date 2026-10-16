@@ -62,7 +62,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
             {confirmedSessions.map((s: any) => (
               <th key={s.id} className="bg-brand-sidebar text-white px-2 py-2 text-center whitespace-nowrap min-w-[70px] border-l border-white/10">
                 <div className="font-semibold">{formatDate(s.exam_date).split(" ").slice(0,2).join(" ")}</div>
-                <div className="text-gray-300 text-[10px]">{s.exam_date.slice(0, 4)} · {s.session_type}</div>
+                <div className="text-gray-300 text-[12px]">{s.exam_date.slice(0, 4)} · {s.session_type}</div>
               </th>
             ))}
           </tr>
@@ -72,7 +72,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
             <tr key={u.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
               <td className="sticky left-0 z-10 px-3 py-1.5 border-r border-brand-border bg-inherit">
                 <div className="font-medium text-brand-textmain truncate max-w-[170px]">{u.name}</div>
-                <div className="text-[10px] text-brand-textsec">{u.staff_id} · {u.deptCode ?? u.deptName ?? "—"}</div>
+                <div className="text-[12px] text-brand-textsec">{u.staff_id} · {u.deptCode ?? u.deptName ?? "—"}</div>
               </td>
               {confirmedSessions.map((s: any) => {
                 const hallCode = lookup[`${u.id}_${s.id}`]
@@ -81,7 +81,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
                   <td key={s.id} className="px-1 py-1 text-center border-l border-brand-border">
                     {hallCode ? (
                       <span className={cn(
-                        "inline-block px-2 py-0.5 rounded font-bold text-[11px]",
+                        "inline-block px-2 py-0.5 rounded font-bold text-[13px]",
                         isEdited
                           ? "bg-amber-100 text-amber-700 border border-amber-300"
                           : "bg-brand-verylight text-brand-primary border border-brand-light"
@@ -108,7 +108,7 @@ export default function AllocationMatrixView({ cycleId }: Props) {
           Admin-edited
         </span>
         <span className="flex items-center gap-1">
-          <span className="text-gray-400">—</span> Not yet allocated
+          <span className="text-gray-600">—</span> Not yet allocated
         </span>
       </div>
     </div>

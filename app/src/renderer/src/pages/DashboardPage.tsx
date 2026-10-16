@@ -164,7 +164,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="text-xs font-medium text-brand-textmain">{a.label}</p>
-                    <p className="text-[11px] text-brand-textsec mt-0.5">{a.sub}</p>
+                    <p className="text-[13px] text-brand-textsec mt-0.5">{a.sub}</p>
                   </div>
                 </div>
               ))}

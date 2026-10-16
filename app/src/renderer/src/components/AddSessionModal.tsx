@@ -116,7 +116,7 @@ export default function AddSessionModal({
               <p className="text-xs text-brand-textsec">New Session Step #{existingSessions.length + 1}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -181,12 +181,12 @@ export default function AddSessionModal({
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs font-semibold text-brand-dark">{dateInfo.formatted}</span>
                 {dateInfo.isSunday && (
-                  <span className="inline-flex items-center gap-1 text-[11px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">
+                  <span className="inline-flex items-center gap-1 text-[13px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">
                     <AlertTriangle className="w-3 h-3" /> Sunday (College Holiday)
                   </span>
                 )}
                 {dateInfo.holiday && (
-                  <span className="inline-flex items-center gap-1 text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">
+                  <span className="inline-flex items-center gap-1 text-[13px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">
                     <Zap className="w-3 h-3" /> {dateInfo.holiday.name}
                   </span>
                 )}
@@ -230,7 +230,7 @@ export default function AddSessionModal({
             </span>
             <div className="grid grid-cols-3 gap-2.5">
               <div>
-                <label className="text-[11px] font-medium text-brand-textsec block mb-1">Report Time</label>
+                <label className="text-[13px] font-medium text-brand-textsec block mb-1">Report Time</label>
                 <input
                   type="time"
                   value={reportingTime}
@@ -238,10 +238,10 @@ export default function AddSessionModal({
                   className="input-field text-xs font-semibold py-1.5"
                   required
                 />
-                <span className="text-[10px] text-brand-textsec block mt-0.5">{formatTime12h(reportingTime)}</span>
+                <span className="text-[12px] text-brand-textsec block mt-0.5">{formatTime12h(reportingTime)}</span>
               </div>
               <div>
-                <label className="text-[11px] font-medium text-brand-textsec block mb-1">Exam Start</label>
+                <label className="text-[13px] font-medium text-brand-textsec block mb-1">Exam Start</label>
                 <input
                   type="time"
                   value={examStart}
@@ -249,10 +249,10 @@ export default function AddSessionModal({
                   className="input-field text-xs font-semibold py-1.5"
                   required
                 />
-                <span className="text-[10px] text-brand-textsec block mt-0.5">{formatTime12h(examStart)}</span>
+                <span className="text-[12px] text-brand-textsec block mt-0.5">{formatTime12h(examStart)}</span>
               </div>
               <div>
-                <label className="text-[11px] font-medium text-brand-textsec block mb-1">Exam End</label>
+                <label className="text-[13px] font-medium text-brand-textsec block mb-1">Exam End</label>
                 <input
                   type="time"
                   value={examEnd}
@@ -260,7 +260,7 @@ export default function AddSessionModal({
                   className="input-field text-xs font-semibold py-1.5"
                   required
                 />
-                <span className="text-[10px] text-brand-textsec block mt-0.5">{formatTime12h(examEnd)}</span>
+                <span className="text-[12px] text-brand-textsec block mt-0.5">{formatTime12h(examEnd)}</span>
               </div>
             </div>
           </div>
