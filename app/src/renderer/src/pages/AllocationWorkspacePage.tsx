@@ -34,6 +34,8 @@ export default function AllocationWorkspacePage() {
   const [showAddSessionModal, setShowAddSessionModal] = useState(false)
   // Within a session: the invigilator allocation, or the student seating (same halls).
   const [panel, setPanel] = useState<"invigilators" | "seating">("invigilators")
+  // Where the Student Seating tab puts its own button in the session bar (React portal).
+  const [barSlot, setBarSlot] = useState<HTMLDivElement | null>(null)
 
   // Detect duplicate sessions (sessions with same date and session_type)
   const duplicateSessionKeys = useMemo(() => {
@@ -362,7 +364,7 @@ export default function AllocationWorkspacePage() {
 
               {/* Session info bar */}
               <div className="card mb-4 flex flex-wrap items-center justify-between gap-3 py-3">
-                <div className="flex items-center gap-6 text-sm flex-wrap">
+                <div className={cn("flex items-center gap-6 text-sm flex-wrap", panel === "seating" && "flex-1 min-w-0")}>
                   <div>
                     <span className="text-brand-textsec">Date: </span>
                     <span className="font-semibold text-brand-textmain">{formatDateWithDay(activeSession.exam_date)}</span>
@@ -392,6 +394,7 @@ export default function AllocationWorkspacePage() {
                   </button>
                 </div>
                 {panel === "invigilators" && <div className="min-w-0">{statusActions[effectiveStatus] ?? statusActions[activeSession.status]}</div>}
+                {panel === "seating" && <div className="shrink-0 ml-auto" ref={setBarSlot} />}
               </div>
 
               {/* Invigilators / Student seating */}
@@ -405,7 +408,7 @@ export default function AllocationWorkspacePage() {
                 ))}
               </div>
 
-              {panel === "seating" && <SeatingPanel cycle={cycle} session={activeSession} allocation={allocation} />}
+              {panel === "seating" && <SeatingPanel cycle={cycle} session={activeSession} allocation={allocation} barActions={barSlot} />}
               {panel === "invigilators" && <>
 
               {/* Validation banners */}

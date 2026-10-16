@@ -182,8 +182,8 @@
 <table>
   <tr><th style="width:28%">Method</th><th>How students are seated</th></tr>
   <tr><td>Roll number order</td><td>Boys and girls together. Each seat column follows roll numbers whatever the gender: <code>102349</code> (a boy) is followed by <code>102350</code> (a girl). Each hall is just <b>Use</b> or <b>Not used</b>. A boy and a girl of different classes may share a bench.</td></tr>
-  <tr><td>Separate halls</td><td>Each hall holds only boys or only girls. HIAS tries every combination of halls to find the split that seats the most students with the fewest empty seats.</td></tr>
-  <tr><td>Same pattern in every hall</td><td>One <b>bench pattern</b> repeated bench by bench in every hall used, for example <i>Boy + Boy, Girl + Girl</i>: bench 1 boys, bench 2 girls, bench 3 boys, and so on.</td></tr>
+  <tr><td>Gender based allocation</td><td>Each hall holds only boys or only girls. HIAS tries every combination of halls to find the split that seats the most students with the fewest empty seats.</td></tr>
+  <tr><td>Create your own pattern</td><td>One <b>bench pattern</b> repeated bench by bench in every hall used, for example <i>Boy + Boy, Girl + Girl</i>: bench 1 boys, bench 2 girls, bench 3 boys, and so on.</td></tr>
   <tr><td>Custom per hall</td><td>Each hall on its own: <b>Boys</b>, <b>Girls</b>, <b>Boys &amp; Girls</b> (with its own bench pattern) or <b>Not used</b>.</td></tr>
 </table>
 <p>A bench pattern is made of <b>Boy + Boy</b> and <b>Girl + Girl</b> benches only: except in Roll number order, a boy and a girl never share a bench. Click <b>+ Bench</b> to add a bench to the pattern, the cross to remove one, or the drop-down to change it. <b>Auto-assign halls</b> puts the halls back to HIAS's own choice for the method.</p>
@@ -191,9 +191,9 @@
 <p>Each column of benches has a left-seat column and a right-seat column. HIAS fills each seat column front to back with <b>one class</b>, in roll-number order, and the classes take the seat columns in turn (the largest class first), each continuing from where it stopped; the next hall carries on with the next class. So the two students on a bench are always of different classes: <b>two students of the same class never share a bench</b>. If a class runs out part-way down a column, the next class in turn continues it. Only when that would leave a student without a seat does HIAS move students between seats to fit them in.</p>
 <div class="note"><b>Unallocated students.</b> A student is left unallocated only when there is no seat for them: not enough seats, no free seat beside a student of another class, or (in the methods that keep boys and girls apart) no seat for their gender. Each is listed with the reason. To seat them, add halls to the session, allow more classes per hall, or change the hall settings.</div>
 <h2>Printing</h2>
-<p>Once a plan is saved, the Student Seating tab shows each hall's bench grid and these PDFs:</p>
+<p>Once a plan is saved, the Student Seating tab shows a tile for each hall. <b>Click a hall's tile</b> to open its seating in a popup: the invigilator, how many students sit there (boys and girls), the departments and classes they come from, and the hall's bench grid. The tab also has an <b>Export PDF</b> button, as on the Invigilators tab. Click it and choose one of these PDFs:</p>
 <table>
-  <tr><th style="width:28%">Button</th><th>What it prints</th></tr>
+  <tr><th style="width:28%">Choice</th><th>What it prints</th></tr>
   <tr><td>Seating Plan</td><td>One landscape page per hall laid out like the screen: <i>Column 1, Column 2…</i> across, <i>R1, R2…</i> down, the board at the top, and a card for each bench with its number and the roll numbers on its left and right seats. It is made for <b>black-and-white printers</b>: roll numbers are in bold black, and the years are told apart by the box (white with a solid border, grey, or white with a dashed border), explained in the key at the bottom. In a hall of boys and girls, each seat carries a <b>B</b> or <b>G</b>.</td></tr>
   <tr><td>Attendance Sheets</td><td>One page per hall: the students in bench order with a column for their signature, and spaces for the present and absent counts and the invigilator's signature.</td></tr>
   <tr><td>Student List</td><td>Every student by batch and roll number with their hall, bench and seat, for the notice board.</td></tr>

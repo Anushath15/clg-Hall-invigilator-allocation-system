@@ -24,10 +24,12 @@ interface Props {
   seats: SeatRow[]
   colorOf: (key: string) => string
   highlight?: number[]
+  /** In a popup: no card and no hall title (the popup shows them). */
+  bare?: boolean
 }
 
 /** One hall's benches as seen from the front, each with its left and right seat (a chair: its one seat). */
-export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: Props) {
+export default function HallBenchGrid({ hall, seats, colorOf, highlight = [], bare = false }: Props) {
   const layout = hallLayout(hall.raw)
   const numbers = new Map<string, Bench>(enabledBenches(layout).map(b => [benchKey(b.row, b.col), b]))
   const at = new Map<string, { L?: SeatRow; R?: SeatRow }>()
@@ -43,10 +45,13 @@ export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: 
     : <div className="rounded px-1 py-0.5 text-[12px] text-gray-300 border border-dashed border-gray-200">empty</div>
 
   return (
-    <div className="card">
+    <div className={bare ? undefined : "card"}>
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-        <h3 className="font-semibold">Hall {hall.hall_code} <span className="text-sm font-normal text-brand-textsec">· {groupLabel(seatsGroup(seats))} · {seats.length} students{hall.invigilators?.length ? ` · ${hall.invigilators.join(", ")}` : ""}</span></h3>
-        <p className="text-xs text-brand-textsec">Each bench: number, left seat, right seat (as seen from the front); a chair has one seat. Colour = academic year.{mixed && " Left edge: blue = boy, pink = girl."}</p>
+        {!bare && <h3 className="font-semibold">Hall {hall.hall_code} <span className="text-sm font-normal text-brand-textsec">· {groupLabel(seatsGroup(seats))} · {seats.length} students{hall.invigilators?.length ? ` · ${hall.invigilators.join(", ")}` : ""}</span></h3>}
+        {bare
+          // In the popup the explanation is dropped; only the boy/girl key stays, and only where a hall seats both.
+          ? mixed && <p className="text-xs text-brand-textsec">Left edge: blue = boy, pink = girl.</p>
+          : <p className="text-xs text-brand-textsec">Each bench: number, left seat, right seat (as seen from the front); a chair has one seat. Colour = academic year.{mixed && " Left edge: blue = boy, pink = girl."}</p>}
       </div>
       <div className="text-center text-[13px] font-semibold tracking-widest uppercase bg-gray-700 text-white rounded-md py-1 mb-2">Front · Board</div>
       <div className="overflow-x-auto">

@@ -280,7 +280,7 @@ export function autoConfigureSeating(db: StudentDb, sessionId: number, studentId
   const boys = input.students.filter(s => s.gender === "M").length
   return {
     success: true as const, config: autoConfigure(input.students, input.halls, { classLimit }), academicYear: input.academicYear,
-    /** The best split into whole boys' and girls' halls, no hall shared (the "Separate halls" method). */
+    /** The best split into whole boys' and girls' halls, no hall shared (the "Gender based allocation" method). */
     separateConfig: autoConfigure(input.students, input.halls, { separateOnly: true, classLimit }),
     /** Everyone in roll-number order, boys and girls together (the "Roll number order" method). */
     rollConfig: autoConfigure(input.students, input.halls, { mixGenders: true, classLimit }),

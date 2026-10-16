@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
-import { Users, RefreshCw, Trash2, FileText, AlertTriangle, Settings2, Search, LayoutGrid, UserX, X, Copy } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Users, RefreshCw, Trash2, FileText, AlertTriangle, Settings2, Search, LayoutGrid, UserX, X, Copy, Download, ChevronDown } from "lucide-react"
+import { createPortal } from "react-dom"
 import toast from "react-hot-toast"
 import { api } from "../lib/api"
 import { currentSettings } from "../lib/college-settings"
@@ -11,7 +12,8 @@ import {
 } from "../lib/export-seating-pdf"
 import StudentSelector from "./StudentSelector"
 import SeatingConfigEditor from "./SeatingConfigEditor"
-import HallBenchGrid, { colorKey, classColors } from "./HallBenchGrid"
+import { colorKey, classColors } from "./HallBenchGrid"
+import HallSeatingModal from "./HallSeatingModal"
 import UnallocatedTable from "./UnallocatedTable"
 import { hallPattern, patternGroup } from "../../../shared/seating"
 
@@ -20,6 +22,8 @@ interface Props {
   session: any
   /** The session's invigilator allocation (getSessionAllocation rows): its halls are the seating halls. */
   allocation: any[]
+  /** An element in the page's session bar where the "Export PDF" button is shown, as on the Invigilators tab. */
+  barActions?: HTMLElement | null
 }
 
 /**
@@ -29,7 +33,7 @@ interface Props {
  * (SeatingConfigEditor, shared/seating.ts). Shows each hall's bench grid, the students left
  * unallocated, and exports the seating PDFs.
  */
-export default function SeatingPanel({ cycle, session, allocation }: Props) {
+export default function SeatingPanel({ cycle, session, allocation, barActions }: Props) {
   const [seats, setSeats] = useState<SeatRow[]>([])
   const [halls, setHalls] = useState<any[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
@@ -40,6 +44,14 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
   const [showUnallocated, setShowUnallocated] = useState(false)
   const [viewHallId, setViewHallId] = useState<number | null>(null)
   const [find, setFind] = useState("")
+  const [findOpen, setFindOpen] = useState(false)
+  const findRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!findOpen) return
+    const away = (e: MouseEvent) => { if (!findRef.current?.contains(e.target as Node)) setFindOpen(false) }
+    document.addEventListener("mousedown", away)
+    return () => document.removeEventListener("mousedown", away)
+  }, [findOpen])
   const [others, setOthers] = useState<any[]>([])
 
   const load = async () => {
@@ -68,7 +80,8 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
   const unallocated: UnallocatedRow[] = saved?.unallocated ?? []
   // Everyone selected last time, seated or not, for reselecting and re-configuring.
   const selectedIds = saved?.studentIds?.length ? saved.studentIds : seats.map(s => s.studentId)
-  const viewHall = sessionHalls.find(h => h.id === viewHallId) ?? sessionHalls.find(h => seatsIn(h.id).length > 0) ?? null
+  // The hall whose tile was clicked: its seating opens in a popup.
+  const viewHall = sessionHalls.find(h => h.id === viewHallId) ?? null
 
   async function onSaved(r: any) {
     setStep(null)
@@ -109,6 +122,22 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
     toast.success("Seating removed.")
   }
 
+  // One "Export PDF" button in the session bar, as on the Invigilators tab; it opens the list of seating PDFs.
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!exportOpen) return
+    const away = (e: MouseEvent) => { if (!exportRef.current?.contains(e.target as Node)) setExportOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setExportOpen(false) }
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc)
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc) }
+  }, [exportOpen])
+  const exportChoices = [
+    { kind: "plan", title: "Seating Plan", note: "One landscape page per hall, bench by bench" },
+    { kind: "attendance", title: "Attendance Sheets", note: "One page per hall with a signature column" },
+    { kind: "list", title: "Student List", note: "Every student with hall, bench and seat" }
+  ] as const
+
   async function exportPdf(kind: "plan" | "attendance" | "list" | "unallocated") {
     const args = { cycle, session, halls: sessionHalls, seats, settings: await currentSettings() }
     if (kind === "plan") exportSeatingPlanPDF(args)
@@ -131,19 +160,54 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
   }
 
   const noLayout = sessionHalls.filter(h => h.benches === 0)
-  const boys = seats.filter(s => s.gender === "M").length
 
   return (
     <div className="space-y-4">
+      {seats.length > 0 && barActions && createPortal(
+      <div className="relative" ref={exportRef}>
+        <button onClick={() => setExportOpen(o => !o)} aria-haspopup="menu" aria-expanded={exportOpen} className="btn-primary flex items-center gap-2">
+          <Download className="w-4 h-4" /> Export PDF <ChevronDown className={cn("w-4 h-4 transition-transform", exportOpen && "rotate-180")} />
+        </button>
+        {exportOpen && (
+          <div role="menu" className="absolute right-0 mt-2 w-72 bg-white border border-brand-border rounded-xl shadow-lg z-20 py-1">
+            {exportChoices.map(c => (
+              <button key={c.kind} role="menuitem" onClick={() => { setExportOpen(false); exportPdf(c.kind) }}
+                className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3">
+                <FileText className="w-4 h-4 text-brand-textsec shrink-0" />
+                <span><span className="block text-sm font-medium text-brand-textmain">{c.title}</span><span className="block text-xs text-brand-textsec">{c.note}</span></span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      , barActions)}
       {/* Summary and actions */}
       <div className="card flex flex-wrap items-center justify-between gap-3 py-3">
-        <div className="text-sm flex flex-wrap gap-x-6 gap-y-1">
-          <span><span className="text-brand-textsec">Seated: </span><b>{seats.length}</b> <span className="text-brand-textsec">({boys} boys · {seats.length - boys} girls)</span></span>
-          <span><span className="text-brand-textsec">Halls: </span><b>{sessionHalls.length}</b> <span className="text-brand-textsec">· {totalSeats} seats</span></span>
+        <div className="text-sm flex flex-wrap items-center gap-x-6 gap-y-2 flex-1 min-w-0">
+          {seats.length > 0 && (
+            <div className="relative w-full max-w-sm" ref={findRef}>
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
+              <input className="input-field pl-9" placeholder="Find a student's seat (roll no, register no, name)" value={find}
+                onChange={e => { setFind(e.target.value); setFindOpen(true) }} onFocus={() => setFindOpen(true)} />
+              {findOpen && find.trim() && (
+                <div className="absolute left-0 top-full mt-1 w-[34rem] max-w-[85vw] z-20 bg-white border border-brand-border rounded-xl shadow-lg px-3 py-1 text-sm">
+                  {found.length > 0 ? (
+                    <div className="divide-y divide-brand-border">
+                      {found.map(s => (
+                        <button key={s.studentId} onClick={() => { setViewHallId(s.hallId); setFindOpen(false) }} className="w-full text-left py-1.5 flex flex-wrap gap-x-3 hover:text-brand-primary">
+                          <span className="font-mono font-semibold">{s.roll_no}</span><span>{s.studentName}</span>
+                          <span className="text-brand-textsec">{s.category} → Hall <b>{s.hall_code}</b>, bench {s.bench_no}, {seatLabel(s.seat).toLowerCase()} seat</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-brand-textsec py-2">No seated student matches.</p>}
+                </div>
+              )}
+            </div>
+          )}
           {unallocated.length > 0 && (
             <button onClick={() => setShowUnallocated(true)} className="text-red-600 hover:underline flex items-center gap-1"><UserX className="w-4 h-4" /> Unallocated: <b>{unallocated.length}</b></button>
           )}
-          {years.length > 0 && <span className="flex flex-wrap gap-1">{years.map(y => <span key={y} className={cn("px-2 py-0.5 rounded text-xs font-medium", colorOf(y))}>{y}</span>)}</span>}
         </div>
         <div className="flex flex-wrap gap-2">
           {seats.length > 0 && <button onClick={clear} disabled={loading} className="btn-secondary text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Clear</button>}
@@ -159,11 +223,6 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
           {seats.length > 0 && (
             <button onClick={() => { setChosenIds(selectedIds); setStep("configure") }} disabled={loading} className="btn-secondary flex items-center gap-2"><Settings2 className="w-4 h-4" /> Edit Configuration</button>
           )}
-          {seats.length > 0 && <>
-            <button onClick={() => exportPdf("plan")} className="btn-primary flex items-center gap-2"><FileText className="w-4 h-4" /> Seating Plan</button>
-            <button onClick={() => exportPdf("attendance")} className="btn-secondary flex items-center gap-2"><FileText className="w-4 h-4" /> Attendance Sheets</button>
-            <button onClick={() => exportPdf("list")} className="btn-secondary flex items-center gap-2"><FileText className="w-4 h-4" /> Student List</button>
-          </>}
         </div>
       </div>
 
@@ -203,30 +262,14 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
         })}
       </div>
 
-      {/* Find a student */}
-      {seats.length > 0 && (
-        <div className="card py-3">
-          <div className="relative max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
-            <input className="input-field pl-9" placeholder="Find a student's seat (roll no, register no, name)" value={find} onChange={e => setFind(e.target.value)} />
-          </div>
-          {found.length > 0 && (
-            <div className="mt-2 text-sm divide-y divide-brand-border">
-              {found.map(s => (
-                <button key={s.studentId} onClick={() => setViewHallId(s.hallId)} className="w-full text-left py-1.5 flex flex-wrap gap-x-3 hover:text-brand-primary">
-                  <span className="font-mono font-semibold">{s.roll_no}</span><span>{s.studentName}</span>
-                  <span className="text-brand-textsec">{s.category} → Hall <b>{s.hall_code}</b>, bench {s.bench_no}, {seatLabel(s.seat).toLowerCase()} seat</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {find.trim() && found.length === 0 && <p className="text-xs text-brand-textsec mt-2">No seated student matches.</p>}
-        </div>
-      )}
-
-      {/* Bench grid of the chosen hall */}
+      {/* Seating of the clicked hall, in a popup */}
       {viewHall && seatsIn(viewHall.id).length > 0 && (
-        <HallBenchGrid hall={viewHall} seats={seatsIn(viewHall.id)} colorOf={colorOf} highlight={found.map(s => s.studentId)} />
+        <HallSeatingModal hall={viewHall} location={hallLocation(viewHall)} seats={seatsIn(viewHall.id)} colorOf={colorOf} highlight={found.map(s => s.studentId)}
+          badge={(() => {
+            const g = genderOf(viewHall.id)
+            return { text: g ? groupLabel(g) : "Not used", className: g === "M" ? "bg-sky-100 text-sky-700" : g === "F" ? "bg-pink-100 text-pink-700" : g === "mixed" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-700" }
+          })()}
+          onClose={() => setViewHallId(null)} />
       )}
 
       {step === "select" && (
