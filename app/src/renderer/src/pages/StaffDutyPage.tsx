@@ -56,36 +56,36 @@ export default function StaffDutyPage() {
           <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-brand-light text-xs font-semibold uppercase tracking-wider">Next Upcoming Duty</p>
-              <p className="text-gray-400 text-xs mt-0.5">{next.cycleName}</p>
+              <p className="text-gray-600 text-xs mt-0.5">{next.cycleName}</p>
             </div>
             <span className="px-2 py-0.5 rounded-full bg-white/10 text-brand-light text-xs font-semibold capitalize">{next.status}</span>
           </div>
           <div className="grid grid-cols-2 gap-5 mt-5">
             <div className="flex items-start gap-3">
               <Calendar className="w-5 h-5 text-brand-light mt-0.5 flex-shrink-0" />
-              <div><p className="text-xs text-gray-400">Exam Date</p><p className="text-lg font-bold">{formatDate(next.exam_date)}</p></div>
+              <div><p className="text-xs text-gray-600">Exam Date</p><p className="text-lg font-bold">{formatDate(next.exam_date)}</p></div>
             </div>
             <div className="flex items-start gap-3">
               <Clock className="w-5 h-5 text-brand-light mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-400">Session</p>
+                <p className="text-xs text-gray-600">Session</p>
                 <p className="text-lg font-bold">{formatSession(next.session_type)}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <MapPin className="w-5 h-5 text-brand-light mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-400">Hall</p>
+                <p className="text-xs text-gray-600">Hall</p>
                 <p className="text-3xl font-black text-brand-light tracking-wide">{next.hall_code}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{hallLocation({ block: next.hallBlock, floor: next.hallFloor })}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{hallLocation({ block: next.hallBlock, floor: next.hallFloor })}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <Clock className="w-5 h-5 text-brand-light mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-400">Reporting Time</p>
+                <p className="text-xs text-gray-600">Reporting Time</p>
                 <p className="font-bold text-lg">{formatTime12h(next.reporting_time)}</p>
-                <p className="text-xs text-gray-400 mt-1">Exam Duration</p>
+                <p className="text-xs text-gray-600 mt-1">Exam Duration</p>
                 <p className="font-medium text-sm">{formatTime12h(next.exam_start)} – {formatTime12h(next.exam_end)}</p>
               </div>
             </div>

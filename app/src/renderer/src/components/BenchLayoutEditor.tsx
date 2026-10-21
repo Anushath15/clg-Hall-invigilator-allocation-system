@@ -70,7 +70,7 @@ export default function BenchLayoutEditor({ rows, cols, disabled, kinds, onChang
           </button>
         ))}
         <button type="button" onClick={() => setTool("remove")}
-          className={cn("px-2 py-1 rounded-md text-xs font-semibold border border-dashed border-gray-400 text-gray-500 bg-white", tool === "remove" ? "ring-2 ring-offset-1 ring-brand-primary" : "opacity-70 hover:opacity-100")}>
+          className={cn("px-2 py-1 rounded-md text-xs font-semibold border border-dashed border-gray-400 text-gray-700 bg-white", tool === "remove" ? "ring-2 ring-offset-1 ring-brand-primary" : "opacity-70 hover:opacity-100")}>
           No seat ×
         </button>
       </div>
@@ -80,7 +80,7 @@ export default function BenchLayoutEditor({ rows, cols, disabled, kinds, onChang
           <button key={k} type="button" onClick={() => fillAll(k)} className="underline hover:text-brand-primary">all {SEAT_KIND_LABEL[k].toLowerCase()}{k === "bench" ? "es" : "s"}</button>
         ))}
       </div>
-      <div className="text-center text-[11px] font-semibold tracking-widest uppercase bg-gray-700 text-white rounded-md py-1 mb-2">
+      <div className="text-center text-[13px] font-semibold tracking-widest uppercase bg-gray-700 text-white rounded-md py-1 mb-2">
         Front · Board
       </div>
       <div className="overflow-auto max-h-[45vh]">
@@ -88,12 +88,12 @@ export default function BenchLayoutEditor({ rows, cols, disabled, kinds, onChang
           <div />
           {Array.from({ length: cols }, (_, i) => (
             <button key={`c${i}`} type="button" onClick={() => apply(colKeys(i + 1))} title={`${toolName} all of column ${i + 1}`}
-              className="text-[10px] font-semibold text-brand-textsec hover:text-brand-primary py-0.5">C{i + 1}</button>
+              className="text-[12px] font-semibold text-brand-textsec hover:text-brand-primary py-0.5">C{i + 1}</button>
           ))}
           {Array.from({ length: rows }, (_, r) => (
             <div key={`r${r}`} className="contents">
               <button type="button" onClick={() => apply(rowKeys(r + 1))} title={`${toolName} all of row ${r + 1}`}
-                className="text-[10px] font-semibold text-brand-textsec hover:text-brand-primary pr-1 text-right">R{r + 1}</button>
+                className="text-[12px] font-semibold text-brand-textsec hover:text-brand-primary pr-1 text-right">R{r + 1}</button>
               {Array.from({ length: cols }, (_, c) => {
                 const k = benchKey(r + 1, c + 1)
                 const isOff = off.has(k)
@@ -101,10 +101,10 @@ export default function BenchLayoutEditor({ rows, cols, disabled, kinds, onChang
                 return (
                   <button key={k} type="button" onClick={() => apply([k])}
                     title={isOff ? `No seat at row ${r + 1}, column ${c + 1}` : `${SEAT_KIND_LABEL[kind]} ${numbers.get(k)} (row ${r + 1}, column ${c + 1})`}
-                    className={cn("h-8 rounded-md text-[11px] font-semibold border transition-colors",
+                    className={cn("h-8 rounded-md text-[13px] font-semibold border transition-colors",
                       isOff ? "border-dashed border-gray-300 bg-white text-gray-300 hover:border-gray-400"
                         : cn(KIND_STYLE[kind], "hover:brightness-95"))}>
-                    {isOff ? "×" : <>{numbers.get(k)}{KIND_MARK[kind] && <sup className="ml-0.5 text-[8px]">{KIND_MARK[kind]}</sup>}</>}
+                    {isOff ? "×" : <>{numbers.get(k)}{KIND_MARK[kind] && <sup className="ml-0.5 text-[11px]">{KIND_MARK[kind]}</sup>}</>}
                   </button>
                 )
               })}

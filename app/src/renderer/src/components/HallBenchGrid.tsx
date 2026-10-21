@@ -24,10 +24,12 @@ interface Props {
   seats: SeatRow[]
   colorOf: (key: string) => string
   highlight?: number[]
+  /** In a popup: no card and no hall title (the popup shows them). */
+  bare?: boolean
 }
 
 /** One hall's benches as seen from the front, each with its left and right seat (a chair: its one seat). */
-export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: Props) {
+export default function HallBenchGrid({ hall, seats, colorOf, highlight = [], bare = false }: Props) {
   const layout = hallLayout(hall.raw)
   const numbers = new Map<string, Bench>(enabledBenches(layout).map(b => [benchKey(b.row, b.col), b]))
   const at = new Map<string, { L?: SeatRow; R?: SeatRow }>()
@@ -39,23 +41,26 @@ export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: 
   const mixed = seatsGroup(seats) === "mixed"
   const seatCell = (s?: SeatRow) => s
     ? <div title={`${s.roll_no} · ${s.studentName} · ${s.deptCode ?? ""} ${s.year ?? ""} · ${s.batch}`}
-        className={cn("rounded px-1 py-0.5 font-mono text-[10px] font-semibold truncate", colorOf(colorKey(s)), mixed && (s.gender === "F" ? "border-l-4 border-pink-500" : "border-l-4 border-sky-500"), highlight.includes(s.studentId) && "ring-2 ring-red-500")}>{s.roll_no}</div>
-    : <div className="rounded px-1 py-0.5 text-[10px] text-gray-300 border border-dashed border-gray-200">empty</div>
+        className={cn("rounded px-1 py-0.5 font-mono text-[12px] font-semibold truncate", colorOf(colorKey(s)), mixed && (s.gender === "F" ? "border-l-4 border-pink-500" : "border-l-4 border-sky-500"), highlight.includes(s.studentId) && "ring-2 ring-red-500")}>{s.roll_no}</div>
+    : <div className="rounded px-1 py-0.5 text-[12px] text-gray-300 border border-dashed border-gray-200">empty</div>
 
   return (
-    <div className="card">
+    <div className={bare ? undefined : "card"}>
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-        <h3 className="font-semibold">Hall {hall.hall_code} <span className="text-sm font-normal text-brand-textsec">· {groupLabel(seatsGroup(seats))} · {seats.length} students{hall.invigilators?.length ? ` · ${hall.invigilators.join(", ")}` : ""}</span></h3>
-        <p className="text-xs text-brand-textsec">Each bench: number, left seat, right seat (as seen from the front); a chair has one seat. Colour = academic year.{mixed && " Left edge: blue = boy, pink = girl."}</p>
+        {!bare && <h3 className="font-semibold">Hall {hall.hall_code} <span className="text-sm font-normal text-brand-textsec">· {groupLabel(seatsGroup(seats))} · {seats.length} students{hall.invigilators?.length ? ` · ${hall.invigilators.join(", ")}` : ""}</span></h3>}
+        {bare
+          // In the popup the explanation is dropped; only the boy/girl key stays, and only where a hall seats both.
+          ? mixed && <p className="text-xs text-brand-textsec">Left edge: blue = boy, pink = girl.</p>
+          : <p className="text-xs text-brand-textsec">Each bench: number, left seat, right seat (as seen from the front); a chair has one seat. Colour = academic year.{mixed && " Left edge: blue = boy, pink = girl."}</p>}
       </div>
-      <div className="text-center text-[11px] font-semibold tracking-widest uppercase bg-gray-700 text-white rounded-md py-1 mb-2">Front · Board</div>
+      <div className="text-center text-[13px] font-semibold tracking-widest uppercase bg-gray-700 text-white rounded-md py-1 mb-2">Front · Board</div>
       <div className="overflow-x-auto">
         <div className="grid gap-1.5 w-max mx-auto" style={{ gridTemplateColumns: `auto repeat(${layout.cols}, 7.5rem)` }}>
           <div />
-          {Array.from({ length: layout.cols }, (_, c) => <div key={c} className="text-[10px] font-semibold text-brand-textsec text-center">Column {c + 1}</div>)}
+          {Array.from({ length: layout.cols }, (_, c) => <div key={c} className="text-[12px] font-semibold text-brand-textsec text-center">Column {c + 1}</div>)}
           {Array.from({ length: layout.rows }, (_, r) => (
             <div key={r} className="contents">
-              <div className="text-[10px] font-semibold text-brand-textsec self-center pr-1">R{r + 1}</div>
+              <div className="text-[12px] font-semibold text-brand-textsec self-center pr-1">R{r + 1}</div>
               {Array.from({ length: layout.cols }, (_, c) => {
                 const k = benchKey(r + 1, c + 1)
                 const bench = numbers.get(k)
@@ -63,7 +68,7 @@ export default function HallBenchGrid({ hall, seats, colorOf, highlight = [] }: 
                 const b = at.get(k)
                 return (
                   <div key={k} className={cn("rounded-md border p-1 bg-white", bench.seats === 1 ? "border-amber-300" : "border-brand-border")}>
-                    <div className="text-[9px] text-brand-textsec mb-0.5">{SEAT_KIND_LABEL[bench.kind]} {bench.benchNo}</div>
+                    <div className="text-[11px] text-brand-textsec mb-0.5">{SEAT_KIND_LABEL[bench.kind]} {bench.benchNo}</div>
                     {bench.seats === 2
                       ? <div className="grid grid-cols-2 gap-1">{seatCell(b?.L)}{seatCell(b?.R)}</div>
                       : <div className="w-1/2 mx-auto">{seatCell(b?.L)}</div>}

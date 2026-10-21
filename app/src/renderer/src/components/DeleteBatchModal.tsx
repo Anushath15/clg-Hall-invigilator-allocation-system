@@ -55,7 +55,7 @@ export default function DeleteBatchModal({ batch, onDelete, onClose }: Props) {
             <h2 className="text-base font-bold text-brand-textmain">Delete Allocation Batch</h2>
           </div>
           <button type="button" onClick={close} disabled={busy} aria-label="Close"
-            className="p-1.5 rounded-lg hover:bg-gray-200/60 text-gray-400 hover:text-gray-600 transition-colors"><X className="w-4 h-4" /></button>
+            className="p-1.5 rounded-lg hover:bg-gray-200/60 text-gray-600 hover:text-gray-800 transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
         <form onSubmit={submit} className="p-6 space-y-4">

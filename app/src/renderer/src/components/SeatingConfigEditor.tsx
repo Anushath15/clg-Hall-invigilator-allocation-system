@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { X, Wand2, AlertTriangle, CheckCircle2, RefreshCw, ArrowLeft, Users, Plus } from "lucide-react"
 import toast from "react-hot-toast"
 import { api } from "../lib/api"
-import { cn, formatDateWithDay } from "../lib/utils"
+import { cn, formatDateWithDay, hallLocation } from "../lib/utils"
 import {
   normalizeConfig, normalizeClassLimit, patternGroup, patternSeats, configureWithPattern, BENCH_TYPES, BENCH_TYPE_LABEL,
   DEFAULT_CLASS_LIMIT, MIN_CLASSES_PER_HALL, MAX_CLASSES_PER_HALL,
@@ -10,7 +10,8 @@ import {
 } from "../../../shared/seating"
 import { hallLayout, kindSummary, type Bench } from "../../../shared/hall-layout"
 import type { SeatRow } from "../lib/export-seating-pdf"
-import HallBenchGrid, { classColors, colorKey } from "./HallBenchGrid"
+import { classColors, colorKey } from "./HallBenchGrid"
+import HallSeatingModal from "./HallSeatingModal"
 import UnallocatedTable from "./UnallocatedTable"
 
 interface SessionHall { id: number; hall_code: string; benches: number; seats: number; benchList: Bench[]; raw: any; invigilators: string[] }
@@ -38,11 +39,11 @@ const HALL_MODES: { group: HallGroup; label: string; pattern: BenchType[] }[] = 
  * and girls' halls; one bench pattern in every hall; or each hall set on its own.
  */
 type Method = "separate" | "pattern" | "custom" | "rollwise"
-const METHODS: { value: Method; label: string; hint: string }[] = [
-  { value: "rollwise", label: "Roll number order", hint: "Boys and girls together: each seat column follows roll numbers, whatever the gender (e.g. 102349 a boy, then 102350 a girl)." },
-  { value: "separate", label: "Separate halls", hint: "Each hall holds only boys or only girls." },
-  { value: "pattern", label: "Same pattern in every hall", hint: "One bench pattern (e.g. Boy + Boy, Girl + Girl) repeated in every hall used." },
-  { value: "custom", label: "Custom per hall", hint: "Set each hall on its own: boys, girls, or its own bench pattern." }
+const METHODS: { value: Method; label: string }[] = [
+  { value: "rollwise", label: "Roll number order" },
+  { value: "separate", label: "Gender based allocation" },
+  { value: "pattern", label: "Create your own pattern" },
+  { value: "custom", label: "Custom per hall" }
 ]
 const DEFAULT_PATTERN: BenchType[] = ["MM", "FF"]
 const samePattern = (a: BenchType[], b: BenchType[]) => a.length === b.length && a.every((t, i) => t === b[i])
@@ -71,7 +72,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
   const [separateConfig, setSeparateConfig] = useState<SeatingConfig | null>(null)
   const [rollConfig, setRollConfig] = useState<SeatingConfig | null>(null)
   const [method, setMethod] = useState<Method>("separate")
-  /** The bench pattern of the "Same pattern in every hall" method. */
+  /** The bench pattern of the "Create your own pattern" method. */
   const [sharedPattern, setSharedPattern] = useState<BenchType[]>(DEFAULT_PATTERN)
   const [config, setConfig] = useState<SeatingConfig | null>(null)
   /** How many different classes (papers) a hall may hold: the target, and the most if the target cannot seat everyone. */
@@ -205,7 +206,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
       hallId: s.hallId, hall_code: hallOf(s.hallId)?.hall_code ?? "", bench_row: s.row, bench_col: s.col, bench_no: s.benchNo, seat: s.seat }
   })
   const colorOf = classColors((preview?.students ?? []).map((s: any) => colorKey(s)))
-  const viewHall = halls.find(h => h.id === viewHallId) ?? halls.find(h => previewSeats(h.id).length > 0)
+  const viewHall = halls.find(h => h.id === viewHallId)
   const unallocated = plan?.unallocated ?? []
 
   return (
@@ -217,9 +218,9 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
             <h4 className="text-sm font-semibold mb-1.5">Allocation method</h4>
             <div className="space-y-1.5">
               {METHODS.map(m => (
-                <label key={m.value} className={cn("flex items-start gap-2 border rounded-lg px-2.5 py-2 cursor-pointer", method === m.value ? "border-brand-primary bg-brand-primary/5" : "border-brand-border hover:bg-gray-50")}>
+                <label key={m.value} className={cn("flex items-center gap-2 border rounded-lg px-2.5 py-2 cursor-pointer", method === m.value ? "border-brand-primary bg-brand-primary/5" : "border-brand-border hover:bg-gray-50")}>
                   <input type="radio" name="seating-method" className="accent-brand-primary mt-0.5" checked={method === m.value} onChange={() => chooseMethod(m.value)} />
-                  <span><span className="text-sm font-medium">{m.label}</span><span className="block text-[11px] text-brand-textsec">{m.hint}</span></span>
+                  <span className="text-sm font-medium">{m.label}</span>
                 </label>
               ))}
             </div>
@@ -230,7 +231,6 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
             )}
             <div className="mt-3 border border-brand-border rounded-lg px-2.5 py-2">
               <h4 className="text-sm font-semibold">Classes per hall</h4>
-              <p className="text-[11px] text-brand-textsec">Different classes (papers, e.g. CSE – Final Year) in one hall.</p>
               <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
                 <label className="flex items-center gap-1">Target
                   <select className="input-field py-0.5 text-xs w-auto" value={classLimit.preferred}
@@ -246,11 +246,9 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
                   if needed
                 </label>
               </div>
-              <p className="text-[11px] text-brand-textsec mt-1">Every hall keeps to the target. Only if that leaves students without a seat may a hall take more classes, up to the second number.</p>
             </div>
             <SubjectsEditor classes={classes} subjects={subjects} subjectList={subjectList} onChange={setSubjects}
               mappedSubjects={mappedSubjects} sessionSubjects={sessionSubjects} onSessionSubjects={setSessionSubjects} />
-            <p className="text-xs text-brand-textsec mt-2">Two students sit on each bench. Halls fill in the order shown, bench by bench.</p>
             <button onClick={() => { setConfig(autoFor(method)); toast.success("Halls assigned automatically.") }} className="btn-secondary text-sm flex items-center gap-2 mt-2"><Wand2 className="w-4 h-4" /> Auto-assign halls</button>
           </div>
 
@@ -287,7 +285,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-brand-primary">{hall.hall_code}</span>
                     <span className="text-xs text-brand-textsec">{kindSummary(hallLayout(hall.raw))} · {hall.seats} seats</span>
-                    {group && method !== "rollwise" && <span className="ml-auto text-[11px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
+                    {group && method !== "rollwise" && <span className="ml-auto text-[13px] text-brand-textsec whitespace-nowrap"><b className="text-sky-700">{seats.M}</b> B · <b className="text-pink-700">{seats.F}</b> G</span>}
                   </div>
                   <div className="flex flex-wrap rounded-md border border-brand-border overflow-hidden text-xs mt-2 w-fit">
                     {modes.map(m => (
@@ -298,7 +296,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
                   {method === "custom" && (group === "mixed" || h.pattern.length > 1) && (
                     <div className="mt-2">
                       <PatternEditor pattern={h.pattern} onChange={p => setPattern(h.hallId, p)} />
-                      {h.pattern.length > hall.benches && hall.benches > 0 && <p className="text-[11px] text-brand-textsec mt-1">Only the first {hall.benches} benches of the pattern are used.</p>}
+                      {h.pattern.length > hall.benches && hall.benches > 0 && <p className="text-[13px] text-brand-textsec mt-1">Only the first {hall.benches} benches of the pattern are used.</p>}
                     </div>
                   )}
                   {group && hall.benches === 0 && <p className="text-xs text-red-600 mt-2">No bench layout: set it in Master Data → Halls.</p>}
@@ -350,7 +348,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
             <div className="card p-0 overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 border-b border-brand-border">
-                  <tr>{["Hall", "Group", "Benches", "Seats", "Occupied", "Empty", "Students"].map(t => <th key={t} className="text-left px-3 py-2 font-semibold text-brand-textsec uppercase tracking-wider whitespace-nowrap">{t}</th>)}</tr>
+                  <tr>{["Hall", "Group", "Benches", "Seats", "Students", "Empty"].map(t => <th key={t} className="text-left px-3 py-2 font-semibold text-brand-textsec uppercase tracking-wider whitespace-nowrap">{t}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-brand-border">
                   {plan.halls.map((h: any) => (
@@ -361,9 +359,6 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
                       <td className="px-3 py-2">{h.capacity}</td>
                       <td className="px-3 py-2 font-semibold">{h.occupied}</td>
                       <td className="px-3 py-2">{h.empty}</td>
-                      <td className="px-3 py-2">
-                        {h.categories.map((c: any) => <div key={c.key} className="whitespace-nowrap">{c.label}: <b>{c.count}</b></div>)}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -371,7 +366,14 @@ export default function SeatingConfigEditor({ session, halls, studentIds, sessio
             </div>
           )}
 
-          {viewHall && previewSeats(viewHall.id).length > 0 && <HallBenchGrid hall={viewHall} seats={previewSeats(viewHall.id)} colorOf={colorOf} />}
+          {viewHall && previewSeats(viewHall.id).length > 0 && (() => {
+            const g = plan?.halls?.find((h: any) => h.hallId === viewHall.id)?.gender
+            return (
+              <HallSeatingModal hall={viewHall} location={hallLocation(viewHall.raw)} seats={previewSeats(viewHall.id)} colorOf={colorOf}
+                badge={{ text: groupName(g), className: g === "M" ? "bg-sky-100 text-sky-700" : g === "F" ? "bg-pink-100 text-pink-700" : g === "mixed" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-700" }}
+                onClose={() => setViewHallId(null)} />
+            )
+          })()}
 
           {unallocated.length > 0 && (
             <div className="card">
@@ -483,10 +485,9 @@ const range = (from: number, to: number) => Array.from({ length: Math.max(0, to 
 function PatternEditor({ pattern, onChange }: { pattern: BenchType[]; onChange: (pattern: BenchType[]) => void }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] text-brand-textsec">Bench pattern, repeated from bench 1 (left seat + right seat):</p>
       <div className="flex flex-wrap gap-1">
         {pattern.map((t, i) => (
-          <span key={i} className={cn("flex items-center gap-0.5 border rounded pl-1 text-[11px]", BENCH_CHIP[t])}>
+          <span key={i} className={cn("flex items-center gap-0.5 border rounded pl-1 text-[13px]", BENCH_CHIP[t])}>
             <span className="text-brand-textsec">{i + 1}.</span>
             <select className="bg-transparent py-0.5 outline-none" value={t} title="Who sits on this bench: left seat + right seat"
               onChange={e => onChange(pattern.map((x, j) => j === i ? e.target.value as BenchType : x))}>
@@ -497,7 +498,7 @@ function PatternEditor({ pattern, onChange }: { pattern: BenchType[]; onChange: 
           </span>
         ))}
         <button onClick={() => onChange([...pattern, pattern[pattern.length - 1] === "MM" ? "FF" : "MM"])} title="Add a bench to the pattern"
-          className="flex items-center gap-0.5 border border-dashed border-gray-300 rounded px-1.5 text-[11px] hover:bg-gray-50"><Plus className="w-3 h-3" /> Bench</button>
+          className="flex items-center gap-0.5 border border-dashed border-gray-300 rounded px-1.5 text-[13px] hover:bg-gray-50"><Plus className="w-3 h-3" /> Bench</button>
       </div>
     </div>
   )

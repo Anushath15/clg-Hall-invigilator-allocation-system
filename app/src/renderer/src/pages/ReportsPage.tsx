@@ -209,7 +209,7 @@ export default function ReportsPage() {
                   {data.sessions.filter((s: any) => ["confirmed","published"].includes(s.status)).map((s: any) => (
                     <th key={s.id} className="bg-gray-100 px-2 py-2 text-center whitespace-nowrap border border-gray-200 min-w-[65px]">
                       <div>{formatDate(s.exam_date).split(" ").slice(0,2).join(" ")}</div>
-                      <div className="text-gray-500">{s.exam_date.slice(0, 4)} · {s.session_type}</div>
+                      <div className="text-gray-700">{s.exam_date.slice(0, 4)} · {s.session_type}</div>
                     </th>
                   ))}
                 </tr>
@@ -225,14 +225,14 @@ export default function ReportsPage() {
                     <tr key={u.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                       <td className="sticky left-0 z-10 px-3 py-1.5 bg-inherit border border-gray-200">
                         <div className="font-medium truncate max-w-[160px]">{u.name}</div>
-                        <div className="text-[10px] text-gray-400">{u.staff_id}</div>
+                        <div className="text-[12px] text-gray-600">{u.staff_id}</div>
                       </td>
                       {data.sessions.filter((s: any) => ["confirmed","published"].includes(s.status)).map((s: any) => {
                         const cell = lookup[`${u.id}_${s.id}`]
                         return (
                           <td key={s.id} className="px-1 py-1 text-center border border-gray-100">
                             {cell ? (
-                              <span className={`inline-block px-2 py-0.5 rounded font-bold text-[11px] ${cell.edited ? "bg-amber-100 text-amber-700" : "bg-green-50 text-green-700"}`}>
+                              <span className={`inline-block px-2 py-0.5 rounded font-bold text-[13px] ${cell.edited ? "bg-amber-100 text-amber-700" : "bg-green-50 text-green-700"}`}>
                                 {cell.code}
                               </span>
                             ) : <span className="text-gray-300 text-xs">—</span>}
@@ -253,7 +253,7 @@ export default function ReportsPage() {
           <table className="w-full text-xs">
             <thead className="bg-brand-sidebar text-white">
               <tr>{(COLS[active] ?? []).map(h =>
-                <th key={h} className="text-left px-3 py-2.5 text-[10px] uppercase tracking-wider font-semibold border-r border-white/10">{h}</th>)}
+                <th key={h} className="text-left px-3 py-2.5 text-[12px] uppercase tracking-wider font-semibold border-r border-white/10">{h}</th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-border">

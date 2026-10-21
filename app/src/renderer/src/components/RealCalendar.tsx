@@ -100,7 +100,7 @@ export default function RealCalendar({
             <button
               type="button"
               onClick={onClearDates}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
             >
               <XCircle className="w-3.5 h-3.5" />
               Clear
@@ -172,25 +172,25 @@ export default function RealCalendar({
                     {format(day, "d")}
                   </span>
                   {isSelected && !single && (
-                    <span className="text-[10px] bg-white text-brand-dark font-bold px-1 rounded-full leading-tight">
+                    <span className="text-[12px] bg-white text-brand-dark font-bold px-1 rounded-full leading-tight">
                       #{selectionIndex + 1}
                     </span>
                   )}
                   {isToday && !isSelected && (
-                    <span className="text-[9px] text-blue-600 font-bold">Today</span>
+                    <span className="text-[11px] text-blue-600 font-bold">Today</span>
                   )}
                 </div>
 
                 {/* Holiday or Sunday label */}
                 <div className="w-full text-center mt-1">
                   {isSunday ? (
-                    <span className="text-[9px] text-red-500 font-medium tracking-tight">
+                    <span className="text-[11px] text-red-500 font-medium tracking-tight">
                       Sun
                     </span>
                   ) : holiday ? (
                     <span
                       className={cn(
-                        "text-[9px] block truncate font-medium rounded px-1 leading-tight",
+                        "text-[11px] block truncate font-medium rounded px-1 leading-tight",
                         isSelected
                           ? "bg-amber-400 text-gray-900 font-semibold"
                           : "bg-amber-100 text-amber-900"
@@ -246,17 +246,17 @@ export default function RealCalendar({
                       : "bg-white border-brand-border text-brand-textmain shadow-xs"
                   )}
                 >
-                  <span className="text-[10px] font-bold text-brand-primary">#{i + 1}</span>
+                  <span className="text-[12px] font-bold text-brand-primary">#{i + 1}</span>
                   <span>{formatDateWithDay(dateStr)}</span>
                   {holiday && (
-                    <span className="text-[10px] bg-amber-200 text-amber-900 px-1 rounded font-semibold">
+                    <span className="text-[12px] bg-amber-200 text-amber-900 px-1 rounded font-semibold">
                       {holiday.name}
                     </span>
                   )}
                   <button
                     type="button"
                     onClick={() => onToggleDate(dateStr)}
-                    className="ml-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                    className="ml-0.5 text-gray-600 hover:text-red-500 transition-colors"
                     title="Remove date"
                   >
                     ×

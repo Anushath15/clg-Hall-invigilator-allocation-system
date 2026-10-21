@@ -351,7 +351,7 @@ function HallsTab() {
 function BenchSummary({ hall }: { hall: any }) {
   const l = hallLayout(hall)
   if (!l.rows) return <span className="text-amber-600">Not set</span>
-  return <>{kindSummary(l)} <span className="text-gray-400">({l.cols} col × {l.rows} rows{l.disabled.length ? `, ${l.disabled.length} removed` : ""})</span></>
+  return <>{kindSummary(l)} <span className="text-gray-600">({l.cols} col × {l.rows} rows{l.disabled.length ? `, ${l.disabled.length} removed` : ""})</span></>
 }
 
 // ── DEPARTMENTS TAB ──────────────────────────────────────────

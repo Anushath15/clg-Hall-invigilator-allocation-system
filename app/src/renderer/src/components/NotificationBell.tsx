@@ -106,7 +106,7 @@ export default function NotificationBell() {
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none text-white bg-red-600 rounded-full min-w-[18px] h-[18px]">
+          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[12px] font-bold leading-none text-white bg-red-600 rounded-full min-w-[18px] h-[18px]">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -135,9 +135,9 @@ export default function NotificationBell() {
 
           <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
             {loading && notifications.length === 0 ? (
-              <div className="py-8 text-center text-xs text-gray-500">Loading notifications...</div>
+              <div className="py-8 text-center text-xs text-gray-700">Loading notifications...</div>
             ) : notifications.length === 0 ? (
-              <div className="py-8 text-center text-xs text-gray-500">No notifications yet.</div>
+              <div className="py-8 text-center text-xs text-gray-700">No notifications yet.</div>
             ) : (
               notifications.map((n: any) => (
                 <div
@@ -151,11 +151,11 @@ export default function NotificationBell() {
                       <h4 className={`text-xs font-semibold truncate ${!n.is_read ? "text-blue-950 font-bold" : "text-gray-800"}`}>
                         {n.title}
                       </h4>
-                      <span className="text-[10px] text-gray-500 flex-shrink-0">
+                      <span className="text-[12px] text-gray-700 flex-shrink-0">
                         {formatRelativeTime(n.created_at)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 leading-relaxed break-words">
+                    <p className="text-xs text-gray-800 leading-relaxed break-words">
                       {n.message}
                     </p>
                   </div>
@@ -163,7 +163,7 @@ export default function NotificationBell() {
                     <button
                       onClick={() => handleMarkRead(n.id)}
                       title="Mark as read"
-                      className="p-1 rounded-md text-gray-400 hover:text-brand-primary hover:bg-gray-100 transition-colors flex-shrink-0"
+                      className="p-1 rounded-md text-gray-600 hover:text-brand-primary hover:bg-gray-100 transition-colors flex-shrink-0"
                     >
                       <Check className="w-3.5 h-3.5" />
                     </button>

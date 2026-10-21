@@ -100,7 +100,7 @@ export default function AdminLayout() {
               <div className="min-w-0">
                 <h1 className="text-sm font-bold leading-tight tracking-wide">HIAS</h1>
                 {collegeShortName && (
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider truncate">{collegeShortName}</p>
+                  <p className="text-[12px] text-gray-400 uppercase tracking-wider truncate">{collegeShortName}</p>
                 )}
               </div>
             </div>
