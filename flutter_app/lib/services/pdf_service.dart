@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -15,6 +16,21 @@ import 'report_service.dart';
 /// Every PDF HIAS produces, built in memory from data already loaded (pure: no database writes).
 /// Ink is dark for basic office printers: black text, dark rules, dark header bands.
 class PdfService {
+  /// A Unicode font from the computer (so dashes and dots print), else the built-in Helvetica.
+  static final pw.ThemeData? _theme = () {
+    for (final dir in const [r'C:\Windows\Fonts', '/usr/share/fonts/truetype/dejavu', '/Library/Fonts', '/System/Library/Fonts/Supplemental']) {
+      for (final pair in const [('arial.ttf', 'arialbd.ttf'), ('DejaVuSans.ttf', 'DejaVuSans-Bold.ttf'), ('Arial.ttf', 'Arial Bold.ttf')]) {
+        final r = File('$dir/${pair.$1}'), b = File('$dir/${pair.$2}');
+        if (r.existsSync() && b.existsSync()) {
+          return pw.ThemeData.withFont(base: pw.Font.ttf(r.readAsBytesSync().buffer.asByteData()), bold: pw.Font.ttf(b.readAsBytesSync().buffer.asByteData()));
+        }
+      }
+    }
+    return null;
+  }();
+
+  static pw.Document _doc() => pw.Document(theme: _theme);
+
   static const _ink = PdfColors.black;
   static const _inkNote = PdfColor(40 / 255, 40 / 255, 40 / 255);
   static const _rule = PdfColor(60 / 255, 60 / 255, 60 / 255);
@@ -65,7 +81,7 @@ class PdfService {
   // ── Invigilator allocation sheet ────────────────────────
 
   Future<Uint8List> allocationSheet({required ExamCycle? cycle, required ExamSession session, required List<AllocationRow> allocation, required Map<String, String> settings}) {
-    final doc = pw.Document();
+    final doc = _doc();
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(28),
@@ -166,7 +182,7 @@ class PdfService {
 
   /// One landscape page per hall: the benches as seen from the front and the class key table.
   Future<Uint8List> seatingPlan({required ExamCycle? cycle, required ExamSession session, required List<SeatingHallInfo> halls, required List<SeatRow> seats, required Map<String, String> settings}) {
-    final doc = pw.Document();
+    final doc = _doc();
     final classList = seats.map((s) => s.colorKey).toSet().toList()..sort();
     int classNo(String c) => math.max(0, classList.indexOf(c)) + 1;
     ({int fill, String border}) styleOf(String c) => _classStyles[(classNo(c) - 1) % _classStyles.length];
@@ -322,7 +338,7 @@ class PdfService {
 
   /// One page per class in each hall, students in bench order with a signature column.
   Future<Uint8List> attendanceSheets({required ExamCycle? cycle, required ExamSession session, required List<SeatingHallInfo> halls, required List<SeatRow> seats, required Map<String, String> settings}) {
-    final doc = pw.Document();
+    final doc = _doc();
     for (final hs in _hallsWithSeats(halls, seats)) {
       final h = hs.hall;
       final classes = hs.seats.map((s) => s.colorKey).toSet().toList()..sort();
@@ -376,7 +392,7 @@ class PdfService {
         c = (a.deptCode ?? '').compareTo(b.deptCode ?? '');
         return c != 0 ? c : naturalCompare(a.rollNo, b.rollNo);
       });
-    final doc = pw.Document();
+    final doc = _doc();
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(28),
@@ -413,7 +429,7 @@ class PdfService {
 
   Future<Uint8List> unallocatedList({required ExamCycle? cycle, required ExamSession session, required List<UnallocatedStudent> unallocated, required Map<String, String> settings}) {
     final sorted = [...unallocated]..sort((a, b) => naturalCompare(a.rollNo, b.rollNo));
-    final doc = pw.Document();
+    final doc = _doc();
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
       margin: const pw.EdgeInsets.all(28),
@@ -432,7 +448,7 @@ class PdfService {
   // ── History and reports ─────────────────────────────────
 
   Future<Uint8List> allocationHistory(List<DbRow> rows, Map<String, String> settings) {
-    final doc = pw.Document();
+    final doc = _doc();
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
       margin: const pw.EdgeInsets.all(28),
@@ -483,7 +499,7 @@ class PdfService {
     if (kind == 'datewise' && rows != null && rows.isNotEmpty) {
       title = '$title — ${formatDateWithDay(asStr(rows.first['exam_date']))} (${formatSession(asStr(rows.first['session_type']))})';
     }
-    final doc = pw.Document();
+    final doc = _doc();
     pw.Widget body;
     if (kind == 'staffwise') {
       body = _table(staffWiseHead, rows!.map(staffWiseCells).toList());

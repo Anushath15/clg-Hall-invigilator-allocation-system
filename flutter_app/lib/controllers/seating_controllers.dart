@@ -166,9 +166,65 @@ class StudentSelectorController extends ChangeNotifier {
   String query = '';
   List<String>? uploadNote;
 
+  /// How students are picked: by subject, by class, or one by one.
+  int tab = 0;
+  String subjectQuery = '', classQuery = '';
+
+  void setTab(int t) {
+    tab = t;
+    notifyListeners();
+  }
+
+  void setSubjectQuery(String q) {
+    subjectQuery = q;
+    notifyListeners();
+  }
+
+  void setClassQuery(String q) {
+    classQuery = q;
+    notifyListeners();
+  }
+
   String yearText(String batch) {
     final y = yearOfStudy(batch, academicYear);
-    return y.ok ? y.label : 'not studying this year';
+    if (y.ok) return y.label;
+    if (y.reason.contains('finished')) return 'Course completed';
+    if (y.reason.contains('not started')) return 'Not started yet';
+    return 'Year unknown';
+  }
+
+  Set<int> get _activeIds => students.map((s) => s.id).toSet();
+
+  /// Active students who study a subject.
+  List<int> idsOfSubject(Subject sb) => sb.studentIds.where(_activeIds.contains).toList();
+
+  /// Subjects matching the search (code, name or department).
+  List<Subject> get shownSubjects => subjects.where((sb) => matchesSearch(subjectQuery, [sb.code, sb.name, sb.departmentCode])).toList();
+
+  /// Classes (department + section + batch) matching the class search, e.g. "CSE A" or "Final".
+  List<({String key, String batch, String dept, String section, List<Student> list})> get classGroups {
+    final m = <String, List<Student>>{};
+    for (final s in students) {
+      m.putIfAbsent('${s.batch}|${s.departmentCode ?? '—'}|${s.section}', () => []).add(s);
+    }
+    final keys = m.keys.toList()..sort(textCompare);
+    final out = <({String key, String batch, String dept, String section, List<Student> list})>[];
+    for (final k in keys) {
+      final p = k.split('|');
+      final label = '${p[1]} ${p[2]} ${yearText(p[0])} ${p[0]}';
+      final words = classQuery.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+      if (!words.every((w) => label.toLowerCase().contains(w))) continue;
+      out.add((key: k, batch: p[0], dept: p[1], section: p[2], list: m[k]!..sort((a, b) => naturalCompare(a.rollNo, b.rollNo))));
+    }
+    return out;
+  }
+
+  /// Ticks or unticks a whole subject (its students, and the subject as one written in this exam).
+  void setSubject(Subject sb, bool on) {
+    setMany(idsOfSubject(sb), on);
+    if (on && !picked.contains(sb.id)) picked.add(sb.id);
+    if (!on) picked.remove(sb.id);
+    notifyListeners();
   }
 
   List<({String key, String batch, String dept, String section, List<Student> list})> get groups {
