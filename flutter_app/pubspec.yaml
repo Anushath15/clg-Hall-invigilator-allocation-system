@@ -1,0 +1,38 @@
+name: hias
+description: "HIAS - Hall Invigilator Allocation System"
+publish_to: 'none'
+version: 1.1.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # State: controllers are ChangeNotifiers handed to the views by provider.
+  provider: ^6.1.2
+  # The local database (the same eias.db file the Electron app used).
+  sqlite3: ^2.4.7
+  sqlite3_flutter_libs: ^0.5.28
+  path_provider: ^2.1.5
+  path: ^1.9.0
+  intl: ^0.19.0
+  collection: ^1.19.0
+  # Excel / CSV import and templates.
+  excel: ^4.0.6
+  csv: ^6.0.0
+  # PDF reports.
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  # Open / save dialogs.
+  file_picker: ^8.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
