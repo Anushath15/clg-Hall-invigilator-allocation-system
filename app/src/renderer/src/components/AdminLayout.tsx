@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import {
   LayoutDashboard, Calendar, Building2, Users, ClipboardList,
-  BarChart3, Settings, LogOut, History, ArrowLeft, PanelLeftClose, PanelLeftOpen, HardDrive, GraduationCap
+  BarChart3, Settings, LogOut, History, ArrowLeft, PanelLeftClose, PanelLeftOpen, HardDrive, GraduationCap, BookOpen
 } from "lucide-react"
 import HiasLogo from "./HiasLogo"
 import { useAuthStore } from "../store/auth.store"
@@ -42,6 +42,7 @@ const navItems = [
 const masterItems = [
   { to: "/master?tab=staff", tab: "staff", icon: Users, label: "Staff / Invigilators" },
   { to: "/master?tab=students", tab: "students", icon: GraduationCap, label: "Students" },
+  { to: "/master?tab=subjects", tab: "subjects", icon: BookOpen, label: "Subjects" },
   { to: "/master?tab=halls", tab: "halls", icon: Building2, label: "Halls" },
   { to: "/master?tab=departments", tab: "departments", icon: ClipboardList, label: "Departments" },
 ]

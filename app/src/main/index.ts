@@ -10,6 +10,7 @@ import { registerMasterHandlers } from "./ipc/master.ipc"
 import { registerReportHandlers } from "./ipc/report.ipc"
 import { registerCycleHandlers } from "./ipc/cycle.ipc"
 import { registerStudentHandlers } from "./ipc/student.ipc"
+import { registerSubjectHandlers } from "./ipc/subject.ipc"
 
 // Keep the data folder at %APPDATA%\eias regardless of the product name, so renaming
 // the app (EIAS -> HIAS) never "loses" the existing eias.db on installed machines.
@@ -106,6 +107,7 @@ app.whenReady().then(async () => {
     registerReportHandlers()
     registerCycleHandlers()
     registerStudentHandlers()
+    registerSubjectHandlers()
 
     createWindow()
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

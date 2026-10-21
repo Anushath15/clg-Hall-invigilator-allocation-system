@@ -5,7 +5,8 @@
  * Individual-aware: each staff member maintains their own rotation state.
  */
 import { db } from "../db/database"
-import { assignHalls, minimumRepeats, visitedThisCycle, allocationSeed, type AssignmentResult } from "../../shared/assignment"
+import { assignHalls, minimumRepeats, visitedThisCycle, allocationSeed, type AssignmentResult, type SubjectConflict } from "../../shared/assignment"
+import { subjectConflictOf } from "../../shared/subjects"
 
 export interface AllocationEntry {
   userId: number
@@ -23,7 +24,8 @@ export async function generateAllocation(
   }
   const session = db.queryOne<any>("SELECT cycle_id, created_at FROM exam_sessions WHERE id = ?", [sessionId])
   const seed = allocationSeed({ cycleId: session?.cycle_id, sessionId, createdAt: session?.created_at, userIds, hallIds })
-  return assignOptimally(userIds, hallIds, seed).entries
+  // Invigilators are kept out of halls writing a subject they handle, when the rotation allows.
+  return assignOptimally(userIds, hallIds, seed, subjectConflictOf(db, sessionId, hallIds)).entries
 }
 
 // ─── 1:1 allocation: optimal assignment (see assignment.ts) ─────────────────
@@ -36,8 +38,8 @@ export function hallHistory(userId: number): number[] {
   ).map((r: any) => r.hall_id)
 }
 
-export function assignOptimally(userIds: number[], hallIds: number[], seed = ""): AssignmentResult {
-  return assignHalls(userIds, hallIds, hallHistory, seed)
+export function assignOptimally(userIds: number[], hallIds: number[], seed = "", conflictOf?: SubjectConflict): AssignmentResult {
+  return assignHalls(userIds, hallIds, hallHistory, seed, conflictOf)
 }
 
 /** Halls of `pool` this staff member has already had in their current rotation cycle (R1). */

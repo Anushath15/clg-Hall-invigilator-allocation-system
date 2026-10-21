@@ -19,6 +19,8 @@ interface Props {
   /** The session's halls (its invigilator allocation), with their layouts. */
   halls: SessionHall[]
   studentIds: number[]
+  /** The subjects picked when selecting the students (null: not chosen there, keep the saved ones). */
+  sessionSubjectIds?: number[] | null
   onBack: () => void
   onClose: () => void
   onSaved: (result: any) => void
@@ -64,7 +66,7 @@ const BENCH_CHIP: Record<BenchType, string> = { MM: "border-sky-300 bg-sky-50", 
  * never share a bench), or not used. Students sit two to a bench, filling the halls in order (shared/seating.ts). A live preview shows
  * the plan; saving re-checks everything on the other side.
  */
-export default function SeatingConfigEditor({ session, halls, studentIds, onBack, onClose, onSaved }: Props) {
+export default function SeatingConfigEditor({ session, halls, studentIds, sessionSubjectIds, onBack, onClose, onSaved }: Props) {
   const [autoConfig, setAutoConfig] = useState<SeatingConfig | null>(null)
   const [separateConfig, setSeparateConfig] = useState<SeatingConfig | null>(null)
   const [rollConfig, setRollConfig] = useState<SeatingConfig | null>(null)
@@ -84,6 +86,17 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   const [saving, setSaving] = useState(false)
   const [confirmList, setConfirmList] = useState<any[] | null>(null)
   const [viewHallId, setViewHallId] = useState<number | null>(null)
+  /** The subject each class writes in this session (class key → subject id); empty = seat by class as before. */
+  const [subjects, setSubjects] = useState<Record<string, number>>({})
+  /** The classes of the selected students, and the subject master, for entering the subjects. */
+  const [classes, setClasses] = useState<{ key: string; label: string; department_id: number | null; count: number; mapped: number }[]>([])
+  const [subjectList, setSubjectList] = useState<any[]>([])
+  /** The subjects written in this exam: students mapped to one of them write it (Master Data → Subjects → Students). */
+  const [sessionSubjects, setSessionSubjects] = useState<number[]>([])
+  /** The subjects the selected students are mapped to, with how many of them each. */
+  const [mappedSubjects, setMappedSubjects] = useState<{ id: number; count: number }[]>([])
+  /** The subjects the automatic settings were last made for. */
+  const [autoSubjects, setAutoSubjects] = useState<string>("")
 
   const seatHalls: SeatHall[] = useMemo(() => halls.map(h => ({ id: h.id, hall_code: h.hall_code, ...hallLayout(h.raw) })), [halls])
   const hallOf = (id: number) => halls.find(h => h.id === id)!
@@ -92,11 +105,18 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   // automatic one (which seats everyone whenever the halls can).
   useEffect(() => {
     let live = true
+    api.getSubjects().then(list => live && setSubjectList(list.filter((x: any) => x.is_active))).catch(() => setSubjectList([]))
     api.getSeatingConfig(session.id).then(async saved => {
       const limit = normalizeClassLimit(saved?.config.classLimit)
-      const auto = await api.autoConfigureSeating(session.id, studentIds, limit)
+      const given = saved?.config.subjects ?? {}
+      const written = sessionSubjectIds ?? saved?.config.sessionSubjects ?? []
+      const auto = await api.autoConfigureSeating(session.id, studentIds, limit, { subjects: given, sessionSubjects: written })
       if (!live) return
       if (!auto.success) { toast.error(auto.error, { duration: 7000 }); onClose(); return }
+      // Only the classes still selected keep their subject.
+      const kept = Object.fromEntries(Object.entries(given).filter(([k]) => (auto.classes ?? []).some((c: any) => c.key === k)))
+      setClasses(auto.classes ?? []); setMappedSubjects(auto.mappedSubjects ?? []); setSubjects(kept); setSessionSubjects(written)
+      setAutoSubjects(JSON.stringify([kept, written]))
       setClassLimit(limit); setAutoLimit(limit)
       setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setRollConfig(auto.rollConfig); setCounts({ boys: auto.boys, girls: auto.girls }); setShortfall(auto.shortfall)
       const sameStudents = !!saved && saved.studentIds.length === studentIds.length && studentIds.every(id => saved.studentIds.includes(id))
@@ -111,27 +131,29 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
 
   // A new class limit: the automatic settings (and what cannot be seated) are worked out again for it.
   useEffect(() => {
-    if (!autoLimit || (autoLimit.preferred === classLimit.preferred && autoLimit.max === classLimit.max)) return
+    const now = JSON.stringify([subjects, sessionSubjects])
+    if (!autoLimit || (autoLimit.preferred === classLimit.preferred && autoLimit.max === classLimit.max && autoSubjects === now)) return
     let live = true
-    api.autoConfigureSeating(session.id, studentIds, classLimit).then(auto => {
+    api.autoConfigureSeating(session.id, studentIds, classLimit, { subjects, sessionSubjects }).then(auto => {
       if (!live || !auto.success) return
-      setAutoLimit(classLimit); setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setRollConfig(auto.rollConfig); setShortfall(auto.shortfall)
+      setAutoLimit(classLimit); setAutoSubjects(now); setClasses(auto.classes ?? [])
+      setAutoConfig(auto.config); setSeparateConfig(auto.separateConfig); setRollConfig(auto.rollConfig); setShortfall(auto.shortfall)
     })
     return () => { live = false }
-  }, [classLimit])
+  }, [classLimit, subjects, sessionSubjects])
 
   // Preview the plan shortly after each change.
   useEffect(() => {
     if (!config) return
     setPreviewing(true)
     const t = setTimeout(() => {
-      api.previewSeating(session.id, studentIds, { ...config, classLimit }).then(r => {
+      api.previewSeating(session.id, studentIds, { ...config, classLimit, subjects, sessionSubjects }).then(r => {
         if (!r.success) toast.error(r.error)
         setPreview(r.success ? r : null)
       }).finally(() => setPreviewing(false))
     }, 250)
     return () => clearTimeout(t)
-  }, [config, classLimit])
+  }, [config, classLimit, subjects, sessionSubjects])
 
   if (!config) {
     return (
@@ -165,7 +187,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
   async function save(acceptUnallocated: boolean) {
     setSaving(true)
     try {
-      const r = await api.confirmSeating(session.id, studentIds, { ...config!, classLimit }, { acceptUnallocated })
+      const r = await api.confirmSeating(session.id, studentIds, { ...config!, classLimit, subjects, sessionSubjects }, { acceptUnallocated })
       if (r.needsConfirmation) { setConfirmList(r.unallocated); return }
       if (!r.success) { toast.error(r.error, { duration: 8000 }); return }
       setConfirmList(null)
@@ -226,6 +248,8 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
               </div>
               <p className="text-[11px] text-brand-textsec mt-1">Every hall keeps to the target. Only if that leaves students without a seat may a hall take more classes, up to the second number.</p>
             </div>
+            <SubjectsEditor classes={classes} subjects={subjects} subjectList={subjectList} onChange={setSubjects}
+              mappedSubjects={mappedSubjects} sessionSubjects={sessionSubjects} onSessionSubjects={setSessionSubjects} />
             <p className="text-xs text-brand-textsec mt-2">Two students sit on each bench. Halls fill in the order shown, bench by bench.</p>
             <button onClick={() => { setConfig(autoFor(method)); toast.success("Halls assigned automatically.") }} className="btn-secondary text-sm flex items-center gap-2 mt-2"><Wand2 className="w-4 h-4" /> Auto-assign halls</button>
           </div>
@@ -315,6 +339,7 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
             </div>
           )}
           {errors.length === 0 && plan && <p className="text-xs text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Two students per bench, never two of the same class on a bench, at most {classLimit.max} classes in a hall, {config.mixGenders ? "seats in roll number order, boys and girls together." : "every seat as its hall's bench pattern says."}</p>}
+          {errors.length === 0 && plan && (Object.keys(subjects).length > 0 || sessionSubjects.length > 0) && <p className="text-xs text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> By subject: students writing the same subject never share a bench and never sit side by side across the aisle.</p>}
           {warnings.length > 0 && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 max-h-40 overflow-y-auto">
               {warnings.map((w, i) => <p key={i}>• {w}</p>)}
@@ -385,6 +410,69 @@ export default function SeatingConfigEditor({ session, halls, studentIds, onBack
         </div>
       )}
     </Shell>
+  )
+}
+
+/**
+ * The subject each class writes in this session, picked from Master Data → Subjects (subjects of the
+ * class's department first). Classes writing the same subject are kept apart as one; a class left
+ * "Not entered" is seated by class as before.
+ */
+function SubjectsEditor({ classes, subjects, subjectList, onChange, mappedSubjects, sessionSubjects, onSessionSubjects }: {
+  classes: { key: string; label: string; department_id: number | null; count: number; mapped: number }[]
+  subjects: Record<string, number>; subjectList: any[]; onChange: (s: Record<string, number>) => void
+  mappedSubjects: { id: number; count: number }[]; sessionSubjects: number[]; onSessionSubjects: (ids: number[]) => void
+}) {
+  if (classes.length === 0) return null
+  const subjectOf = (id: number) => subjectList.find(s => s.id === id)
+  const toggleWritten = (id: number) => onSessionSubjects(sessionSubjects.includes(id) ? sessionSubjects.filter(x => x !== id) : [...sessionSubjects, id])
+  const set = (key: string, id: number) => {
+    const next = { ...subjects }
+    if (id) next[key] = id; else delete next[key]
+    onChange(next)
+  }
+  const entered = classes.filter(c => subjects[c.key] || c.mapped === c.count).length
+  return (
+    <div className="mt-3 border border-brand-border rounded-lg px-2.5 py-2">
+      <h4 className="text-sm font-semibold">Subjects written <span className="font-normal text-brand-textsec text-xs">({entered}/{classes.length} classes)</span></h4>
+      <p className="text-[11px] text-brand-textsec">The subject each class writes in this exam. Students of the same subject never share a bench or sit side by side, and staff handling a subject are kept out of its halls.</p>
+      {subjectList.length === 0 ? (
+        <p className="text-[11px] text-amber-700 mt-1.5">No subjects yet: add them in Master Data → Subjects.</p>
+      ) : (<>
+        {mappedSubjects.length > 0 && (
+          <div className="mt-1.5">
+            <p className="text-[11px] font-medium">Subjects in this exam <span className="font-normal text-brand-textsec">(students mapped to a ticked subject write it)</span></p>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {mappedSubjects.filter(m => subjectOf(m.id)).map(m => {
+                const on = sessionSubjects.includes(m.id)
+                return (
+                  <button key={m.id} type="button" onClick={() => toggleWritten(m.id)} title={subjectOf(m.id)!.name}
+                    className={cn("px-2 py-0.5 rounded border text-[11px]", on ? "bg-violet-600 text-white border-violet-600" : "bg-white border-brand-border hover:border-violet-500")}>
+                    {subjectOf(m.id)!.code} ({m.count})
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        <p className="text-[11px] font-medium mt-2">By class <span className="font-normal text-brand-textsec">(for students not mapped to a ticked subject)</span></p>
+        <div className="space-y-1 mt-1">
+          {classes.map(c => {
+            const own = subjectList.filter(s => s.department_id === c.department_id), rest = subjectList.filter(s => s.department_id !== c.department_id)
+            return (
+              <label key={c.key} className="flex items-center gap-2 text-xs">
+                <span className="w-32 shrink-0 truncate" title={c.mapped ? `${c.mapped} of ${c.count} are mapped to a subject of this exam` : c.label}><b>{c.label}</b> <span className="text-brand-textsec">({c.mapped ? `${c.count - c.mapped} not mapped` : c.count})</span></span>
+                <select disabled={c.mapped === c.count} className="input-field py-0.5 text-xs flex-1 min-w-0" value={subjects[c.key] ?? ""} onChange={e => set(c.key, Number(e.target.value))}>
+                  <option value="">{c.mapped === c.count ? "— All mapped —" : "— Not entered —"}</option>
+                  {own.length > 0 && <optgroup label="This department">{own.map(s => <option key={s.id} value={s.id}>{s.code} – {s.name}</option>)}</optgroup>}
+                  {rest.length > 0 && <optgroup label={own.length ? "Other subjects" : "Subjects"}>{rest.map(s => <option key={s.id} value={s.id}>{s.code} – {s.name}</option>)}</optgroup>}
+                </select>
+              </label>
+            )
+          })}
+        </div>
+      </>)}
+    </div>
   )
 }
 

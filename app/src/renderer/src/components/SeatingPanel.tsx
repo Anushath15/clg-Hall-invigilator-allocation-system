@@ -20,6 +20,11 @@ interface Props {
   session: any
   /** The session's invigilator allocation (getSessionAllocation rows): its halls are the seating halls. */
   allocation: any[]
+  /**
+   * Makes the invigilator allocation again with the same staff and halls (the seating is kept), so
+   * that nobody invigilates a hall writing a subject they handle whenever the rotation allows.
+   */
+  onReassignInvigilators?: () => Promise<void>
 }
 
 /**
@@ -29,25 +34,39 @@ interface Props {
  * (SeatingConfigEditor, shared/seating.ts). Shows each hall's bench grid, the students left
  * unallocated, and exports the seating PDFs.
  */
-export default function SeatingPanel({ cycle, session, allocation }: Props) {
+export default function SeatingPanel({ cycle, session, allocation, onReassignInvigilators }: Props) {
   const [seats, setSeats] = useState<SeatRow[]>([])
   const [halls, setHalls] = useState<any[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<null | "select" | "configure">(null)
   const [chosenIds, setChosenIds] = useState<number[]>([])
+  /** Subjects picked under "By subject" when selecting the students: the subjects of this exam. */
+  const [chosenSubjects, setChosenSubjects] = useState<number[] | null>(null)
   const [saved, setSaved] = useState<Awaited<ReturnType<typeof api.getSeatingConfig>>>(null)
   const [showUnallocated, setShowUnallocated] = useState(false)
   const [viewHallId, setViewHallId] = useState<number | null>(null)
   const [find, setFind] = useState("")
   const [others, setOthers] = useState<any[]>([])
+  /** Invigilators in a hall writing a subject they handle (Master Data → Subjects). */
+  const [conflicts, setConflicts] = useState<Awaited<ReturnType<typeof api.getSubjectConflicts>>>([])
+  const [reassigning, setReassigning] = useState(false)
 
   const load = async () => {
     const [s, h, c] = await Promise.all([api.getSessionSeating(session.id), api.getHalls(), api.getSeatingConfig(session.id)])
     setSeats(s); setHalls(h); setSaved(c)
     api.getSeatingSelections().then(x => setOthers(x.filter((o: any) => o.id !== session.id))).catch(() => setOthers([]))
   }
-  useEffect(() => { setWarnings([]); setViewHallId(null); setFind(""); setStep(null); setChosenIds([]); load() }, [session.id, allocation.length])
+  useEffect(() => { setWarnings([]); setViewHallId(null); setFind(""); setStep(null); setChosenIds([]); setChosenSubjects(null); load() }, [session.id, allocation.length])
+  useEffect(() => { api.getSubjectConflicts(session.id).then(setConflicts).catch(() => setConflicts([])) }, [session.id, allocation, seats])
+  const confirmed = session.status === "confirmed" || session.status === "published"
+
+  async function reassign() {
+    if (!onReassignInvigilators) return
+    if (!confirm("Make the invigilator allocation again with the same staff and halls, keeping staff out of halls writing a subject they handle? Manual changes to this session's allocation are replaced. The seating stays as it is.")) return
+    setReassigning(true)
+    try { await onReassignInvigilators() } finally { setReassigning(false) }
+  }
 
   // The session's halls in hall order, with their invigilators and bench layouts.
   const sessionHalls: (SeatingHallInfo & { benches: number; seats: number; benchList: Bench[]; raw: any })[] = useMemo(() => {
@@ -173,6 +192,20 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
           <span>No bench layout for {noLayout.map(h => h.hall_code).join(", ")}: no students can sit there. Set the rows and columns in Master Data → Halls.</span>
         </div>
       )}
+      {conflicts.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Invigilator handles a subject written in their hall</p>
+            {conflicts.map((c, i) => <p key={i}>• {c.userName} ({c.staffId}) – Hall <b>{c.hall_code}</b> writes {c.subjectCode} {c.subjectName}</p>)}
+            <p className="text-xs mt-1">{confirmed ? "This session is confirmed, so its allocation can no longer change." : "Reassigning keeps the rotation first: a clash stays only when the rotation leaves no other choice."}</p>
+          </div>
+          {!confirmed && onReassignInvigilators && (
+            <button onClick={reassign} disabled={reassigning} className="btn-primary text-sm flex items-center gap-2">
+              {reassigning && <RefreshCw className="w-4 h-4 animate-spin" />} Reassign invigilators by subject
+            </button>
+          )}
+        </div>
+      )}
       {warnings.length > 0 && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
           {warnings.map((w, i) => <p key={i}>• {w}</p>)}
@@ -231,11 +264,12 @@ export default function SeatingPanel({ cycle, session, allocation }: Props) {
 
       {step === "select" && (
         <StudentSelector session={session} academicYear={cycle?.academic_year} seats={totalSeats} initialIds={chosenIds.length ? chosenIds : selectedIds}
+          initialSubjectIds={chosenSubjects ?? saved?.config.sessionSubjects ?? []}
           onClose={() => setStep(null)}
-          onConfirm={ids => { setChosenIds(ids); setStep("configure") }} />
+          onConfirm={(ids, subjectIds) => { setChosenIds(ids); setChosenSubjects(subjectIds); setStep("configure") }} />
       )}
       {step === "configure" && (
-        <SeatingConfigEditor session={session} halls={sessionHalls} studentIds={chosenIds}
+        <SeatingConfigEditor session={session} halls={sessionHalls} studentIds={chosenIds} sessionSubjectIds={chosenSubjects}
           onBack={() => setStep("select")} onClose={() => setStep(null)} onSaved={onSaved} />
       )}
 

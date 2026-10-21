@@ -55,7 +55,17 @@ export const BENCH_TYPE_LABEL: Record<BenchType, string> = { MM: "Boy + Boy", FF
 /** The longest pattern kept (longer ones are cut): enough to spell out every bench of a large hall. */
 export const MAX_PATTERN_LENGTH = 600
 
-export interface SeatStudent { id: number; roll_no: string; gender: Gender; batch: string; department_id: number | null; dept_code?: string | null; name?: string }
+export interface SeatStudent {
+  id: number; roll_no: string; gender: Gender; batch: string; department_id: number | null; dept_code?: string | null; name?: string
+  /**
+   * The paper the student writes in this session ("sub:12"), when subjects are entered for the
+   * session (applySessionSubjects). Students writing the same paper are then kept apart instead of
+   * students of the same class, and also never sit side by side across the aisle.
+   */
+  paper?: string
+  /** The subjects the student is mapped to (Master Data → Subjects → Students), when known. */
+  subject_ids?: number[]
+}
 export interface SeatHall extends HallLayout { id: number; hall_code: string }
 export interface Seat { studentId: number; hallId: number; row: number; col: number; benchNo: number; seat: "L" | "R" }
 
@@ -75,6 +85,17 @@ export interface SeatingConfig {
    * girl). Halls are only used or not used; their bench patterns do not apply.
    */
   mixGenders?: boolean
+  /**
+   * The subject each class writes in this session: class key (categoryKey, department + batch) →
+   * subject id. Optional: without it the seating is made by class exactly as before. It applies to
+   * students not mapped to any of `sessionSubjects`.
+   */
+  subjects?: Record<string, number>
+  /**
+   * The subjects written in this session. A student mapped to one of them (student_subjects)
+   * writes that one; the class subject above is only for students with no such mapping.
+   */
+  sessionSubjects?: number[]
 }
 export interface ClassLimit { preferred: number; max: number }
 /** Fewest and most different classes a hall may be set to hold (a hall needs two for bench mates of different classes). */
@@ -167,8 +188,75 @@ export function hallPattern(h: any): BenchType[] {
  * The configuration cleaned up against the session's halls: one entry per session hall, in the
  * session's hall order. Halls missing from it are not used; settings from older versions are read.
  */
-/** A student's class: department + batch (the batch fixes the year of study). */
-const classOf = (s: SeatStudent) => categoryKey(s.department_id, s.batch)
+/**
+ * A student's class: department + batch (the batch fixes the year of study). When subjects are
+ * entered for the session it is the paper they write, so two classes writing the same subject are
+ * kept apart like one class.
+ */
+const classOf = (s: SeatStudent) => s.paper ?? categoryKey(s.department_id, s.batch)
+
+/** The subject map of a configuration cleaned up: class key → positive subject id. */
+export function cleanSubjects(subjects: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!subjects || typeof subjects !== "object") return out
+  for (const [key, value] of Object.entries(subjects as Record<string, unknown>)) {
+    const id = Math.floor(Number(value))
+    if (key && Number.isFinite(id) && id > 0) out[key] = id
+  }
+  return out
+}
+
+/** A list of subject ids cleaned up: positive whole numbers, each once, in the order given. */
+export function cleanSubjectIds(ids: unknown): number[] {
+  if (!Array.isArray(ids)) return []
+  return [...new Set(ids.map(v => Math.floor(Number(v))).filter(n => Number.isFinite(n) && n > 0))]
+}
+
+/**
+ * The subject a student writes in the session, and where it comes from: their own mapping to one
+ * of the session's subjects (the first, if several), else their class's subject, else none.
+ */
+export function sessionSubjectOf(s: SeatStudent, subjects: unknown, sessionSubjects: unknown): { id: number; from: "student" | "class"; also: number[] } | null {
+  const written = cleanSubjectIds(sessionSubjects)
+  const mine = written.filter(id => s.subject_ids?.includes(id))
+  if (mine.length) return { id: mine[0], from: "student", also: mine.slice(1) }
+  const id = cleanSubjects(subjects)[categoryKey(s.department_id, s.batch)]
+  return id ? { id, from: "class", also: [] } : null
+}
+
+/** The students with the paper each writes in the session (sessionSubjectOf); students with none keep their class. */
+export function applySessionSubjects<T extends SeatStudent>(students: T[], subjects: unknown, sessionSubjects?: unknown): T[] {
+  return students.map(s => {
+    const sub = sessionSubjectOf(s, subjects, sessionSubjects)
+    const { paper: _old, ...rest } = s
+    return (sub ? { ...rest, paper: `sub:${sub.id}` } : rest) as T
+  })
+}
+
+/** Whether the subject rules apply: some student has a paper (subjects entered for the session). */
+const bySubject = (students: SeatStudent[]) => students.some(s => s.paper !== undefined)
+
+/**
+ * The seats beside a seat across the aisle, in the bench columns to its left and right (same row):
+ * a left seat's left neighbour is the right seat (or the chair) of the bench to its left; a right
+ * seat's (or a chair's) right neighbour is the left seat of the bench to its right.
+ */
+function sideNeighbours(benchAt: (row: number, col: number) => Bench | undefined, row: number, col: number, side: "L" | "R"): { row: number; col: number; side: "L" | "R" }[] {
+  const here = benchAt(row, col)
+  const out: { row: number; col: number; side: "L" | "R" }[] = []
+  if (side === "L") {
+    const left = benchAt(row, col - 1)
+    if (left) out.push({ row, col: col - 1, side: left.seats === 2 ? "R" : "L" })
+  }
+  if ((side === "R" || here?.seats === 1) && benchAt(row, col + 1)) out.push({ row, col: col + 1, side: "L" })
+  return out
+}
+
+/** A hall's benches by position, for sideNeighbours. */
+function benchFinder(benches: Bench[]) {
+  const m = new Map(benches.map(b => [`${b.row}-${b.col}`, b]))
+  return (row: number, col: number) => m.get(`${row}-${col}`)
+}
 
 export function normalizeConfig(config: Partial<SeatingConfig> | null | undefined, halls: SeatHall[]): SeatingConfig {
   const given = new Map<number, BenchType[]>()
@@ -180,7 +268,9 @@ export function normalizeConfig(config: Partial<SeatingConfig> | null | undefine
   return {
     // In roll number order a used hall is just "used": its pattern is kept as [MM].
     halls: halls.map(h => { const p = given.get(h.id) ?? []; return { hallId: h.id, pattern: mixGenders && p.length ? ["MM"] : p } }),
-    classLimit: normalizeClassLimit(config?.classLimit), ...(mixGenders ? { mixGenders } : {})
+    classLimit: normalizeClassLimit(config?.classLimit), ...(mixGenders ? { mixGenders } : {}),
+    ...(Object.keys(cleanSubjects(config?.subjects)).length ? { subjects: cleanSubjects(config?.subjects) } : {}),
+    ...(cleanSubjectIds(config?.sessionSubjects).length ? { sessionSubjects: cleanSubjectIds(config?.sessionSubjects) } : {})
   }
 }
 
@@ -384,9 +474,21 @@ function repairLeftovers(students: SeatStudent[], config: SeatingConfig, hallOf:
   }
   const seatKey = (hallId: number, benchNo: number, side: "L" | "R") => `${hallId}/${benchNo}/${side}`
   const at = new Map(seats.map(x => [seatKey(x.hallId, x.benchNo, x.seat), x]))
-  const mateClass = (x: { hallId: number; benchNo: number; seat: "L" | "R" }) => {
-    const m = at.get(seatKey(x.hallId, x.benchNo, x.seat === "L" ? "R" : "L"))
+  // With subjects entered, the students beside a seat across the aisle count as well as the bench mate.
+  const sides = bySubject(students)
+  const finders = new Map(config.halls.map(c => [c.hallId, benchFinder(enabledBenches(hallOf.get(c.hallId)!))]))
+  const classAt = (hallId: number, benchNo: number, side: "L" | "R") => {
+    const m = at.get(seatKey(hallId, benchNo, side))
     return m ? classOf(studentById.get(m.studentId)!) : null
+  }
+  /** The classes a student in this seat must not share: the bench mate's and, with subjects, the side neighbours'. */
+  const mateClass = (x: { hallId: number; row: number; col: number; benchNo: number; seat: "L" | "R" }): (string | null)[] => {
+    const out = [classAt(x.hallId, x.benchNo, x.seat === "L" ? "R" : "L")]
+    if (sides) {
+      const find = finders.get(x.hallId)!
+      for (const n of sideNeighbours(find, x.row, x.col, x.seat)) out.push(classAt(x.hallId, find(n.row, n.col)!.benchNo, n.side))
+    }
+    return out
   }
   // Every empty seat, with the gender its pattern gives it.
   const empty: { hallId: number; row: number; col: number; benchNo: number; seat: "L" | "R"; gender: Gender }[] = []
@@ -403,7 +505,7 @@ function repairLeftovers(students: SeatStudent[], config: SeatingConfig, hallOf:
       while (left.length) {
         const x = left[0]
         // Directly into an empty seat beside another class.
-        const direct = empty.findIndex(e => e.gender === g && mateClass(e) !== cls && fits(e.hallId, cls))
+        const direct = empty.findIndex(e => e.gender === g && !mateClass(e).includes(cls) && fits(e.hallId, cls))
         if (direct >= 0) {
           const [e] = empty.splice(direct, 1)
           const seat: Seat = { studentId: x.id, hallId: e.hallId, row: e.row, col: e.col, benchNo: e.benchNo, seat: e.seat }
@@ -414,10 +516,10 @@ function repairLeftovers(students: SeatStudent[], config: SeatingConfig, hallOf:
         let done = false
         for (const y of seats) {
           const ys = studentById.get(y.studentId)!, ycls = classOf(ys)
-          if (ys.gender !== g || ycls === cls || mateClass(y) === cls) continue
+          if (ys.gender !== g || ycls === cls || mateClass(y).includes(cls)) continue
           // Within the hall limits: if y stays in its hall, x's class must fit beside y's; if y moves to
           // another hall, y's class leaves its hall and must fit in the new one.
-          const e = empty.findIndex(e => e.gender === g && mateClass(e) !== ycls && !(e.hallId === y.hallId && e.benchNo === y.benchNo)
+          const e = empty.findIndex(e => e.gender === g && !mateClass(e).includes(ycls) && !(e.hallId === y.hallId && e.benchNo === y.benchNo)
             && (e.hallId === y.hallId ? fits(y.hallId, cls) : fits(y.hallId, cls, ycls) && fits(e.hallId, ycls)))
           if (e < 0) continue
           const [to] = empty.splice(e, 1)
@@ -480,6 +582,7 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
   const groupWord = together ? () => "students" : groupWordOf
   const hallOf = new Map(halls.map(h => [h.id, h]))
   const seatsIn = hallSeats(config, hallOf)
+  const sides = bySubject(students)
   // Each group's students by class, each class in seating order.
   let pools: Record<Gender, Map<string, SeatStudent[]>> = { M: new Map(), F: new Map() }
   for (const s of [...students].sort(seatingOrder)) pools[s.gender].set(classOf(s), [...(pools[s.gender].get(classOf(s)) ?? []), s])
@@ -503,12 +606,12 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
     const out: Seat[] = []
     const classes = new Set<string>()
     let empty = 0
-    /** The next class in turn with students, not `avoid` (the bench mate's), and within the hall's limit. */
-    const nextClass = (g: Gender, avoid: string | null): string | null => {
+    /** The next class in turn with students, not one of `avoid` (the bench mate's; with subjects also the side neighbours'), and within the hall's limit. */
+    const nextClass = (g: Gender, avoid: (string | null)[]): string | null => {
       const list = order[g]
       for (let k = 0; k < list.length; k++) {
         const i = (st.turn[g] + k) % list.length, cls = list[i]
-        if (st.pools[g].get(cls)!.length && cls !== avoid && (classes.has(cls) || classes.size < most)) {
+        if (st.pools[g].get(cls)!.length && !avoid.includes(cls) && (classes.has(cls) || classes.size < most)) {
           st.turn[g] = (i + 1) % list.length
           classes.add(cls)
           return cls
@@ -520,6 +623,9 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
     const columns = new Map<number, number[]>()
     benches.forEach((b, i) => columns.set(b.col, [...(columns.get(b.col) ?? []), i]))
     const leftClass = new Map<number, string>()
+    // With subjects entered: the class placed at each seat, to keep side neighbours apart.
+    const find = benchFinder(benches)
+    const placed = new Map<string, string>()
     for (const column of columns.values()) {
       for (const side of ["L", "R"] as const) {
         // The class of this seat column, per gender; chosen when its first seat is filled.
@@ -529,11 +635,13 @@ export function planSeating(students: SeatStudent[], halls: SeatHall[], rawConfi
           if (side === "R" && b.seats === 1) continue // a chair has only the one seat
           const g = seatGender(c.pattern, i, side)
           const mate = side === "R" ? leftClass.get(i) ?? null : null
+          const avoid = [mate, ...(sides ? sideNeighbours(find, b.row, b.col, side).map(n => placed.get(`${n.row}-${n.col}-${n.side}`) ?? null) : [])]
           let cls = seatColumn[g]
-          if (!cls || !st.pools[g].get(cls)!.length || cls === mate) cls = seatColumn[g] = nextClass(g, mate)
+          if (!cls || !st.pools[g].get(cls)!.length || avoid.includes(cls)) cls = seatColumn[g] = nextClass(g, avoid)
           if (!cls) { empty++; continue }
           const s = st.pools[g].get(cls)!.shift()!
           if (side === "L") leftClass.set(i, cls)
+          if (sides) placed.set(`${b.row}-${b.col}-${side}`, cls)
           out.push({ studentId: s.id, hallId: hall.id, row: b.row, col: b.col, benchNo: b.benchNo, seat: side })
         }
       }
@@ -695,7 +803,25 @@ export function validateSeatingPlan(plan: Pick<SeatingPlan, "seats" | "unallocat
       if (b.length > most) errors.push(`Hall ${code}, ${most === 1 ? "chair" : "bench"} ${no} has ${b.length} students (at most ${most}).`)
       if (new Set(b.map(x => x.seat)).size !== b.length) errors.push(`Hall ${code}, bench ${no}: two students in the same seat.`)
       const mates = b.map(x => studentOf.get(x.studentId)).filter((x): x is SeatStudent => !!x)
-      if (mates.length === 2 && classOf(mates[0]) === classOf(mates[1])) errors.push(`Hall ${code}, bench ${no}: ${mates[0].roll_no} and ${mates[1].roll_no} are from the same class.`)
+      if (mates.length === 2 && classOf(mates[0]) === classOf(mates[1])) {
+        errors.push(mates[0].paper !== undefined
+          ? `Hall ${code}, bench ${no}: ${mates[0].roll_no} and ${mates[1].roll_no} write the same subject.`
+          : `Hall ${code}, bench ${no}: ${mates[0].roll_no} and ${mates[1].roll_no} are from the same class.`)
+      }
+    }
+    // With subjects entered: students side by side across the aisle never write the same subject.
+    if (bySubject(students)) {
+      const find = benchFinder(hallBenches)
+      const byPos = new Map(list.map(x => [`${x.row}-${x.col}-${x.seat}`, x]))
+      for (const x of list) {
+        const s = studentOf.get(x.studentId)
+        if (!s?.paper) continue
+        for (const n of sideNeighbours(find, x.row, x.col, x.seat)) {
+          if (n.col < x.col) continue // each pair once, from its left-hand seat
+          const y = byPos.get(`${n.row}-${n.col}-${n.side}`), t = y && studentOf.get(y.studentId)
+          if (t && t.paper === s.paper) errors.push(`Hall ${code}, row ${x.row}: ${s.roll_no} and ${t.roll_no} sit side by side and write the same subject.`)
+        }
+      }
     }
   }
   return { errors }

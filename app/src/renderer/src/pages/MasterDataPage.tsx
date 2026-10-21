@@ -5,20 +5,20 @@ import { Plus, Pencil, Trash2, Upload, CheckCircle, XCircle } from "lucide-react
 import ConfirmWithPasswordModal from "../components/ConfirmWithPasswordModal"
 import BenchLayoutEditor from "../components/BenchLayoutEditor"
 import StudentsTab from "../components/StudentsTab"
+import SubjectsTab from "../components/SubjectsTab"
 import { hallLayout, benchCount, seatCount, kindSummary, cleanDisabled, cleanKinds, MAX_BENCH_ROWS, MAX_BENCH_COLS } from "../../../shared/hall-layout"
 import { IS_DESKTOP } from "../lib/platform"
 import { api } from "../lib/api"
 import toast from "react-hot-toast"
 import { cn } from "../lib/utils"
 
-const TABS = ["staff", "students", "halls", "departments"]
 
 // Staff IDs are free text (typed or imported), so digit runs compare as numbers
 // (STF2 before STF10) and case is ignored.
 const staffIdOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 
 export default function MasterDataPage() {
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
   const activeTab = params.get("tab") ?? "staff"
 
   return (
@@ -27,17 +27,9 @@ export default function MasterDataPage() {
         <h1 className="text-2xl font-bold text-brand-textmain">Master Data</h1>
         <p className="text-brand-textsec mt-1">Manage staff, students, halls, and departments</p>
       </div>
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-        {TABS.map(t => (
-          <button key={t} onClick={() => setParams({ tab: t })}
-            className={cn("px-5 py-2 rounded-md text-sm font-medium transition-colors capitalize",
-              activeTab === t ? "bg-white text-brand-textmain shadow-sm" : "text-brand-textsec hover:text-brand-textmain")}>
-            {t === "staff" ? "Staff / Invigilators" : t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </div>
       {activeTab === "staff" && <StaffTab />}
       {activeTab === "students" && <StudentsTab />}
+      {activeTab === "subjects" && <SubjectsTab />}
       {activeTab === "halls" && <HallsTab />}
       {activeTab === "departments" && <DepartmentsTab />}
     </div>

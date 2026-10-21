@@ -405,7 +405,8 @@ export default function AllocationWorkspacePage() {
                 ))}
               </div>
 
-              {panel === "seating" && <SeatingPanel cycle={cycle} session={activeSession} allocation={allocation} />}
+              {panel === "seating" && <SeatingPanel cycle={cycle} session={activeSession} allocation={allocation}
+                onReassignInvigilators={() => handleGenerate(allocation.map((a: any) => a.userId), allocation.map((a: any) => a.hallId))} />}
               {panel === "invigilators" && <>
 
               {/* Validation banners */}

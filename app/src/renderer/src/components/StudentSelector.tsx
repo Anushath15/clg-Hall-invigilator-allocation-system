@@ -15,7 +15,10 @@ interface Props {
   /** Seats in the session's halls (two per bench), for the "will they fit" hint. */
   seats: number
   initialIds: number[]
-  onConfirm: (studentIds: number[]) => void
+  /** Subjects picked last time under "By subject" (the subjects of this exam). */
+  initialSubjectIds?: number[]
+  /** The students chosen, and the subjects picked under "By subject" (passed on as the subjects of this exam). */
+  onConfirm: (studentIds: number[], subjectIds: number[]) => void
   onClose: () => void
 }
 
@@ -26,7 +29,7 @@ const rollOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "ba
  * roll number, register number or name), upload an Excel/CSV list of register or roll numbers, or
  * copy the students of another session's seating.
  */
-export default function StudentSelector({ session, academicYear, seats, initialIds, onConfirm, onClose }: Props) {
+export default function StudentSelector({ session, academicYear, seats, initialIds, initialSubjectIds, onConfirm, onClose }: Props) {
   const yearText = (batch: string) => { const y = yearOfStudy(batch, academicYear); return y.ok ? y.label : "not studying this year" }
   const [students, setStudents] = useState<any[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set(initialIds))
@@ -35,8 +38,12 @@ export default function StudentSelector({ session, academicYear, seats, initialI
   const [sources, setSources] = useState<any[]>([])
   const [uploadNote, setUploadNote] = useState<string[] | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  /** Subjects with mapped students (Master Data → Subjects), and those picked for this exam. */
+  const [subjects, setSubjects] = useState<any[]>([])
+  const [picked, setPicked] = useState<number[]>(initialSubjectIds ?? [])
 
   useEffect(() => {
+    api.getSubjects().then(list => setSubjects(list.filter((s: any) => s.is_active && s.student_ids.length > 0))).catch(() => setSubjects([]))
     api.getStudents({ is_active: true }).then(setStudents)
     api.getSeatingSelections().then(s => setSources(s.filter((x: any) => x.id !== session.id))).catch(() => setSources([]))
   }, [session.id])
@@ -131,8 +138,24 @@ export default function StudentSelector({ session, academicYear, seats, initialI
                 </button>
               )
             })}
-            {selected.size > 0 && <button onClick={() => setSelected(new Set())} className="text-xs text-red-600 hover:underline ml-auto">Clear selection</button>}
+            {selected.size > 0 && <button onClick={() => { setSelected(new Set()); setPicked([]) }} className="text-xs text-red-600 hover:underline ml-auto">Clear selection</button>}
           </div>
+          {subjects.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs text-brand-textsec" title="Selects the students mapped to the subject (Master Data → Subjects) and seats them by it">By subject:</span>
+              {subjects.map(sb => {
+                const active = new Set(students.map(s => s.id))
+                const ids = sb.student_ids.filter((id: number) => active.has(id))
+                const on = picked.includes(sb.id)
+                return (
+                  <button key={sb.id} title={sb.name} onClick={() => { setMany(ids, !on); setPicked(p => on ? p.filter(x => x !== sb.id) : [...p, sb.id]) }}
+                    className={cn("px-2.5 py-1 rounded-md border text-xs", on ? "bg-violet-600 text-white border-violet-600" : "bg-white border-brand-border hover:border-violet-500")}>
+                    {sb.code} ({ids.length})
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {uploadNote && uploadNote.length > 0 && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 max-h-20 overflow-y-auto">
               {uploadNote.map((n, i) => <p key={i}>• {n}</p>)}
@@ -182,7 +205,7 @@ export default function StudentSelector({ session, academicYear, seats, initialI
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary">Cancel</button>
-            <button onClick={() => onConfirm(chosen.map(s => s.id))} disabled={chosen.length === 0 || chosen.length > seats} title={chosen.length > seats ? `Select at most ${seats} students to fit this session's halls` : undefined} className="btn-primary">Next: Configure Halls</button>
+            <button onClick={() => onConfirm(chosen.map(s => s.id), picked)} disabled={chosen.length === 0 || chosen.length > seats} title={chosen.length > seats ? `Select at most ${seats} students to fit this session's halls` : undefined} className="btn-primary">Next: Configure Halls</button>
           </div>
         </div>
       </div>

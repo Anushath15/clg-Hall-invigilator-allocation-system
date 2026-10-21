@@ -9,7 +9,7 @@
 import { validateStudent, parseGender, normalizeStudentBatch, normalizeStudentSection } from "./validation"
 import { hallLayout, cleanDisabled, cleanKinds, benchCount, seatCount, validateHallLayout, enabledBenches, benchKey } from "./hall-layout"
 import {
-  planSeating, validateSeatingPlan, checkConfig, normalizeConfig, autoConfigure, studentCategory, unallocatedMessage, seatingShortfall,
+  planSeating, validateSeatingPlan, checkConfig, normalizeConfig, autoConfigure, studentCategory, unallocatedMessage, seatingShortfall, applySessionSubjects, sessionSubjectOf,
   type SeatStudent, type SeatHall, type SeatingConfig, type UnallocatedStudent, type ClassLimit
 } from "./seating"
 import { yearOfStudy, categoryLabel } from "./categories"
@@ -256,6 +256,12 @@ function seatingInput(db: StudentDb, sessionId: number, studentIds: number[]): {
   if (students.length !== ids.length) return { error: "Some of the selected students no longer exist. Reopen the selection and try again." }
   const inactive = students.filter((s: any) => !s.is_active)
   if (inactive.length) return { error: `Inactive students cannot be seated: ${inactive.slice(0, 5).map((s: any) => s.roll_no).join(", ")}${inactive.length > 5 ? "…" : ""}.` }
+  // The subjects each student is mapped to (Master Data → Subjects → Students).
+  const mapped = new Map<number, number[]>()
+  for (const r of db.query<any>(`SELECT student_id, subject_id FROM student_subjects WHERE student_id IN (${ids.map(() => "?").join(",")})`, ids)) {
+    mapped.set(r.student_id, [...(mapped.get(r.student_id) ?? []), r.subject_id])
+  }
+  for (const s of students) if (mapped.has(s.id)) s.subject_ids = mapped.get(s.id)
   return { academicYear: sessionAcademicYear(db, sessionId) ?? "", halls, students: students as SeatStudent[] }
 }
 
@@ -274,11 +280,19 @@ export function getSeatingConfig(db: StudentDb, sessionId: number): { config: Se
  * The starting point for the configuration screen: the session's halls, how many boys and girls
  * are selected, and the halls handed to boys and girls automatically (shared/seating.ts).
  */
-export function autoConfigureSeating(db: StudentDb, sessionId: number, studentIds: number[], classLimit?: Partial<ClassLimit>) {
-  const input = seatingInput(db, sessionId, studentIds)
-  if ("error" in input) return { success: false as const, error: input.error }
+export interface SubjectOptions { subjects?: Record<string, number>; sessionSubjects?: number[] }
+
+export function autoConfigureSeating(db: StudentDb, sessionId: number, studentIds: number[], classLimit?: Partial<ClassLimit>, subjectOptions: SubjectOptions = {}) {
+  const raw = seatingInput(db, sessionId, studentIds)
+  if ("error" in raw) return { success: false as const, error: raw.error }
+  // The subjects written (entered on the configuration screen), when given.
+  const input = { ...raw, students: applySessionSubjects(raw.students, subjectOptions.subjects, subjectOptions.sessionSubjects) }
   const boys = input.students.filter(s => s.gender === "M").length
   return {
+    /** The classes of the selected students, for entering the subject each writes. */
+    classes: sessionClasses(raw.students, input.academicYear, subjectOptions.sessionSubjects),
+    /** The subjects the selected students are mapped to, with how many of them each (to pick the subjects of this exam). */
+    mappedSubjects: mappedSubjectCounts(raw.students),
     success: true as const, config: autoConfigure(input.students, input.halls, { classLimit }), academicYear: input.academicYear,
     /** The best split into whole boys' and girls' halls, no hall shared (the "Separate halls" method). */
     separateConfig: autoConfigure(input.students, input.halls, { separateOnly: true, classLimit }),
@@ -289,8 +303,37 @@ export function autoConfigureSeating(db: StudentDb, sessionId: number, studentId
   }
 }
 
-function buildPlan(input: SeatingInput, rawConfig: SeatingConfig) {
-  const config = normalizeConfig(rawConfig, input.halls)
+/**
+ * The classes (department + batch) among the students, with their names, sizes and departments, and
+ * how many of each are mapped to one of the session's subjects (they need no class subject).
+ */
+function sessionClasses(students: SeatStudent[], academicYear: string, sessionSubjects?: number[]) {
+  const out = new Map<string, { key: string; label: string; department_id: number | null; batch: string; count: number; mapped: number }>()
+  for (const s of students) {
+    const cat = studentCategory(s, academicYear)
+    const e = out.get(cat.key) ?? { key: cat.key, label: cat.label, department_id: s.department_id, batch: s.batch, count: 0, mapped: 0 }
+    e.count++
+    if (sessionSubjectOf(s, {}, sessionSubjects)) e.mapped++
+    out.set(cat.key, e)
+  }
+  return [...out.values()].sort((a, b) => a.batch.localeCompare(b.batch) || a.label.localeCompare(b.label))
+}
+
+/** How many of the students are mapped to each subject. */
+function mappedSubjectCounts(students: SeatStudent[]) {
+  const counts = new Map<number, number>()
+  for (const s of students) for (const id of s.subject_ids ?? []) counts.set(id, (counts.get(id) ?? 0) + 1)
+  return [...counts].map(([id, count]) => ({ id, count }))
+}
+
+function buildPlan(raw: SeatingInput, rawConfig: SeatingConfig) {
+  const config = normalizeConfig(rawConfig, raw.halls)
+  const input = { ...raw, students: applySessionSubjects(raw.students, config.subjects, config.sessionSubjects) }
+  // A student mapped to two subjects written in the same exam writes the first; say so.
+  const twice = raw.students.map(s => ({ s, sub: sessionSubjectOf(s, config.subjects, config.sessionSubjects) })).filter(x => x.sub?.also.length)
+  const twiceWarning = twice.length
+    ? [`${twice.length} student(s) are mapped to more than one subject of this exam and are seated for the first one chosen: ${twice.slice(0, 5).map(x => x.s.roll_no).join(", ")}${twice.length > 5 ? "…" : ""}. Check their subjects in Master Data → Subjects.`]
+    : []
   const plan = planSeating(input.students, input.halls, config, input.academicYear)
   const checked = checkConfig(config, input.halls, input.students)
   const valid = validateSeatingPlan(plan, input.students, input.halls, config)
@@ -300,7 +343,7 @@ function buildPlan(input: SeatingInput, rawConfig: SeatingConfig) {
   })
   return {
     config, plan, students, academicYear: input.academicYear, halls: hallInfo(input.halls),
-    errors: [...checked.errors, ...valid.errors], warnings: [...checked.warnings, ...plan.warnings]
+    errors: [...checked.errors, ...valid.errors], warnings: [...checked.warnings, ...plan.warnings, ...twiceWarning]
   }
 }
 

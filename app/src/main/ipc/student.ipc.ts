@@ -15,7 +15,7 @@ export function registerStudentHandlers() {
   ipcMain.handle("student:import", async (_, rows) => importStudents(db, rows))
   ipcMain.handle("seating:generate", async (_, sessionId, studentIds) => generateSeating(db, sessionId, studentIds))
   ipcMain.handle("seating:config", async (_, sessionId) => getSeatingConfig(db, sessionId))
-  ipcMain.handle("seating:auto-config", async (_, sessionId, studentIds, classLimit) => autoConfigureSeating(db, sessionId, studentIds, classLimit))
+  ipcMain.handle("seating:auto-config", async (_, sessionId, studentIds, classLimit, subjectOptions) => autoConfigureSeating(db, sessionId, studentIds, classLimit, subjectOptions))
   ipcMain.handle("seating:preview", async (_, sessionId, studentIds, config) => previewSeating(db, sessionId, studentIds, config))
   ipcMain.handle("seating:confirm", async (_, sessionId, studentIds, config, options) => confirmSeating(db, sessionId, studentIds, config, options ?? {}))
   ipcMain.handle("seating:get", async (_, sessionId) => getSessionSeating(db, sessionId))

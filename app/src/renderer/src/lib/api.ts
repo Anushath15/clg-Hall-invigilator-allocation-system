@@ -95,13 +95,21 @@ export const api = apiBridge as {
   importStudents: (rows: unknown[][]) => Promise<any>
   generateSeating: (sessionId: number, studentIds: number[]) => Promise<any>
   getSeatingConfig: (sessionId: number) => Promise<{ config: SeatingConfig; studentIds: number[]; unallocated: UnallocatedStudent[] } | null>
-  autoConfigureSeating: (sessionId: number, studentIds: number[], classLimit?: { preferred: number; max: number }) => Promise<any>
+  autoConfigureSeating: (sessionId: number, studentIds: number[], classLimit?: { preferred: number; max: number }, subjectOptions?: { subjects?: Record<string, number>; sessionSubjects?: number[] }) => Promise<any>
   previewSeating: (sessionId: number, studentIds: number[], config: SeatingConfig) => Promise<any>
   confirmSeating: (sessionId: number, studentIds: number[], config: SeatingConfig, options?: { acceptUnallocated?: boolean }) => Promise<any>
   getSessionSeating: (sessionId: number) => Promise<any[]>
   clearSeating: (sessionId: number) => Promise<any>
   copySeating: (sessionId: number, fromSessionId: number) => Promise<any>
   getSeatingSelections: () => Promise<any[]>
+  // Subjects and the staff who handle them (shared/subjects.ts)
+  getSubjects: () => Promise<any[]>
+  saveSubject: (data: any) => Promise<{ success: boolean; error?: string; id?: number }>
+  deleteSubject: (id: number) => Promise<{ success: boolean; error?: string }>
+  importSubjects: (rows: unknown[][]) => Promise<any>
+  setSubjectStudents: (subjectId: number, studentIds: number[]) => Promise<{ success: boolean; error?: string; count?: number }>
+  importStudentSubjects: (rows: unknown[][]) => Promise<any>
+  getSubjectConflicts: (sessionId: number) => Promise<{ userId: number; userName: string; staffId: string; hallId: number; hall_code: string; subjectId: number; subjectCode: string; subjectName: string }[]>
   // Reports
   getStaffWiseReport: (userId?: number, fromYear?: string, toYear?: string) => Promise<any[]>
   getDateWiseReport: (sessionId: number) => Promise<any[]>

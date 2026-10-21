@@ -16,6 +16,7 @@ import {
   generateSeating, getSessionSeating, clearSeating, copySeating, getSeatingSelections, dropSeatingIfHallsChanged,
   getSeatingConfig, autoConfigureSeating, previewSeating, confirmSeating
 } from "../../../shared/students"
+import { listSubjects, saveSubject, deleteSubject, importSubjects, getSubjectConflicts, subjectConflictOf, setSubjectStudents, importStudentSubjects } from "../../../shared/subjects"
 
 // In-memory cache for browser file selection
 let cachedSelectedFile: File | null = null
@@ -209,7 +210,8 @@ function cyclePool(sessionHalls: number[]): number[] {
 function generateRotation(sessionId: number, userIds: number[], hallIds: number[]) {
   const session = webDb.queryOne<any>("SELECT cycle_id, created_at FROM exam_sessions WHERE id = ?", [sessionId])
   const seed = allocationSeed({ cycleId: session?.cycle_id, sessionId, createdAt: session?.created_at, userIds, hallIds })
-  return assignHalls(userIds, hallIds, hallHistory, seed).entries
+  // Invigilators are kept out of halls writing a subject they handle, when the rotation allows.
+  return assignHalls(userIds, hallIds, hallHistory, seed, subjectConflictOf(webDb, sessionId, hallIds)).entries
 }
 
 function getSessionAllocationFull(sessionId: number) {
@@ -1027,7 +1029,7 @@ export const webApi = {
   importStudents: async (rows: unknown[][]) => { await ensureDb(); return importStudents(webDb, rows) },
   generateSeating: async (sessionId: number, studentIds: number[]) => { await ensureDb(); return generateSeating(webDb, sessionId, studentIds) },
   getSeatingConfig: async (sessionId: number) => { await ensureDb(); return getSeatingConfig(webDb, sessionId) },
-  autoConfigureSeating: async (sessionId: number, studentIds: number[], classLimit?: { preferred: number; max: number }) => { await ensureDb(); return autoConfigureSeating(webDb, sessionId, studentIds, classLimit) },
+  autoConfigureSeating: async (sessionId: number, studentIds: number[], classLimit?: { preferred: number; max: number }, subjectOptions?: { subjects?: Record<string, number>; sessionSubjects?: number[] }) => { await ensureDb(); return autoConfigureSeating(webDb, sessionId, studentIds, classLimit, subjectOptions) },
   previewSeating: async (sessionId: number, studentIds: number[], config: any) => { await ensureDb(); return previewSeating(webDb, sessionId, studentIds, config) },
   confirmSeating: async (sessionId: number, studentIds: number[], config: any, options?: { acceptUnallocated?: boolean }) => {
     await ensureDb(); return confirmSeating(webDb, sessionId, studentIds, config, options ?? {})
@@ -1036,6 +1038,14 @@ export const webApi = {
   clearSeating: async (sessionId: number) => { await ensureDb(); return clearSeating(webDb, sessionId) },
   copySeating: async (sessionId: number, fromSessionId: number) => { await ensureDb(); return copySeating(webDb, sessionId, fromSessionId) },
   getSeatingSelections: async () => { await ensureDb(); return getSeatingSelections(webDb) },
+  // Subjects: the same shared functions as the desktop (shared/subjects.ts).
+  getSubjects: async () => { await ensureDb(); return listSubjects(webDb) },
+  saveSubject: async (data: any) => { await ensureDb(); return saveSubject(webDb, data) },
+  deleteSubject: async (id: number) => { await ensureDb(); return deleteSubject(webDb, id) },
+  importSubjects: async (rows: unknown[][]) => { await ensureDb(); return importSubjects(webDb, rows) },
+  getSubjectConflicts: async (sessionId: number) => { await ensureDb(); return getSubjectConflicts(webDb, sessionId) },
+  setSubjectStudents: async (subjectId: number, studentIds: number[]) => { await ensureDb(); return setSubjectStudents(webDb, subjectId, studentIds) },
+  importStudentSubjects: async (rows: unknown[][]) => { await ensureDb(); return importStudentSubjects(webDb, rows) },
 
   // File Dialogs & Storage
   openFileDialog: async (filters?: any[]): Promise<string | null> => {
