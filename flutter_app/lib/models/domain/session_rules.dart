@@ -110,3 +110,25 @@ SelectionSource? previousSelectionSource(List<SelectionSource> sources, {require
     inactiveHalls: sh.where((id) => !halls.contains(id)).length,
   );
 }
+
+/// When a session needs people and halls: its date and the time from reporting (else exam start) to exam end.
+///
+/// FN and AN of one date, and sessions of different dates, are separate: their allocations never touch each other.
+/// Two sessions clash only when they are on the same date and their times overlap (or, when a session has no times,
+/// when they are the same FN/AN slot). A student cannot write two exams at once, and a hall cannot hold two.
+class SessionSlot {
+  final String date, type;
+  final String? from, to;
+  const SessionSlot({required this.date, required this.type, this.from, this.to});
+
+  bool get hasTimes => (from ?? '').isNotEmpty && (to ?? '').isNotEmpty;
+
+  bool clashesWith(SessionSlot o) {
+    if (date != o.date) return false;
+    if (hasTimes && o.hasTimes) return from!.compareTo(o.to!) < 0 && o.from!.compareTo(to!) < 0;
+    return type == o.type;
+  }
+
+  /// "2026-11-03 FN 09:30-13:00".
+  String get text => '$date $type${hasTimes ? ' $from-$to' : ''}';
+}

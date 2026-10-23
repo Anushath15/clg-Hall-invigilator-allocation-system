@@ -8,8 +8,10 @@ import '../models/domain/categories.dart';
 import '../models/domain/hall_layout.dart';
 import '../models/domain/seating.dart';
 import '../models/domain/seating_report.dart';
+import '../models/domain/session_rules.dart';
 import '../models/domain/validation.dart';
 import '../models/entities.dart';
+import 'time_slots.dart';
 
 class SavedSeating {
   final SeatingConfig config;
@@ -95,7 +97,11 @@ class _SeatingInput {
   final String academicYear;
   final List<SeatHall> halls;
   final List<SeatStudent> students;
-  const _SeatingInput(this.academicYear, this.halls, this.students);
+  /// Selected students who are seated in another exam at the same time: they are left out, each with the reason.
+  final List<UnallocatedStudent> blocked;
+  /// What was left out because of another exam at the same time (students and halls), for the warnings.
+  final List<String> notes;
+  const _SeatingInput(this.academicYear, this.halls, this.students, {this.blocked = const [], this.notes = const []});
 }
 
 /// STUDENTS AND SEATING: the student master list and each session's seating plan.
@@ -269,8 +275,32 @@ class StudentService {
     if (db.queryOne('SELECT id FROM exam_sessions WHERE id = ?', [sessionId]) == null) return 'Exam session not found.';
     final ids = studentIds.toSet().toList();
     if (ids.isEmpty) return 'Select the students writing this session.';
-    final halls = _sessionHalls(sessionId);
+    var halls = _sessionHalls(sessionId);
     if (halls.isEmpty) return 'Generate the invigilator allocation first: students are seated in the same halls.';
+
+    // Another exam at the same time (same date, overlapping times; FN and AN, or other dates, are separate): its
+    // students cannot write two exams at once and its halls cannot hold two. Both are left out of this plan.
+    final me = db.queryOne('SELECT exam_date, session_type, reporting_time, exam_start, exam_end FROM exam_sessions WHERE id = ?', [sessionId])!;
+    final atSameTime = sessionsAtSameTime(
+        db, SessionSlot(date: asStr(me['exam_date']), type: asStr(me['session_type']), from: asStrOrNull(me['reporting_time']) ?? asStrOrNull(me['exam_start']), to: asStrOrNull(me['exam_end'])),
+        exceptId: sessionId, withSeating: true);
+    final taken = <int, String>{}; // student -> where
+    final busyHalls = <int, String>{}; // hall -> where
+    for (final o in atSameTime) {
+      for (final r in db.query('SELECT sa.student_id, sa.hall_id, h.hall_code FROM seat_allocations sa JOIN halls h ON h.id = sa.hall_id WHERE sa.session_id = ?', [o.id])) {
+        taken.putIfAbsent(asInt(r['student_id']), () => '${o.text} (hall ${r['hall_code']})');
+        busyHalls.putIfAbsent(asInt(r['hall_id']), () => o.text);
+      }
+    }
+    final notes = <String>[];
+    final busy = halls.where((h) => busyHalls.containsKey(h.id)).toList();
+    if (busy.isNotEmpty) {
+      halls = halls.where((h) => !busyHalls.containsKey(h.id)).toList();
+      for (final h in busy) {
+        notes.add('Hall ${h.hallCode} is used by ${busyHalls[h.id]} at the same time, so it is not used here: a hall holds one exam at a time.');
+      }
+      if (halls.isEmpty) return 'Every hall of this session is already in use at the same time by ${busy.map((h) => busyHalls[h.id]).toSet().join(', ')}. Give this session other halls.';
+    }
     final marks = List.filled(ids.length, '?').join(',');
     final rows = db.query('''SELECT s.id, s.roll_no, s.name, s.gender, s.batch, s.department_id, s.is_active, d.code as dept_code
        FROM students s LEFT JOIN departments d ON d.id = s.department_id WHERE s.id IN ($marks)''', ids);
@@ -295,7 +325,27 @@ class StudentService {
               subjectIds: mapped[asInt(s['id'])],
             ))
         .toList();
-    return _SeatingInput(_academicYear(sessionId) ?? '', halls, students);
+    final year = _academicYear(sessionId) ?? '';
+    final blocked = <UnallocatedStudent>[];
+    final free = <SeatStudent>[];
+    for (final st in students) {
+      final where = taken[st.id];
+      if (where == null) {
+        free.add(st);
+        continue;
+      }
+      final cat = studentCategory(st, year);
+      blocked.add(UnallocatedStudent(
+          studentId: st.id,
+          rollNo: st.rollNo,
+          name: st.name,
+          gender: st.gender,
+          categoryKey: cat.key,
+          category: cat.label,
+          reason: 'Blocked by the one-exam-at-a-time rule: already seated in $where, at the same time. Seat the student in only one of the two sessions.'));
+    }
+    if (blocked.isNotEmpty) notes.add('${blocked.length} student${blocked.length == 1 ? ' is' : 's are'} seated in another exam at the same time (${blocked.take(5).map((b) => b.rollNo).join(', ')}${blocked.length > 5 ? '…' : ''}) and ${blocked.length == 1 ? 'was' : 'were'} left out.');
+    return _SeatingInput(year, halls, free, blocked: blocked, notes: notes);
   }
 
   SavedSeating? savedSeating(int sessionId) {
@@ -420,12 +470,12 @@ class StudentService {
       lockedSeats: locks.seats,
       classLabel: (st) => st.paper != null ? 'Subject ${subjectNames[st.paper] ?? st.paper}' : studentCategory(st, raw.academicYear).label,
     );
-    final reported = SeatingPlan(seats: plan.seats, hallGender: plan.hallGender, halls: plan.halls, unallocated: report.unallocated, warnings: plan.warnings, groups: plan.groups);
+    final reported = SeatingPlan(seats: plan.seats, hallGender: plan.hallGender, halls: plan.halls, unallocated: [...report.unallocated, ...raw.blocked], warnings: plan.warnings, groups: plan.groups);
     final info = students.map((s) {
       final y = yearOfStudy(s.batch, raw.academicYear);
       return PlanStudent(id: s.id, rollNo: s.rollNo, name: s.name ?? '', gender: s.gender, batch: s.batch, deptCode: s.deptCode, year: y.ok ? y.label : '', category: studentCategory(s, raw.academicYear).label);
     }).toList();
-    return PreviewResult(config: config, plan: reported, students: info, errors: [...checked.errors, ...valid], warnings: [...checked.warnings, ...plan.warnings, ...twiceWarning], report: report);
+    return PreviewResult(config: config, plan: reported, students: info, errors: [...checked.errors, ...valid], warnings: [...raw.notes, ...checked.warnings, ...plan.warnings, ...twiceWarning], report: report);
   }
 
   PreviewResult preview(int sessionId, List<int> studentIds, SeatingConfig config) {
@@ -443,8 +493,14 @@ class StudentService {
     final plan = built.plan!;
     if (built.errors.isNotEmpty) return ConfirmResult(success: false, error: 'The seating plan cannot be saved: ${built.errors.first}');
     if (plan.seats.isEmpty) return const ConfirmResult(success: false, error: 'No student can be seated with this configuration. Give the halls a bench pattern: boys, girls, or both.');
-    final shortfall = unallocatedMessage(plan.unallocated);
-    if (shortfall != null && !acceptUnallocated) return ConfirmResult(success: false, needsConfirmation: true, error: shortfall, unallocated: plan.unallocated);
+    // Students left out for lack of a legal seat, and those already seated in another exam at the same time.
+    final blockedIds = inp.blocked.map((b) => b.studentId).toSet();
+    final noSeat = unallocatedMessage(plan.unallocated.where((u) => !blockedIds.contains(u.studentId)).toList());
+    final shortfall = [
+      if (noSeat != null) noSeat,
+      if (inp.blocked.isNotEmpty) '${inp.blocked.length} student${inp.blocked.length == 1 ? ' is' : 's are'} already seated in another exam at the same time.',
+    ].join(' ');
+    if (shortfall.isNotEmpty && !acceptUnallocated) return ConfirmResult(success: false, needsConfirmation: true, error: shortfall, unallocated: plan.unallocated);
     try {
       db.transaction(() {
         db.run('DELETE FROM seat_allocations WHERE session_id = ?', [sessionId]);
@@ -456,14 +512,14 @@ class StudentService {
         db.run('INSERT INTO seating_configs(session_id, config, student_ids, unallocated) VALUES(?,?,?,?)', [
           sessionId,
           jsonEncode(built.config!.toJson()),
-          jsonEncode(inp.students.map((s) => s.id).toList()),
+          jsonEncode([...inp.students.map((s) => s.id), ...inp.blocked.map((b) => b.studentId)]),
           jsonEncode(plan.unallocated.map((u) => u.toJson()).toList()),
         ]);
       });
     } catch (e) {
       return ConfirmResult(success: false, error: 'The seating plan could not be saved, so the previous plan was kept unchanged: ${explainSeatError(e)}.');
     }
-    return ConfirmResult(success: true, warnings: [...plan.warnings, ...built.report!.warnings], seated: plan.seats.length, unallocated: plan.unallocated);
+    return ConfirmResult(success: true, warnings: [...inp.notes, ...plan.warnings, ...built.report!.warnings], seated: plan.seats.length, unallocated: plan.unallocated);
   }
 
   /// Locks or unlocks halls of the session's saved plan. A locked hall keeps its students and their seats when the
@@ -541,8 +597,9 @@ class StudentService {
     ];
 
     // Only what the move itself breaks counts: a plan that already had a problem is not blamed on this move.
-    final before = validateSeatingPlan(current, saved.unallocated, students, inp.halls, config).toSet();
-    final broken = validateSeatingPlan(after, saved.unallocated, students, inp.halls, config).where((e) => !before.contains(e)).toList();
+    final listed = saved.unallocated.where((u) => students.any((x) => x.id == u.studentId)).toList();
+    final before = validateSeatingPlan(current, listed, students, inp.halls, config).toSet();
+    final broken = validateSeatingPlan(after, listed, students, inp.halls, config).where((e) => !before.contains(e)).toList();
     if (broken.isNotEmpty) return MoveSeatResult(success: false, error: 'This move is not allowed: ${broken.first}', reasons: broken);
 
     final other = occupant == null ? null : students.firstWhereOrNull((x) => x.id == occupant.studentId)?.rollNo;

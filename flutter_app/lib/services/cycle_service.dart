@@ -1,6 +1,7 @@
 import '../core/database.dart';
 import '../core/format.dart';
 import '../models/domain/session_rules.dart';
+import 'time_slots.dart';
 import '../models/domain/validation.dart';
 import '../models/entities.dart';
 
@@ -45,6 +46,32 @@ class CycleService {
     if (problem != null) throw ArgumentError(problem);
   }
 
+  static SessionSlot _slotOf(SessionInput d) => SessionSlot(date: d.examDate, type: d.sessionType, from: d.reportingTime ?? d.examStart, to: d.examEnd);
+
+  /// FN and AN of one date of a batch are separate sessions: their times must not overlap.
+  void _checkSameDay(int cycleId, SessionInput d, {int exceptId = 0}) {
+    final clash = sessionsAtSameTime(db, _slotOf(d), exceptId: exceptId, inCycle: cycleId).firstOrNull;
+    if (clash != null) {
+      throw ArgumentError('The ${_slotName(d.sessionType)} session (${_slotOf(d).text}) overlaps the ${_slotName(clash.sessionType)} session of the same batch (${clash.slot.text}). Give each session its own time.');
+    }
+  }
+
+  /// A seated session cannot move to a time at which some of its students or halls are already seated in another batch.
+  void _checkMove(int sessionId, SessionInput d) {
+    final mine = asInt(db.queryOne('SELECT COUNT(*) AS c FROM seat_allocations WHERE session_id = ?', [sessionId])?['c']);
+    if (mine == 0) return;
+    for (final other in sessionsAtSameTime(db, _slotOf(d), exceptId: sessionId, withSeating: true)) {
+      final students = asInt(db.queryOne('SELECT COUNT(*) AS c FROM seat_allocations a JOIN seat_allocations b ON b.student_id = a.student_id AND b.session_id = ? WHERE a.session_id = ?', [other.id, sessionId])?['c']);
+      final halls = db.query('SELECT DISTINCT h.hall_code FROM seat_allocations a JOIN seat_allocations b ON b.hall_id = a.hall_id AND b.session_id = ? JOIN halls h ON h.id = a.hall_id WHERE a.session_id = ?', [other.id, sessionId]);
+      if (students > 0 || halls.isNotEmpty) {
+        throw ArgumentError('This session cannot move to ${_slotOf(d).text}: ${other.text} is at the same time and ${[
+          if (students > 0) '$students of its students are also seated there',
+          if (halls.isNotEmpty) 'hall${halls.length == 1 ? '' : 's'} ${halls.map((h) => h['hall_code']).join(', ')} ${halls.length == 1 ? 'is' : 'are'} in use there',
+        ].join(' and ')}. A student cannot write two exams at once and a hall cannot hold two.');
+      }
+    }
+  }
+
   /// A batch's status follows its sessions: confirmed once all are confirmed, published once all are published.
   void refreshCycleStatus(int cycleId) {
     final c = db.queryOne('''SELECT COUNT(*) as total,
@@ -84,6 +111,7 @@ class CycleService {
       for (final s in list) {
         final key = '${s.examDate}_${s.sessionType}';
         if (!seen.add(key)) continue;
+        _checkSameDay(cycleId, s);
         db.run('INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)',
             [cycleId, s.examDate, s.sessionType, step++, s.reportingTime, s.examStart, s.examEnd, 'pending']);
       }
@@ -97,6 +125,7 @@ class CycleService {
     if (db.queryOne('SELECT id FROM exam_sessions WHERE cycle_id=? AND exam_date=? AND session_type=?', [cycleId, data.examDate, data.sessionType]) != null) {
       throw ArgumentError('A ${_slotName(data.sessionType)} session already exists for ${data.examDate} in this cycle.');
     }
+    _checkSameDay(cycleId, data);
     final maxStep = asInt(db.queryOne('SELECT MAX(rotation_step) as m FROM exam_sessions WHERE cycle_id=?', [cycleId])?['m']);
     final r = db.run('INSERT INTO exam_sessions(cycle_id,exam_date,session_type,rotation_step,reporting_time,exam_start,exam_end,status) VALUES(?,?,?,?,?,?,?,?)',
         [cycleId, data.examDate, data.sessionType, maxStep + 1, data.reportingTime, data.examStart, data.examEnd, 'pending']);
@@ -114,6 +143,8 @@ class CycleService {
       throw ArgumentError('A ${_slotName(data.sessionType)} session already exists for ${data.examDate} in this cycle.');
     }
     if (data.reportingTime != null && data.examStart != null && data.examEnd != null) _checkTimes(data.reportingTime, data.examStart, data.examEnd);
+    _checkSameDay(current.cycleId, data, exceptId: id);
+    _checkMove(id, data);
     db.run("UPDATE exam_sessions SET exam_date=?,session_type=?,reporting_time=?,exam_start=?,exam_end=?,updated_at=datetime('now') WHERE id=?",
         [data.examDate, data.sessionType, data.reportingTime, data.examStart, data.examEnd, id]);
     renumberUnconfirmedSessions(current.cycleId);
