@@ -56,9 +56,14 @@ class RowActions extends StatelessWidget {
   final VoidCallback? onEdit, onDelete;
   final List<Widget> extra;
   @override
-  Widget build(BuildContext context) => Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-        ...extra,
-        if (onEdit != null) IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 18), tooltip: 'Edit'),
-        if (onDelete != null) IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFFF87171)), tooltip: 'Delete'),
-      ]);
+  Widget build(BuildContext context) => FittedBox(
+        // Never wider than its table cell: the buttons shrink a little in a narrow column instead of overflowing.
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          ...extra,
+          if (onEdit != null) IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 18), tooltip: 'Edit', visualDensity: VisualDensity.compact),
+          if (onDelete != null) IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFFF87171)), tooltip: 'Delete', visualDensity: VisualDensity.compact),
+        ]),
+      );
 }
