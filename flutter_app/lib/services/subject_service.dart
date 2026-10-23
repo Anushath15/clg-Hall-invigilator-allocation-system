@@ -69,13 +69,15 @@ class SubjectService {
   ActionResult<int> setStudents(int subjectId, List<int> studentIds) {
     if (db.queryOne('SELECT id FROM subjects WHERE id = ?', [subjectId]) == null) return const ActionResult.fail('Subject not found.');
     final ids = studentIds.where((n) => n > 0).toSet();
+    var mapped = 0;
     db.transaction(() {
       db.run('DELETE FROM student_subjects WHERE subject_id = ?', [subjectId]);
       for (final id in ids) {
         db.run('INSERT OR IGNORE INTO student_subjects(student_id, subject_id) SELECT id, ? FROM students WHERE id = ?', [subjectId, id]);
       }
+      mapped = asInt(db.queryOne('SELECT COUNT(*) as n FROM student_subjects WHERE subject_id = ?', [subjectId])!['n']);
     });
-    return ActionResult.ok(ids.length);
+    return ActionResult.ok(mapped);
   }
 
   void delete(int id) {
