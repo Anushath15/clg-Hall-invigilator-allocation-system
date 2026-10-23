@@ -62,6 +62,14 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_GETMINMAXINFO: {
+      // The smallest window the pages are laid out for (640 x 480 logical pixels, scaled to this monitor).
+      const double scale = GetDpiForWindow(hwnd) / 96.0;
+      MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lparam);
+      info->ptMinTrackSize.x = static_cast<LONG>(640 * scale);
+      info->ptMinTrackSize.y = static_cast<LONG>(480 * scale);
+      return 0;
+    }
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
