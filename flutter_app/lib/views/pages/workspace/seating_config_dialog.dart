@@ -239,7 +239,7 @@ class _ConfigView extends StatelessWidget {
               if (h.occupied == 0) return;
               showDialog(
                 context: context,
-                builder: (_) => HallSeatingDialog(hall: c.hallOf(h.hallId), seats: c.previewSeats(h.hallId), colorOf: colorOf, gender: h.gender),
+                builder: (_) => HallSeatingDialog(hall: c.hallOf(h.hallId), previewSeats: c.previewSeats(h.hallId), colorOf: colorOf, previewGender: h.gender),
               );
             },
             rows: [

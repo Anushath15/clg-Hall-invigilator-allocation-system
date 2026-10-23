@@ -227,7 +227,7 @@ class _SeatingView extends StatelessWidget {
   static void _noop() {}
 
   void _showHall(BuildContext context, SeatingPanelController c, SeatingHallInfo hall, ClassColor Function(String) colorOf, {List<int> highlight = const []}) {
-    showDialog(context: context, builder: (_) => HallSeatingDialog(hall: hall, seats: c.seatsIn(hall.id), colorOf: colorOf, gender: c.genderOf(hall.id), highlight: highlight));
+    showDialog(context: context, builder: (_) => HallSeatingDialog(controller: c, hall: hall, colorOf: colorOf, highlight: highlight));
   }
 
   void _showUnallocated(BuildContext context, SeatingPanelController c) => showDialog(

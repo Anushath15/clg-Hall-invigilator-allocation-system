@@ -67,7 +67,8 @@ class PrimaryButton extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (loading) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) else if (icon != null) Icon(icon, size: 18),
           if (icon != null || loading) const SizedBox(width: 8),
-          Text(label),
+          // The label gives way (with an ellipsis) when the space is tight, instead of overflowing.
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
         ]),
       );
 }
@@ -84,7 +85,8 @@ class SecondaryButton extends StatelessWidget {
         style: danger ? OutlinedButton.styleFrom(foregroundColor: AppColors.red600) : null,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
-          Text(label),
+          // The label gives way (with an ellipsis) when the space is tight, instead of overflowing.
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
         ]),
       );
 }

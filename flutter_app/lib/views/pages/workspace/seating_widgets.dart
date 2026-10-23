@@ -1,7 +1,9 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/format.dart';
 import '../../../core/theme.dart';
+import '../../../controllers/seating_controllers.dart';
 import '../../../models/domain/hall_layout.dart';
 import '../../../models/domain/seating.dart';
 import '../../../models/entities.dart';
@@ -24,11 +26,15 @@ String groupLabel(String? g) => g == 'M' ? 'Boys' : g == 'F' ? 'Girls' : g == 'm
 
 /// One hall's benches as seen from the front, each with its left and right seat (a chair: one seat).
 class HallBenchGrid extends StatelessWidget {
-  const HallBenchGrid({super.key, required this.layout, required this.seats, required this.colorOf, this.highlight = const []});
+  const HallBenchGrid({super.key, required this.layout, required this.seats, required this.colorOf, this.highlight = const [], this.onSeatTap, this.pickedId});
   final HallLayout layout;
   final List<SeatRow> seats;
   final ClassColor Function(String) colorOf;
   final List<int> highlight;
+  /// When set, every seat can be clicked (to pick a student and to choose the seat to move to): bench row, bench column, "L" or "R", and who sits there.
+  final void Function(int row, int col, String seat, SeatRow? student)? onSeatTap;
+  /// The student picked to be moved, shown with a blue frame.
+  final int? pickedId;
 
   @override
   Widget build(BuildContext context) {
@@ -38,17 +44,21 @@ class HallBenchGrid extends StatelessWidget {
       at.putIfAbsent(benchKey(s.benchRow, s.benchCol), () => {})[s.seat] = s;
     }
     final mixed = seats.map((s) => s.gender).toSet().length > 1;
-    Widget seatCell(SeatRow? s) {
+    Widget seatCell(SeatRow? s, int row, int col, String side) {
+      Widget tappable(Widget child) => onSeatTap == null
+          ? child
+          : MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => onSeatTap!(row, col, side, s), child: child));
       if (s == null) {
-        return Container(
+        return tappable(Container(
           padding: const EdgeInsets.symmetric(vertical: 3),
           alignment: Alignment.center,
           decoration: BoxDecoration(border: Border.all(color: AppColors.gray200), borderRadius: BorderRadius.circular(4)),
           child: const Text('empty', style: TextStyle(fontSize: 11.5, color: AppColors.gray300)),
-        );
+        ));
       }
       final cc = colorOf(s.colorKey);
-      return Tooltip(
+      final picked = pickedId == s.studentId;
+      return tappable(Tooltip(
         message: '${s.rollNo} · ${s.studentName} · ${s.deptCode ?? ''} ${s.year ?? ''} · ${s.batch}',
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
@@ -56,7 +66,7 @@ class HallBenchGrid extends StatelessWidget {
           decoration: BoxDecoration(
             color: cc.bg,
             borderRadius: BorderRadius.circular(4),
-            border: Border(
+            border: picked ? Border.all(color: AppColors.primary, width: 3) : Border(
               left: mixed ? BorderSide(color: s.gender == 'F' ? AppColors.pink600 : AppColors.sky600, width: 4) : BorderSide.none,
               top: highlight.contains(s.studentId) ? const BorderSide(color: AppColors.error, width: 2) : BorderSide.none,
               bottom: highlight.contains(s.studentId) ? const BorderSide(color: AppColors.error, width: 2) : BorderSide.none,
@@ -65,7 +75,7 @@ class HallBenchGrid extends StatelessWidget {
           ),
           child: Text(s.rollNo, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Consolas', fontSize: 11.5, fontWeight: FontWeight.w700, color: cc.fg)),
         ),
-      );
+      ));
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -100,8 +110,8 @@ class HallBenchGrid extends StatelessWidget {
                       Text('${seatKindLabel[bench.kind]} ${bench.benchNo}', style: const TextStyle(fontSize: 11, color: AppColors.textSec)),
                       const SizedBox(height: 2),
                       bench.seats == 2
-                          ? Row(children: [Expanded(child: seatCell(b?['L'])), const SizedBox(width: 4), Expanded(child: seatCell(b?['R']))])
-                          : Row(children: [const Spacer(), Expanded(flex: 2, child: seatCell(b?['L'])), const Spacer()]),
+                          ? Row(children: [Expanded(child: seatCell(b?['L'], r, c, 'L')), const SizedBox(width: 4), Expanded(child: seatCell(b?['R'], r, c, 'R'))])
+                          : Row(children: [const Spacer(), Expanded(flex: 2, child: seatCell(b?['L'], r, c, 'L')), const Spacer()]),
                     ]),
                   );
                 }),
@@ -112,69 +122,196 @@ class HallBenchGrid extends StatelessWidget {
   }
 }
 
-/// A hall's seating in a popup: invigilators, student count, classes, and the bench grid.
-class HallSeatingDialog extends StatelessWidget {
-  const HallSeatingDialog({super.key, required this.hall, required this.seats, required this.colorOf, this.gender, this.highlight = const []});
+/// A hall's seating in a popup: invigilators, student count, classes, and the bench grid. "Edit seats" lets the
+/// administrator move a student by hand: click the student, then the seat to move to (a taken seat swaps the two).
+/// Every rule is checked again before the move is saved; a move that breaks one is refused with its reasons.
+class HallSeatingDialog extends StatefulWidget {
+  const HallSeatingDialog({super.key, this.controller, required this.hall, required this.colorOf, this.highlight = const [], this.previewSeats, this.previewGender});
+  /// The saved plan's controller: seats are read from it and can be edited. Null for a preview of an unsaved plan.
+  final SeatingPanelController? controller;
+  /// For a preview (no controller): the seats and the group of the hall.
+  final List<SeatRow>? previewSeats;
+  final String? previewGender;
   final SeatingHallInfo hall;
-  final List<SeatRow> seats;
   final ClassColor Function(String) colorOf;
-  final String? gender;
   final List<int> highlight;
 
   @override
-  Widget build(BuildContext context) {
-    final boys = seats.where((s) => s.gender == 'M').length;
-    final classes = <String, int>{};
-    for (final s in seats) {
-      classes[s.colorKey] = (classes[s.colorKey] ?? 0) + 1;
+  State<HallSeatingDialog> createState() => _HallSeatingDialogState();
+}
+
+class _HallSeatingDialogState extends State<HallSeatingDialog> {
+  late final ChangeNotifier _static = ChangeNotifier();
+  late int hallId = widget.hall.id;
+  bool editing = false;
+  int? pickedId;
+  List<String> reasons = const [];
+  String? note;
+
+  SeatingPanelController? get _c => widget.controller;
+  bool get _canEdit => _c != null;
+
+  void _tap(int row, int col, String seat, SeatRow? student) {
+    if (!editing) return;
+    if (pickedId == null) {
+      if (student != null) {
+        setState(() {
+          pickedId = student.studentId;
+          reasons = const [];
+          note = null;
+        });
+      }
+      return;
     }
-    final depts = seats.map((s) => s.deptCode).whereType<String>().toSet();
-    final (bg, fg) = groupColors(gender);
-    Widget box(IconData icon, String label, Widget child) => Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(12)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Icon(icon, size: 14, color: AppColors.textSec), const SizedBox(width: 6), Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.textSec))]),
-              const SizedBox(height: 6),
-              child,
-            ]),
-          ),
-        );
-    final keys = classes.keys.toList()..sort();
-    return ModalShell(
-      title: 'Hall ${hall.hallCode}',
-      subtitle: hallLocation(hall.block, hall.floor).isEmpty ? null : hallLocation(hall.block, hall.floor),
-      maxWidth: 1100,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Align(alignment: Alignment.centerLeft, child: Pill(groupLabel(gender), bg: bg, fg: fg)),
-          const SizedBox(height: 12),
-          IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              box(Icons.how_to_reg_outlined, hall.invigilators.length > 1 ? 'Invigilators' : 'Invigilator',
-                  Text(hall.invigilators.isEmpty ? 'Not allocated' : hall.invigilators.join(', '), style: const TextStyle(fontWeight: FontWeight.w600))),
-              box(Icons.people_outline, 'Students', Text.rich(TextSpan(children: [
-                TextSpan(text: '${seats.length}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-                TextSpan(text: '  of ${hall.seats} seats · $boys boys · ${seats.length - boys} girls', style: cellSec),
-              ]))),
-              box(Icons.school_outlined, '${depts.length > 1 ? 'Departments' : 'Department'}${depts.isNotEmpty ? ' (${depts.length})' : ''}', Wrap(spacing: 6, runSpacing: 6, children: [
-                for (final k in keys) Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: colorOf(k).bg, borderRadius: BorderRadius.circular(4)),
-                  child: Text('$k · ${classes[k]}', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorOf(k).fg)),
-                ),
-              ])),
-            ]),
-          ),
-          const SizedBox(height: 16),
-          HallBenchGrid(layout: hall.layout, seats: seats, colorOf: colorOf, highlight: highlight),
-        ]),
-      ),
-    );
+    if (student?.studentId == pickedId) {
+      setState(() {
+        pickedId = null;
+        reasons = const [];
+      });
+      return;
+    }
+    final r = _c!.moveStudent(pickedId!, hallId: hallId, row: row, col: col, seat: seat);
+    setState(() {
+      if (r.success) {
+        pickedId = null;
+        reasons = const [];
+        note = r.swappedWith == null ? 'Student moved.' : 'The two students swapped seats (${r.swappedWith}).';
+      } else {
+        reasons = r.reasons.isNotEmpty ? r.reasons : [r.error ?? 'This move is not allowed.'];
+        note = null;
+      }
+    });
   }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: _c ?? _static,
+        builder: (context, _) {
+          final c = _c;
+          final hall = c?.sessionHalls.firstWhere((h) => h.id == hallId, orElse: () => widget.hall) ?? widget.hall;
+          final seats = c?.seatsIn(hall.id) ?? widget.previewSeats ?? const <SeatRow>[];
+          final gender = c == null ? widget.previewGender : c.genderOf(hall.id);
+          final colorOf = widget.colorOf;
+          final picked = pickedId == null || c == null ? null : c.seats.firstWhereOrNull((x) => x.studentId == pickedId);
+          final boys = seats.where((s) => s.gender == 'M').length;
+          final classes = <String, int>{};
+          for (final s in seats) {
+            classes[s.colorKey] = (classes[s.colorKey] ?? 0) + 1;
+          }
+          final depts = seats.map((s) => s.deptCode).whereType<String>().toSet();
+          final (bg, fg) = groupColors(gender);
+          Widget box(IconData icon, String label, Widget child) => Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(12)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [Icon(icon, size: 14, color: AppColors.textSec), const SizedBox(width: 6), Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.textSec))]),
+                    const SizedBox(height: 6),
+                    child,
+                  ]),
+                ),
+              );
+          final keys = classes.keys.toList()..sort();
+          return ModalShell(
+            title: 'Hall ${hall.hallCode}',
+            subtitle: hallLocation(hall.block, hall.floor).isEmpty ? null : hallLocation(hall.block, hall.floor),
+            maxWidth: 1100,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  Pill(groupLabel(gender), bg: bg, fg: fg),
+                  const Spacer(),
+                  if (editing && c != null) ...[
+                    const Text('Hall shown: ', style: TextStyle(fontSize: 13, color: AppColors.textSec)),
+                    Select<int>(
+                        value: hallId,
+                        hint: 'Hall',
+                        width: 140,
+                        items: [for (final h in c.sessionHalls) (h.id, h.hallCode)],
+                        onChanged: (v) => setState(() {
+                              if (v != null) hallId = v;
+                            })),
+                    const SizedBox(width: 10),
+                  ],
+                  if (_canEdit)
+                    editing
+                      ? PrimaryButton(
+                          label: 'Done editing',
+                          icon: Icons.check,
+                          onPressed: () => setState(() {
+                                editing = false;
+                                pickedId = null;
+                                reasons = const [];
+                                note = null;
+                              }))
+                      : SecondaryButton(
+                          label: 'Edit seats',
+                          icon: Icons.drag_indicator,
+                          onPressed: () => setState(() {
+                                editing = true;
+                                note = null;
+                              })),
+                ]),
+                const SizedBox(height: 12),
+                IntrinsicHeight(
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    box(Icons.how_to_reg_outlined, hall.invigilators.length > 1 ? 'Invigilators' : 'Invigilator',
+                        Text(hall.invigilators.isEmpty ? 'Not allocated' : hall.invigilators.join(', '), style: const TextStyle(fontWeight: FontWeight.w600))),
+                    box(
+                        Icons.people_outline,
+                        'Students',
+                        Text.rich(TextSpan(children: [
+                          TextSpan(text: '${seats.length}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+                          TextSpan(text: '  of ${hall.seats} seats · $boys boys · ${seats.length - boys} girls', style: cellSec),
+                        ]))),
+                    box(
+                        Icons.school_outlined,
+                        '${depts.length > 1 ? 'Departments' : 'Department'}${depts.isNotEmpty ? ' (${depts.length})' : ''}',
+                        Wrap(spacing: 6, runSpacing: 6, children: [
+                          for (final k in keys)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(color: colorOf(k).bg, borderRadius: BorderRadius.circular(4)),
+                              child: Text('$k · ${classes[k]}', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorOf(k).fg)),
+                            ),
+                        ])),
+                  ]),
+                ),
+                if (editing) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: AppColors.gray50, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(10)),
+                    child: Text(
+                      picked == null
+                          ? 'Click the student to move. Then click the seat to move to: an empty seat, or a student to swap seats with. Pick another hall above to move across halls.'
+                          : 'Moving ${picked.rollNo} · ${picked.studentName} (${picked.hallCode}, ${picked.seat == 'L' ? 'left' : 'right'} seat of bench ${picked.benchNo}). Click the new seat, or click the student again to cancel.',
+                      style: const TextStyle(fontSize: 13.5),
+                    ),
+                  ),
+                  if (reasons.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(color: const Color(0xFFFEF2F2), border: Border.all(color: const Color(0xFFFCA5A5)), borderRadius: BorderRadius.circular(10)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('This move is not allowed, so nothing was changed:', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.error)),
+                        const SizedBox(height: 4),
+                        for (final r in reasons.take(6)) Text('• $r', style: const TextStyle(fontSize: 13.5, color: AppColors.error)),
+                        if (reasons.length > 6) Text('…and ${reasons.length - 6} more', style: const TextStyle(fontSize: 13, color: AppColors.error)),
+                      ]),
+                    ),
+                  if (note != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(note!, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.green600))),
+                ],
+                const SizedBox(height: 16),
+                HallBenchGrid(layout: hall.layout, seats: seats, colorOf: colorOf, highlight: widget.highlight, onSeatTap: editing ? _tap : null, pickedId: pickedId),
+              ]),
+            ),
+          );
+        },
+      );
 }
 
 /// Students left without a seat, by roll number, with the reason for each.

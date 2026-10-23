@@ -58,6 +58,7 @@ void main() {
       final seating = find.text('Student Seating');
       if (seating.evaluate().isNotEmpty) {
         page = 'student seating';
+        await tester.ensureVisible(seating.first);
         await tester.tap(seating.first);
         await tester.pump(const Duration(milliseconds: 400));
       }
@@ -80,6 +81,23 @@ void main() {
         }
       }
 
+      // Editing seats by hand: pick a student and choose a seat that breaks a rule, so the reasons show.
+      if (find.text('H101').evaluate().isNotEmpty && find.text('Edit Configuration').evaluate().isNotEmpty) {
+        page = 'edit seats';
+        await tester.ensureVisible(find.text('H101').first);
+        await tester.tap(find.text('H101').first);
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.text('Edit seats'), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 300));
+        for (final roll in ['22CS004', '22EC002'].where((r) => find.text(r).evaluate().isNotEmpty)) {
+          await tester.ensureVisible(find.text(roll).first);
+          await tester.tap(find.text(roll).first, warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 300));
+        }
+        if (find.textContaining('This move is not allowed').evaluate().isNotEmpty) opened.add('edit seats blocked');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump(const Duration(milliseconds: 400));
+      }
       await dialog('edit seating configuration', find.text('Edit Configuration'));
       await dialog('select students', find.text('Reselect Students'));
       nav.go(AppPage.master, tab: MasterTab.students);
@@ -98,7 +116,7 @@ void main() {
       await dialog('new batch', find.textContaining('New Batch'));
 
       FlutterError.onError = previous;
-      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff', 'staff subjects']), reason: 'dialogs that opened');
+      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff', 'staff subjects', 'edit seats blocked']), reason: 'dialogs that opened');
       expect(problems.toList(), isEmpty, reason: 'at ${size.width.toInt()}x${size.height.toInt()}');
     });
   }

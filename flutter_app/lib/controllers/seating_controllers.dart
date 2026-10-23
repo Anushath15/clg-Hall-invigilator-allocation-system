@@ -86,6 +86,14 @@ class SeatingPanelController extends ChangeNotifier {
 
   String describe(SeatingSelection s) => '${s.cycleName} · ${formatDateWithDay(s.examDate)} · ${formatSession(s.sessionType)}';
 
+  /// Moves a seated student to another seat by hand (a taken seat swaps the two). Every rule is checked again;
+  /// a move that breaks one is refused with its reasons and nothing changes.
+  MoveSeatResult moveStudent(int studentId, {required int hallId, required int row, required int col, required String seat}) {
+    final r = services.students.moveSeat(session.id, studentId, hallId: hallId, row: row, col: col, seat: seat);
+    if (r.success) load();
+    return r;
+  }
+
   Outcome copyPrevious() {
     final p = previous;
     if (p == null) return const Outcome.err('No earlier exam has exactly the same halls.');

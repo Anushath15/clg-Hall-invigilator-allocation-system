@@ -61,6 +61,17 @@ class ConfirmResult {
   const ConfirmResult({required this.success, this.needsConfirmation = false, this.error, this.unallocated = const [], this.warnings = const [], this.seated = 0});
 }
 
+/// The outcome of moving one student to another seat by hand.
+class MoveSeatResult {
+  final bool success;
+  final String? error;
+  /// Every rule the move would break (empty when it is allowed), each naming the students and the bench.
+  final List<String> reasons;
+  /// The student who was in the target seat and took the seat the mover left (a swap), if any.
+  final String? swappedWith;
+  const MoveSeatResult({required this.success, this.error, this.reasons = const [], this.swappedWith});
+}
+
 class SeatingSelection {
   final int id, cycleId, studentCount;
   final String cycleName, examDate, sessionType;
@@ -354,6 +365,68 @@ class StudentService {
       return ConfirmResult(success: false, error: 'The seating plan could not be saved, so the previous plan was kept unchanged. ($e)');
     }
     return ConfirmResult(success: true, warnings: plan.warnings, seated: plan.seats.length, unallocated: plan.unallocated);
+  }
+
+  /// Moves one seated student to another seat of the session's halls, by hand. A taken target seat is a swap:
+  /// its student takes the seat the mover leaves. Every rule is checked again on the plan as it would be after
+  /// the move, by the same validator that checks a generated plan; the move is refused with the reasons when it
+  /// would break any rule that the plan did not already break, and nothing is changed.
+  MoveSeatResult moveSeat(int sessionId, int studentId, {required int hallId, required int row, required int col, required String seat}) {
+    final saved = savedSeating(sessionId);
+    if (saved == null) return const MoveSeatResult(success: false, error: 'This session has no seating plan to edit.');
+    final input = _input(sessionId, saved.studentIds);
+    if (input is String) return MoveSeatResult(success: false, error: input);
+    final inp = input as _SeatingInput;
+    final config = normalizeConfig(saved.config, inp.halls);
+    final students = applySessionSubjects(inp.students, config.subjects, config.sessionSubjects);
+
+    final current = db
+        .query('SELECT student_id, hall_id, bench_row, bench_col, bench_no, seat FROM seat_allocations WHERE session_id = ?', [sessionId])
+        .map((r) => Seat(studentId: asInt(r['student_id']), hallId: asInt(r['hall_id']), row: asInt(r['bench_row']), col: asInt(r['bench_col']), benchNo: asInt(r['bench_no']), seat: asStr(r['seat'])))
+        .toList();
+    final mover = current.firstWhereOrNull((x) => x.studentId == studentId);
+    if (mover == null) return const MoveSeatResult(success: false, error: 'Only a seated student can be moved.');
+
+    final hall = inp.halls.firstWhereOrNull((h) => h.id == hallId);
+    if (hall == null) return const MoveSeatResult(success: false, error: 'That hall is not one of the halls of this session.');
+    final bench = enabledBenches(hall.layout).firstWhereOrNull((b) => b.row == row && b.col == col);
+    if (bench == null) return MoveSeatResult(success: false, error: 'Hall ${hall.hallCode} has no bench there.');
+    if (seat != 'L' && seat != 'R') return const MoveSeatResult(success: false, error: 'Choose the left or the right seat.');
+    if (seat == 'R' && bench.seats == 1) return MoveSeatResult(success: false, error: 'Hall ${hall.hallCode}, seat ${bench.benchNo} is a single chair: it has no right seat.');
+    if (mover.hallId == hallId && mover.row == row && mover.col == col && mover.seat == seat) return const MoveSeatResult(success: false, error: 'The student is already in that seat.');
+
+    final occupant = current.firstWhereOrNull((x) => x.hallId == hallId && x.row == row && x.col == col && x.seat == seat);
+    final after = [
+      for (final x in current)
+        if (x.studentId == studentId)
+          Seat(studentId: studentId, hallId: hallId, row: row, col: col, benchNo: bench.benchNo, seat: seat)
+        else if (occupant != null && x.studentId == occupant.studentId)
+          Seat(studentId: x.studentId, hallId: mover.hallId, row: mover.row, col: mover.col, benchNo: mover.benchNo, seat: mover.seat)
+        else
+          x
+    ];
+
+    // Only what the move itself breaks counts: a plan that already had a problem is not blamed on this move.
+    final before = validateSeatingPlan(current, saved.unallocated, students, inp.halls, config).toSet();
+    final broken = validateSeatingPlan(after, saved.unallocated, students, inp.halls, config).where((e) => !before.contains(e)).toList();
+    if (broken.isNotEmpty) return MoveSeatResult(success: false, error: 'This move is not allowed: ${broken.first}', reasons: broken);
+
+    final other = occupant == null ? null : students.firstWhereOrNull((x) => x.id == occupant.studentId)?.rollNo;
+    try {
+      db.transaction(() {
+        // Delete first: the table refuses a student or a seat used twice, even for a moment during a swap.
+        for (final x in current.where((x) => x.studentId == studentId || x.studentId == occupant?.studentId)) {
+          db.run('DELETE FROM seat_allocations WHERE session_id = ? AND student_id = ?', [sessionId, x.studentId]);
+        }
+        for (final x in after.where((x) => x.studentId == studentId || x.studentId == occupant?.studentId)) {
+          db.run('INSERT INTO seat_allocations(session_id, student_id, hall_id, bench_row, bench_col, bench_no, seat) VALUES(?,?,?,?,?,?,?)',
+              [sessionId, x.studentId, x.hallId, x.row, x.col, x.benchNo, x.seat]);
+        }
+      });
+    } catch (e) {
+      return MoveSeatResult(success: false, error: 'The move could not be saved, so the seating was left unchanged. ($e)');
+    }
+    return MoveSeatResult(success: true, swappedWith: other);
   }
 
   /// The saved seating of a session, in hall and bench order, with each student's academic year.
