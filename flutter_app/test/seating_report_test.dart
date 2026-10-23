@@ -30,6 +30,29 @@ void main() {
     expect(r.report.findings.map((f) => f.priority), [1, 2, 3, 4, 5], reason: 'rules are listed in priority order');
   });
 
+  test('the rules are checked and reported in the required order: capacity, same subject, gender / bench pattern, same class', () {
+    final students = [for (var i = 1; i <= 8; i++) st(i, 'M', 1 + i % 4)];
+    final r = run(students, [hall(1, 3, 2), hall(2, 3, 2)]);
+    expect(r.report.findings.map((f) => f.rule), [
+      'Hall capacity',
+      'Same subject never adjacent',
+      'Gender / bench pattern',
+      'Same class never on one bench',
+      'Classes per hall',
+    ]);
+    expect(r.report.findings.map((f) => f.priority), [1, 2, 3, 4, 5]);
+  });
+
+  test('when seats run out, capacity is blamed first, before any other rule', () {
+    // 9 boys of one class: 3 benches (6 seats) is short by 3 seats, and one class can use only one seat per bench.
+    final students = [for (var i = 1; i <= 9; i++) st(i, 'M', 1)];
+    final r = run(students, [hall(1, 3, 1)]);
+    final reasons = r.report.unallocated.map((u) => u.reason).toList();
+    expect(reasons.where((x) => x.startsWith('Blocked by hall capacity')).length, 3, reason: 'the 3 students beyond the seats are blamed on capacity');
+    expect(reasons.where((x) => x.startsWith('Blocked by the same-class bench rule')).length, reasons.length - 3);
+    expect(reasons.indexWhere((x) => x.startsWith('Blocked by hall capacity')), 0, reason: 'capacity is named first');
+  });
+
   test('not enough seats: Hall capacity is named with the exact shortfall, and only for the students it held back', () {
     final students = [for (var i = 1; i <= 10; i++) st(i, 'M', i)]; // 10 boys of 10 classes
     final r = run(students, [hall(1, 3, 1)]); // 3 benches = 6 seats, and a hall holds at most 4 classes
@@ -54,7 +77,7 @@ void main() {
     expect(f.students, 3);
     expect(r.report.unallocated.map((u) => u.rollNo), unorderedEquals(['S5', 'S6', 'S7']));
     for (final u in r.report.unallocated) {
-      expect(u.reason, startsWith('Blocked by the gender rule'));
+      expect(u.reason, startsWith('Blocked by the gender / bench pattern rule'));
     }
   });
 

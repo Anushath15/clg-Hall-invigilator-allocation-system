@@ -1,17 +1,18 @@
 /// RULE REPORT of a seating plan: which rules were met, which had to be relaxed, and - when students could not be
 /// seated - which rule was the one that stopped each of them. Pure logic.
 ///
-/// Priority of the rules (a rule is given up only after every rule above it has been kept; the first two are physical
-/// and are never given up):
-///   1. Hall capacity           seats for a group of students must be at least as many as the students
-///   2. Gender / bench pattern a seat is used only by the gender its bench pattern gives it
-///   3. Same class on a bench   two students of one class (or one subject) never share a bench
-///   4. Same subject adjacent   students writing the same subject do not sit side by side
-///   5. Classes per hall        3 by default (the preferred number), 4 at the most; the 4th class is allowed only
-///                              when otherwise somebody would be left without a seat
+/// The rules, checked and satisfied in this order (a rule is given up only after every rule above it has been kept;
+/// the first is physical and never given up, and none of 1 to 4 is ever broken):
+///   1. Hall capacity            is there a seat for everyone? (per group, and a seat that really exists)
+///   2. Same subject adjacency   students writing the same subject never sit side by side (bench mate or across the aisle)
+///   3. Gender / bench pattern   a seat is used only by the gender its bench pattern gives it
+///   4. Same class on one bench  two students of one class never share a bench
+///   5. Classes per hall         3 by default (the preferred number), 4 at the most; the 4th class is allowed only
+///                               when otherwise somebody would be left without a seat
 ///
 /// The planner never breaks rules 1 to 4, and never goes past the limit of 5: a student for whom no seat satisfies
-/// them stays "unallocated". This report says, in plain words, which rule that was, and whenever rule 5 was relaxed.
+/// them stays "unallocated". This report says, in plain words, which rule that was (the first one in the order above
+/// that held the student back), and whenever rule 5 was relaxed.
 library;
 
 import 'hall_layout.dart';
@@ -104,16 +105,16 @@ PlanReport reportPlan({
           suggestion: 'Add a hall, or benches, or give another hall to ${short.map(_word).join(' and ')}.')
       : const RuleFinding(priority: 1, rule: 'Hall capacity', status: RuleStatus.met, detail: 'every group has at least as many seats as students');
   final gender = mix
-      ? const RuleFinding(priority: 2, rule: 'Gender / bench pattern', status: RuleStatus.notApplicable, detail: 'boys and girls are seated together in roll-number order')
+      ? const RuleFinding(priority: 3, rule: 'Gender / bench pattern', status: RuleStatus.notApplicable, detail: 'boys and girls are seated together in roll-number order')
       : noSeats.isNotEmpty
           ? RuleFinding(
-              priority: 2,
+              priority: 3,
               rule: 'Gender / bench pattern',
               status: RuleStatus.blocking,
               students: noSeats.fold(0, (n, g) => n + total[g]!),
               detail: 'no hall has a bench pattern with seats for ${noSeats.map(_word).join(' and ')}, so ${noSeats.map((g) => '${total[g]} ${_word(g)}').join(' and ')} cannot sit anywhere',
               suggestion: 'Give a hall a bench pattern with seats for ${noSeats.map(_word).join(' and ')}.')
-          : const RuleFinding(priority: 2, rule: 'Gender / bench pattern', status: RuleStatus.met, detail: 'every seat is used only by the gender its bench pattern gives it');
+          : const RuleFinding(priority: 3, rule: 'Gender / bench pattern', status: RuleStatus.met, detail: 'every seat is used only by the gender its bench pattern gives it');
 
   // 3: one class never twice on a bench, so a class can use at most one seat per bench.
   final tooBig = <String, ({String name, int n, int benches, String group})>{};
@@ -128,14 +129,14 @@ PlanReport reportPlan({
   }
   final bench = tooBig.isNotEmpty
       ? RuleFinding(
-          priority: 3,
+          priority: 4,
           rule: 'Same class never on one bench',
           status: RuleStatus.blocking,
           students: tooBig.values.fold(0, (n, x) => n + x.n - x.benches),
           detail: tooBig.values.take(3).map((x) => '${x.name} has ${x.n} ${_word(x.group)} but there are only ${x.benches} benches for them, and two of one class never share a bench').join('; ') +
               (tooBig.length > 3 ? '; and ${tooBig.length - 3} more' : ''),
           suggestion: 'Add benches or halls for ${tooBig.values.map((x) => _word(x.group)).toSet().join(' and ')}.')
-      : const RuleFinding(priority: 3, rule: 'Same class never on one bench', status: RuleStatus.met, detail: 'no bench has two students of one class (or one subject)');
+      : const RuleFinding(priority: 4, rule: 'Same class never on one bench', status: RuleStatus.met, detail: 'no bench has two students of one class (or one subject)');
 
   // 4 and 5: what-if runs. Only when somebody is left without a seat, plan again with one rule switched off and see
   // how many students it was holding back.
@@ -148,16 +149,16 @@ PlanReport reportPlan({
     limitGain = unseated - planWithoutRule(students, halls, config, academicYear, lockedSeats, noClassLimit: true).unallocated.length;
   }
   final side = !bySubject
-      ? const RuleFinding(priority: 4, rule: 'Same subject never adjacent', status: RuleStatus.notApplicable, detail: 'no subjects were chosen for this exam')
+      ? const RuleFinding(priority: 2, rule: 'Same subject never adjacent', status: RuleStatus.notApplicable, detail: 'no subjects were chosen for this exam')
       : sideGain > 0
           ? RuleFinding(
-              priority: 4,
+              priority: 2,
               rule: 'Same subject never adjacent',
               status: RuleStatus.blocking,
               students: sideGain,
               detail: '$sideGain student${sideGain == 1 ? '' : 's'} could be seated only beside a student writing the same subject',
               suggestion: 'Add halls or benches so that students writing one subject can be spread out.')
-          : const RuleFinding(priority: 4, rule: 'Same subject never adjacent', status: RuleStatus.met, detail: 'nobody sits beside a student writing the same subject');
+          : const RuleFinding(priority: 2, rule: 'Same subject never adjacent', status: RuleStatus.met, detail: 'nobody sits beside a student writing the same subject');
 
   final classesIn = <int, Set<String>>{};
   for (final x in plan.seats) {
@@ -184,7 +185,7 @@ PlanReport reportPlan({
               detail: '${overPreferred.map((x) => '${x.hall} holds ${x.n} classes').join(', ')} instead of ${limit.preferred}, because otherwise some students would have no seat (limit: $limitNote)')
           : RuleFinding(priority: 5, rule: 'Classes per hall', status: RuleStatus.met, detail: 'no hall holds more than ${limit.preferred} classes ($limitNote)');
 
-  final findings = [capacity, gender, bench, side, classLimit];
+  final findings = [capacity, side, gender, bench, classLimit];
 
   // For each student left out, the first rule (in priority order) that still has students to blame: a rule is named for
   // as many students as it really held back (the shortfall of seats, the students beyond a class's benches, what
@@ -194,11 +195,19 @@ PlanReport reportPlan({
   var sideLeft = sideGain, limitLeft = limitGain;
   String reasonFor(UnallocatedStudent u) {
     final g = groupOf(u.gender), word = _word(g == '*' ? u.gender : g);
-    if (noSeats.contains(g)) return 'Blocked by the gender rule: ${gender.detail}.';
+    // 1. Hall capacity.
     if (capacityLeft[g]! > 0) {
       capacityLeft[g] = capacityLeft[g]! - 1;
       return 'Blocked by hall capacity: ${total[g]} $word are selected but the halls have only ${seatsFor[g]} seats for them. ${capacity.suggestion}';
     }
+    // 2. Same subject adjacency (a student with no seat for their gender at all was not held back by it: see rule 3).
+    if (sideLeft > 0 && !noSeats.contains(g)) {
+      sideLeft--;
+      return 'Blocked by the same-subject adjacency rule: the only free seats are beside a student writing the same subject.';
+    }
+    // 3. Gender / bench pattern.
+    if (noSeats.contains(g)) return 'Blocked by the gender / bench pattern rule: ${gender.detail}.';
+    // 4. Same class on one bench.
     final s = studentById[u.studentId];
     final key = s == null ? null : '$g|${seatClassKey(s)}';
     if (key != null && (benchLeft[key] ?? 0) > 0) {
@@ -206,10 +215,7 @@ PlanReport reportPlan({
       final big = tooBig[key]!;
       return 'Blocked by the same-class bench rule: ${big.name} has ${big.n} ${_word(big.group)} but only ${big.benches} benches are available for them, and two of one class never share a bench.';
     }
-    if (sideLeft > 0) {
-      sideLeft--;
-      return 'Blocked by the subject-separation rule: the only free seats are beside a student writing the same subject.';
-    }
+    // 5. Classes per hall.
     if (limitLeft > 0) {
       limitLeft--;
       return 'Blocked by the class limit: the free seats are in halls that already hold ${limit.max} different classes (the most allowed).';
