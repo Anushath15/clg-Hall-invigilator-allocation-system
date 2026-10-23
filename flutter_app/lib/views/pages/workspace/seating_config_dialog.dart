@@ -238,6 +238,7 @@ class _ConfigView extends StatelessWidget {
             if (c.subjects.isNotEmpty || c.sessionSubjects.isNotEmpty) 'By subject: students writing the same subject never share a bench and never sit side by side across the aisle.',
           ]),
         if (c.warnings.isNotEmpty) MessageBanner(kind: BannerKind.warning, lines: [for (final w in c.warnings) '• $w']),
+        if (plan != null && c.report != null) ...[RuleCheckCard(report: c.report!), const SizedBox(height: 12)],
         if (plan != null)
           DataTableCard(
             columns: const ['Hall', 'Group', 'Benches', 'Seats', 'Students', 'Empty'],

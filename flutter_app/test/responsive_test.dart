@@ -100,6 +100,23 @@ void main() {
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pump(const Duration(milliseconds: 400));
       }
+      // The configuration screen with its preview and the Rule check card (the preview is made after a short pause).
+      if (find.text('Edit Configuration').evaluate().isNotEmpty) {
+        page = 'rule check';
+        await tester.ensureVisible(find.text('Edit Configuration').first);
+        await tester.tap(find.text('Edit Configuration').first, warnIfMissed: false);
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(const Duration(milliseconds: 400));
+        }
+        if (find.text('Rule check').evaluate().isNotEmpty) opened.add('rule check');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump(const Duration(milliseconds: 400));
+        final cancel = find.text('Cancel');
+        if (cancel.evaluate().isNotEmpty) {
+          await tester.tap(cancel.first, warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 400));
+        }
+      }
       await dialog('edit seating configuration', find.text('Edit Configuration'));
       await dialog('select students', find.text('Reselect Students'));
       nav.go(AppPage.master, tab: MasterTab.students);
@@ -118,7 +135,7 @@ void main() {
       await dialog('new batch', find.textContaining('New Batch'));
 
       FlutterError.onError = previous;
-      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff', 'staff subjects', 'edit seats blocked']), reason: 'dialogs that opened');
+      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff', 'staff subjects', 'edit seats blocked', if (size.width >= 1024) 'rule check']), reason: 'dialogs that opened');
       expect(problems.toList(), isEmpty, reason: 'at ${size.width.toInt()}x${size.height.toInt()}');
     });
   }

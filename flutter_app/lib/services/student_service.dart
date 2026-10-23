@@ -7,6 +7,7 @@ import '../core/format.dart';
 import '../models/domain/categories.dart';
 import '../models/domain/hall_layout.dart';
 import '../models/domain/seating.dart';
+import '../models/domain/seating_report.dart';
 import '../models/domain/validation.dart';
 import '../models/entities.dart';
 
@@ -48,7 +49,9 @@ class PreviewResult {
   final SeatingPlan? plan;
   final List<PlanStudent> students;
   final List<String> errors, warnings;
-  const PreviewResult({this.error, this.config, this.plan, this.students = const [], this.errors = const [], this.warnings = const []});
+  /// Which rules were met, relaxed or kept students without a seat (and which rule stopped each of them).
+  final PlanReport? report;
+  const PreviewResult({this.error, this.config, this.plan, this.students = const [], this.errors = const [], this.warnings = const [], this.report});
   bool get success => error == null;
 }
 
@@ -366,11 +369,23 @@ class StudentService {
     final plan = locks.halls.isEmpty ? planSeating(students, raw.halls, config, raw.academicYear) : planSeatingWithLocks(students, raw.halls, config, raw.academicYear, locks.seats);
     final checked = checkConfig(config, raw.halls, students);
     final valid = validateSeatingPlan(plan.seats, plan.unallocated, students, raw.halls, config);
+    // Which rules were kept, which relaxed, and which one stopped each student left without a seat: never silent.
+    final subjectNames = {for (final r in db.query('SELECT id, code, name FROM subjects')) 'sub:${asInt(r['id'])}': '${asStr(r['code'])} ${asStr(r['name'])}'.trim()};
+    final report = reportPlan(
+      students: students,
+      halls: raw.halls,
+      config: config,
+      academicYear: raw.academicYear,
+      plan: plan,
+      lockedSeats: locks.seats,
+      classLabel: (st) => st.paper != null ? 'Subject ${subjectNames[st.paper] ?? st.paper}' : studentCategory(st, raw.academicYear).label,
+    );
+    final reported = SeatingPlan(seats: plan.seats, hallGender: plan.hallGender, halls: plan.halls, unallocated: report.unallocated, warnings: plan.warnings, groups: plan.groups);
     final info = students.map((s) {
       final y = yearOfStudy(s.batch, raw.academicYear);
       return PlanStudent(id: s.id, rollNo: s.rollNo, name: s.name ?? '', gender: s.gender, batch: s.batch, deptCode: s.deptCode, year: y.ok ? y.label : '', category: studentCategory(s, raw.academicYear).label);
     }).toList();
-    return PreviewResult(config: config, plan: plan, students: info, errors: [...checked.errors, ...valid], warnings: [...checked.warnings, ...plan.warnings, ...twiceWarning]);
+    return PreviewResult(config: config, plan: reported, students: info, errors: [...checked.errors, ...valid], warnings: [...checked.warnings, ...plan.warnings, ...twiceWarning], report: report);
   }
 
   PreviewResult preview(int sessionId, List<int> studentIds, SeatingConfig config) {
@@ -408,7 +423,7 @@ class StudentService {
     } catch (e) {
       return ConfirmResult(success: false, error: 'The seating plan could not be saved, so the previous plan was kept unchanged. ($e)');
     }
-    return ConfirmResult(success: true, warnings: plan.warnings, seated: plan.seats.length, unallocated: plan.unallocated);
+    return ConfirmResult(success: true, warnings: [...plan.warnings, ...built.report!.warnings], seated: plan.seats.length, unallocated: plan.unallocated);
   }
 
   /// Locks or unlocks halls of the session's saved plan. A locked hall keeps its students and their seats when the

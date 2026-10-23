@@ -285,7 +285,13 @@ List<SeatStudent> applySessionSubjects(List<SeatStudent> students, Object? subje
       return sub != null ? s.copyWith(paper: 'sub:${sub.id}') : s.copyWith(clearPaper: true);
     }).toList();
 
-bool _bySubject(List<SeatStudent> students) => students.any((s) => s.paper != null);
+/// Switches used only while finding out which rule keeps students without a seat (see [planWithoutRule]).
+bool _whatIfNoSideRule = false, _whatIfNoClassLimit = false;
+
+bool _bySubject(List<SeatStudent> students) => !_whatIfNoSideRule && students.any((s) => s.paper != null);
+
+/// The key of the class a student belongs to for seating: the subject paper written, else department + batch.
+String seatClassKey(SeatStudent s) => _classOf(s);
 
 typedef _BenchAt = Bench? Function(int row, int col);
 
@@ -649,7 +655,7 @@ SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, Seatin
   }
   List<String> bySize(String g) => _stable(pools[g]!.keys, (a, b) => pools[g]![b]!.length - pools[g]![a]!.length);
   final order = {'M': bySize('M'), 'F': bySize('F')};
-  final limit = config.classLimit!;
+  final limit = _whatIfNoClassLimit ? const ClassLimit(99, 99) : config.classLimit!;
   final warnings = <String>[];
 
   ({List<Seat> out, int wasted}) fillHall(HallSeatingConfig c, SeatHall hall, _State st, int most) {
@@ -799,6 +805,19 @@ SeatingPlan _planTogether(List<SeatStudent> students, List<SeatHall> halls, Seat
       unallocated: unallocated,
       warnings: plan.warnings,
       groups: groups);
+}
+
+/// The plan as [planSeatingWithLocks] makes it, but with one rule switched off. Only to find out how many students that rule
+/// keeps without a seat: the result is never saved or shown as a seating.
+SeatingPlan planWithoutRule(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? config, Object? academicYear, List<Seat> lockedSeats, {bool noClassLimit = false, bool noSideRule = false}) {
+  _whatIfNoClassLimit = noClassLimit;
+  _whatIfNoSideRule = noSideRule;
+  try {
+    return planSeatingWithLocks(students, halls, config, academicYear, lockedSeats);
+  } finally {
+    _whatIfNoClassLimit = false;
+    _whatIfNoSideRule = false;
+  }
 }
 
 /// A plan in which the halls of `config.lockedHalls` are kept exactly as they are (`lockedSeats`; a student no longer

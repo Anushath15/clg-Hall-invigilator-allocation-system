@@ -6,6 +6,7 @@ import '../../../core/theme.dart';
 import '../../../controllers/seating_controllers.dart';
 import '../../../models/domain/hall_layout.dart';
 import '../../../models/domain/seating.dart';
+import '../../../models/domain/seating_report.dart';
 import '../../../models/entities.dart';
 import '../../widgets/common.dart';
 
@@ -356,6 +357,55 @@ class UnallocatedTable extends StatelessWidget {
             Text(u.reason, style: const TextStyle(fontSize: 12.5, color: AppColors.textSec)),
           ]
       ],
+    );
+  }
+}
+
+/// The rules in priority order, each met, relaxed, or the one that stopped students: so a rule is never given up silently.
+class RuleCheckCard extends StatelessWidget {
+  const RuleCheckCard({super.key, required this.report});
+  final PlanReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    (IconData, Color) look(RuleStatus st) => switch (st) {
+          RuleStatus.met => (Icons.check_circle, AppColors.green600),
+          RuleStatus.relaxed => (Icons.error_outline, AppColors.amber800),
+          RuleStatus.blocking => (Icons.cancel, AppColors.error),
+          RuleStatus.notApplicable => (Icons.remove_circle_outline, AppColors.gray400),
+        };
+    final blocked = report.blocking.fold(0, (n, f) => n + f.students);
+    return AppCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('Rule check', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(width: 8),
+          const Flexible(child: Text('in priority order: a rule is given up only after the ones above it', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: AppColors.textSec))),
+        ]),
+        const SizedBox(height: 8),
+        for (final f in report.findings)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(look(f.status).$1, size: 18, color: look(f.status).$2),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: '${f.priority}. ${f.rule}: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: f.detail, style: TextStyle(color: f.status == RuleStatus.blocking ? AppColors.error : null)),
+                  if (f.suggestion != null) TextSpan(text: '  ${f.suggestion}', style: const TextStyle(color: AppColors.textSec, fontStyle: FontStyle.italic)),
+                ]), style: const TextStyle(fontSize: 13.5)),
+              ),
+            ]),
+          ),
+        if (blocked > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('No rule was broken: $blocked student${blocked == 1 ? ' has' : 's have'} no seat that keeps them all, and each is listed as unallocated with the rule that stopped them.',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+      ]),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../models/domain/categories.dart';
 import '../models/domain/hall_layout.dart';
 import '../models/domain/list_readers.dart';
 import '../models/domain/seating.dart';
+import '../models/domain/seating_report.dart';
 import '../models/entities.dart';
 import '../services/app_services.dart';
 import '../services/student_service.dart';
@@ -390,6 +391,9 @@ class SeatingConfigController extends ChangeNotifier {
   List<int> sessionSubjects = [];
   List<({int id, int count})> mappedSubjects = [];
   Timer? _debounce;
+
+  /// Which rules the previewed plan met, relaxed, or could not meet (and which rule stopped which student).
+  PlanReport? get report => preview?.report;
 
   /// Codes of the locked halls: they keep their students, and only the other students are configured.
   List<String> get lockedHallCodes {
