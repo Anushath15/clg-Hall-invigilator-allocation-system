@@ -489,57 +489,90 @@ SeatingConfig autoConfigure(List<SeatStudent> students, List<SeatHall> halls, {b
     final cfg = autoConfigure(_asOneGroup(students), halls, separateOnly: true, classLimit: classLimit);
     return cfg.copyWith(mixGenders: true);
   }
-  var config = _hallSplit(students, halls, separateOnly);
-  if (classLimit != null) config = config.copyWith(classLimit: normalizeClassLimit(classLimit));
   final limit = normalizeClassLimit(classLimit);
-  for (;;) {
-    final left = planSeating(students, halls, config.copyWith(classLimit: ClassLimit(limit.preferred, limit.preferred)), '').unallocated;
-    final unused = halls.where((h) => _seatsOf(h) > 0 && config.halls.firstWhere((c) => c.hallId == h.id).pattern.isEmpty).firstOrNull;
-    if (left.isEmpty || unused == null) return config;
-    final boys = left.where((u) => u.gender == 'M').length;
-    config = config.copyWith(
-        halls: config.halls.map((c) => c.hallId == unused.id ? HallSeatingConfig(c.hallId, [boys * 2 >= left.length ? 'MM' : 'FF']) : c).toList());
+
+  // Add halls nobody was given while somebody is still left out, and count who is left.
+  ({SeatingConfig config, int left}) fill(SeatingConfig start) {
+    var config = classLimit != null ? start.copyWith(classLimit: limit) : start;
+    for (;;) {
+      final left = planSeating(students, halls, config.copyWith(classLimit: ClassLimit(limit.preferred, limit.preferred)), '').unallocated;
+      final unused = halls.where((h) => _seatsOf(h) > 0 && config.halls.firstWhere((c) => c.hallId == h.id).pattern.isEmpty).firstOrNull;
+      if (left.isEmpty || unused == null) return (config: config, left: left.isEmpty ? 0 : planSeating(students, halls, config.copyWith(classLimit: limit), '').unallocated.length);
+      final boys = left.where((u) => u.gender == 'M').length;
+      config = config.copyWith(
+          halls: config.halls.map((c) => c.hallId == unused.id ? HallSeatingConfig(c.hallId, [boys * 2 >= left.length ? 'MM' : 'FF']) : c).toList());
+    }
   }
+
+  // Whole halls for boys and girls first. If the halls are too few for that, the same with ONE mixed hall is tried as well
+  // and kept only when it really seats more students (the class and subject rules decide, not just the seat count).
+  final whole = fill(_hallSplit(students, halls, true));
+  if (separateOnly || whole.left == 0) return whole.config;
+  final withMixed = _hallSplit(students, halls, false);
+  if (withMixed.halls.every((c) => !patternIsMixed(c.pattern))) return whole.config;
+  final mixed = fill(withMixed);
+  return mixed.left < whole.left ? mixed.config : whole.config;
 }
 
+/// GENDER BASED ALLOCATION of the halls.
+///   1. Whole halls go to boys and to girls (every combination of halls is tried, so the most are seated).
+///   2. Only when that cannot seat everybody, ONE hall holds both: its first benches are boys' benches (two boys each) and
+///      the rest girls' benches (two girls each). Boys and girls never share a bench, and never more than one hall is
+///      mixed. Every hall is tried as the mixed one and the best is kept.
+/// With [separateOnly] step 2 is skipped.
 SeatingConfig _hallSplit(List<SeatStudent> students, List<SeatHall> halls, bool separateOnly) {
   final need = {'M': students.where((s) => s.gender == 'M').length, 'F': students.where((s) => s.gender == 'F').length};
   final usable = halls.where((h) => _seatsOf(h) > 0).toList();
-  final total = usable.fold(0, (n, h) => n + _seatsOf(h));
-  final separate = _separateHalls(need, usable);
-  int seatsFor(String g) => usable.where((h) => separate[h.id] == g).fold(0, (n, h) => n + _seatsOf(h));
-  final separateSeated = (seatsFor('M') < need['M']! ? seatsFor('M') : need['M']!) + (seatsFor('F') < need['F']! ? seatsFor('F') : need['F']!);
   final patterns = <int, List<String>>{};
-  final everyone = need['M']! + need['F']!;
-  if (separateOnly || separateSeated >= (total < everyone ? total : everyone)) {
-    separate.forEach((id, g) => patterns[id] = [g == 'M' ? 'MM' : 'FF']);
-  } else {
-    var boys = need['M']!, girls = need['F']!;
-    for (final h in usable) {
-      final benches = enabledBenches(h.layout), seats = _seatsOf(h);
-      if (boys >= seats) {
-        patterns[h.id] = ['MM'];
-        boys -= seats;
-        continue;
-      }
-      if (boys > 0) {
-        var boyBenches = 0;
-        for (var have = 0; have < boys; boyBenches++) {
-          have += benches[boyBenches].seats;
-        }
-        final p = [for (var i = 0; i < benches.length; i++) i < boyBenches ? 'MM' : 'FF'];
-        boys = 0;
-        girls -= benches.sublist(boyBenches).fold(0, (n, b) => n + b.seats);
-        patterns[h.id] = p.every((t) => t == p.first) ? [p.first] : p;
-        continue;
-      }
-      if (girls > 0) {
-        patterns[h.id] = ['FF'];
-        girls -= seats;
-      }
+  _separateHalls(need, usable).forEach((id, g) => patterns[id] = [g == 'M' ? 'MM' : 'FF']);
+  if (!separateOnly) {
+    final mixed = _withOneMixedHall(need, usable, patterns);
+    if (mixed != null) {
+      patterns
+        ..clear()
+        ..addAll(mixed);
     }
   }
   return SeatingConfig(halls: halls.map((h) => HallSeatingConfig(h.id, patterns[h.id] ?? const [])).toList());
+}
+
+/// A split with ONE mixed hall that seats more students than [whole] (the whole-hall split), or null when none does.
+Map<int, List<String>>? _withOneMixedHall(Map<String, int> need, List<SeatHall> usable, Map<int, List<String>> whole) {
+  int seatsOfGender(String g) => usable.where((h) => whole[h.id]?.first == (g == 'M' ? 'MM' : 'FF')).fold(0, (n, h) => n + _seatsOf(h));
+  final everyone = need['M']! + need['F']!;
+  final wholeSeated = min(seatsOfGender('M'), need['M']!) + min(seatsOfGender('F'), need['F']!);
+  final total = usable.fold(0, (n, h) => n + _seatsOf(h));
+  if (wholeSeated >= min(total, everyone)) return null; // whole halls already seat everybody who can sit
+
+  ({List<num> score, Map<int, List<String>> patterns})? best;
+  for (final m in usable) {
+    final rest = usable.where((h) => h.id != m.id).toList();
+    final sums = _SubsetSums(rest.map(_seatsOf).toList());
+    final benches = enabledBenches(m.layout);
+    for (var s = 0; s <= sums.total; s++) {
+      if (!sums.reachable(s)) continue;
+      // s seats go to boys' halls and the other whole halls to girls; the mixed hall covers what is still missing.
+      final boysLeft = max(0, need['M']! - s), girlsLeft = max(0, need['F']! - (sums.total - s));
+      if (boysLeft == 0 || girlsLeft == 0) continue; // not mixed: the whole-hall split covers it
+      var boyBenches = 0, boyCover = 0;
+      while (boyBenches < benches.length && boyCover < boysLeft) {
+        boyCover += benches[boyBenches++].seats;
+      }
+      final girlCover = benches.skip(boyBenches).fold(0, (n, b) => n + b.seats);
+      final seated = min(need['M']!, s + boyCover) + min(need['F']!, sums.total - s + girlCover);
+      final used = s + (sums.total - s) + boyCover + girlCover;
+      final score = <num>[-seated, used - seated, boyBenches];
+      if (best != null && !_lexLess(score, best.score)) continue;
+      final boyHalls = sums.pick(s)!.toSet();
+      final patterns = <int, List<String>>{
+        for (var i = 0; i < rest.length; i++) rest[i].id: [boyHalls.contains(i) ? 'MM' : 'FF'],
+        m.id: [for (var i = 0; i < benches.length; i++) i < boyBenches ? 'MM' : 'FF'],
+      };
+      best = (score: score, patterns: patterns);
+    }
+  }
+  if (best == null || -best.score[0] <= wholeSeated) return null;
+  return best.patterns;
 }
 
 /// One bench pattern for the whole session: halls take it in order until there are enough seats.
@@ -678,6 +711,10 @@ void _repairLeftovers(List<SeatStudent> students, SeatingConfig config, Map<int,
 Map<int, Map<String, int>> _hallSeats(SeatingConfig config, Map<int, SeatHall> hallOf) =>
     {for (final c in config.halls) c.hallId: patternSeats(c.pattern, enabledBenches(hallOf[c.hallId]!.layout))};
 
+/// Whether a hall's bench pattern gives benches to both boys and girls (boys' benches and girls' benches, never a boy
+/// and a girl on one bench).
+bool patternIsMixed(List<String> pattern) => pattern.contains('MM') && pattern.contains('FF');
+
 /// Problems that stop a configuration from being used (errors) and shortfalls to know about (warnings).
 ({List<String> errors, List<String> warnings}) checkConfig(SeatingConfig? rawConfig, List<SeatHall> halls, List<SeatStudent> students) {
   final config = normalizeConfig(rawConfig, halls);
@@ -691,6 +728,7 @@ Map<int, Map<String, int>> _hallSeats(SeatingConfig config, Map<int, SeatHall> h
     }
   }
   if (config.mixGenders) {
+    warnings.add('Roll number order seats boys and girls together, so a boy and a girl can share a bench. Every other method keeps them on separate benches.');
     final seats = seatsIn.values.fold(0, (sum, x) => sum + x['M']! + x['F']!);
     if (students.length > seats) warnings.add('${students.length} students are selected, but the halls used have only $seats seats: ${students.length - seats} will be unallocated.');
     return (errors: errors, warnings: warnings);
@@ -1053,6 +1091,12 @@ List<String> validateSeatingPlan(List<Seat> planSeats, List<UnallocatedStudent> 
   final studentOf = {for (final s in students) s.id: s};
   final hallOf = {for (final h in halls) h.id: h};
   final patternOf = {for (final c in config.halls) c.hallId: c.pattern};
+
+  // Boys and girls get halls of their own; at most ONE hall may hold both, on separate benches.
+  final mixedHalls = [for (final c in config.halls) if (!config.mixGenders && patternIsMixed(c.pattern)) halls.firstWhere((h) => h.id == c.hallId).hallCode];
+  if (mixedHalls.length > 1) {
+    errors.add('Only one hall may hold both boys and girls (on separate benches): halls ${mixedHalls.join(', ')} all do. Give all but one of them to boys or to girls.');
+  }
 
   final seen = <int, int>{};
   for (final id in [...planSeats.map((s) => s.studentId), ...planUnallocated.map((u) => u.studentId)]) {

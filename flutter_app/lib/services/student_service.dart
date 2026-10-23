@@ -388,7 +388,7 @@ class StudentService {
       classes: _sessionClasses(input.students, input.academicYear, sessionSubjects),
       mappedSubjects: _mappedSubjectCounts(input.students),
       config: configure(),
-      separateConfig: configure(separateOnly: true),
+      separateConfig: configure(),
       rollConfig: configure(mixGenders: true),
       boys: boys,
       girls: students.length - boys,
@@ -456,6 +456,14 @@ class StudentService {
         : [
             '${twice.length} student(s) are mapped to more than one subject of this exam and are seated for the first one chosen: ${twice.take(5).map((s) => s.rollNo).join(', ')}${twice.length > 5 ? '…' : ''}. Check their subjects in Master Data → Subjects.'
           ];
+    // A hall that holds both boys and girls is said so, with the reason: boys and girls never share a bench.
+    final mixedNotes = config.mixGenders
+        ? <String>[]
+        : [
+            for (final c in config.halls)
+              if (patternIsMixed(c.pattern))
+                'Hall ${raw.halls.firstWhere((h) => h.id == c.hallId).hallCode} holds both boys and girls, on separate benches (never a boy and a girl on one bench), because there are not enough halls to give boys and girls a hall each.'
+          ];
     final plan = locks.halls.isEmpty ? planSeating(students, raw.halls, config, raw.academicYear) : planSeatingWithLocks(students, raw.halls, config, raw.academicYear, locks.seats);
     final checked = checkConfig(config, raw.halls, students);
     final valid = validateSeatingPlan(plan.seats, plan.unallocated, students, raw.halls, config);
@@ -475,7 +483,7 @@ class StudentService {
       final y = yearOfStudy(s.batch, raw.academicYear);
       return PlanStudent(id: s.id, rollNo: s.rollNo, name: s.name ?? '', gender: s.gender, batch: s.batch, deptCode: s.deptCode, year: y.ok ? y.label : '', category: studentCategory(s, raw.academicYear).label);
     }).toList();
-    return PreviewResult(config: config, plan: reported, students: info, errors: [...checked.errors, ...valid], warnings: [...raw.notes, ...checked.warnings, ...plan.warnings, ...twiceWarning], report: report);
+    return PreviewResult(config: config, plan: reported, students: info, errors: [...checked.errors, ...valid], warnings: [...raw.notes, ...mixedNotes, ...checked.warnings, ...plan.warnings, ...twiceWarning], report: report);
   }
 
   PreviewResult preview(int sessionId, List<int> studentIds, SeatingConfig config) {

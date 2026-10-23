@@ -22,6 +22,9 @@ typedef Placed = ({int studentId, int hallId, int row, int col, String seat});
 
 List<String> violations(List<SeatHall> halls, Map<int, List<String>> patterns, Map<int, Sitter> who, List<Placed> seats) {
   final out = <String>[];
+  // Boys and girls have halls of their own; at most ONE hall holds both, and then on separate benches.
+  final mixedHalls = [for (final h in halls) if ((patterns[h.id] ?? const <String>[]).contains('MM') && (patterns[h.id] ?? const <String>[]).contains('FF')) h.hallCode];
+  if (mixedHalls.length > 1) out.add('more than one hall holds both boys and girls: ${mixedHalls.join(', ')}');
   final subjectRule = who.values.map((w) => w.paper).whereType<String>().toSet().length > 1;
   for (final hall in halls) {
     final lay = hall.layout;
@@ -62,12 +65,13 @@ List<String> violations(List<SeatHall> halls, Map<int, List<String>> patterns, M
       final want = pattern[b.index % pattern.length][x.seat == 'L' ? 0 : 1];
       if (who[x.studentId]!.gender != want) out.add('${hall.hallCode}: ${who[x.studentId]!.gender} in a seat for $want');
     }
-    // 4. same class on one bench.
+    // 4. same class on one bench; and never a boy and a girl on one bench.
     final byBench = <String, List<Placed>>{};
     for (final x in here) {
       byBench.putIfAbsent('${x.row}-${x.col}', () => []).add(x);
     }
     byBench.forEach((k, list) {
+      if (list.length == 2 && who[list[0].studentId]!.gender != who[list[1].studentId]!.gender) out.add('${hall.hallCode}: bench $k holds a boy and a girl');
       if (list.length == 2 && who[list[0].studentId]!.classKey == who[list[1].studentId]!.classKey) out.add('${hall.hallCode}: bench $k holds two of one class');
     });
     // 2. same subject adjacency: the left neighbour of a left seat is the right seat of the bench to its left (the only

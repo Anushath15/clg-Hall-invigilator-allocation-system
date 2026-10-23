@@ -442,7 +442,10 @@ class SeatingConfigController extends ChangeNotifier {
   static ({SeatingMethod method, List<String> pattern}) methodOf(SeatingConfig c) {
     final used = c.halls.where((h) => h.pattern.isNotEmpty).toList();
     if (c.mixGenders) return (method: SeatingMethod.rollwise, pattern: const ['MM', 'FF']);
-    if (used.every((h) => h.pattern.length == 1)) return (method: SeatingMethod.separate, pattern: const ['MM', 'FF']);
+    // Gender based allocation: whole halls for boys or girls, and at most one hall that holds both on separate benches.
+    if (used.where((h) => patternIsMixed(h.pattern)).length <= 1 && used.where((h) => !patternIsMixed(h.pattern)).every((h) => h.pattern.toSet().length == 1)) {
+      return (method: SeatingMethod.separate, pattern: const ['MM', 'FF']);
+    }
     if (used.every((h) => listEquals(h.pattern, used.first.pattern))) return (method: SeatingMethod.pattern, pattern: used.first.pattern);
     return (method: SeatingMethod.custom, pattern: const ['MM', 'FF']);
   }
