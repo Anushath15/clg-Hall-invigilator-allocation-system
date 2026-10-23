@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hias/core/database.dart';
 import 'package:hias/dev/demo_seed.dart';

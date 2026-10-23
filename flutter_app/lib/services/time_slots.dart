@@ -1,5 +1,4 @@
 import '../core/database.dart';
-import '../core/format.dart';
 import '../models/domain/session_rules.dart';
 
 /// Another session that is at the same time as a given slot (same date, overlapping times).

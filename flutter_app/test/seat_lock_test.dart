@@ -2,7 +2,6 @@ import 'package:collection/collection.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hias/core/database.dart';
 import 'package:hias/dev/demo_seed.dart';
-import 'package:hias/models/entities.dart';
 import 'package:hias/services/app_services.dart';
 
 /// Locking halls: a locked hall keeps its students and seats when the students or the halls change; only the
