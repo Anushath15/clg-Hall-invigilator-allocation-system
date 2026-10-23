@@ -104,6 +104,36 @@ class SeatingPanelController extends ChangeNotifier {
     return Outcome('Seating copied from ${describe(p)}: ${r.seated} students seated${r.unallocated.isNotEmpty ? ', ${r.unallocated.length} unallocated' : ''}.');
   }
 
+  /// The halls whose seating is locked (they keep their students and seats when the rest is seated again).
+  Set<int> get lockedHalls => {for (final id in saved?.config.lockedHalls ?? const <int>[]) if (sessionHalls.any((h) => h.id == id)) id};
+
+  /// The halls that have students: the only ones that can be locked.
+  List<int> get hallsWithStudents => [for (final h in sessionHalls) if (seats.any((x) => x.hallId == h.id)) h.id];
+
+  /// Students selected for the session who have no seat and are not in the unallocated list, e.g. because their
+  /// hall was taken out of the session.
+  int get needSeat {
+    final seated = seats.map((x) => x.studentId).toSet(), listed = unallocated.map((u) => u.studentId).toSet();
+    return (saved?.studentIds ?? const <int>[]).where((id) => !seated.contains(id) && !listed.contains(id)).length;
+  }
+
+  /// Locks or unlocks halls; returns an error message or null.
+  String? setLocked(List<int> hallIds, bool locked) {
+    final e = services.students.setHallsLocked(session.id, hallIds, locked);
+    if (e == null) load();
+    return e;
+  }
+
+  /// Seats again everyone not in a locked hall, in the halls that are not locked; locked halls stay as they are.
+  Outcome regenerateRemaining() {
+    final kept = lockedHalls.length;
+    final r = services.students.regenerateRemaining(session.id);
+    warnings = r.warnings;
+    load();
+    if (!r.success) return Outcome.err(r.error ?? 'The remaining students could not be seated.');
+    return Outcome('${kept == 0 ? 'Everyone' : 'The remaining students'} seated again${kept == 0 ? '' : ' ($kept locked hall${kept == 1 ? '' : 's'} kept as they were)'}: ${r.seated} seated${r.unallocated.isEmpty ? '' : ', ${r.unallocated.length} unallocated'}.');
+  }
+
   void clear() {
     services.students.clear(session.id);
     warnings = [];
@@ -360,6 +390,12 @@ class SeatingConfigController extends ChangeNotifier {
   List<int> sessionSubjects = [];
   List<({int id, int count})> mappedSubjects = [];
   Timer? _debounce;
+
+  /// Codes of the locked halls: they keep their students, and only the other students are configured.
+  List<String> get lockedHallCodes {
+    final locked = services.students.savedSeating(session.id)?.config.lockedHalls ?? const <int>[];
+    return [for (final h in halls) if (locked.contains(h.id)) h.hallCode];
+  }
 
   List<SeatHall> get seatHalls => halls.map((h) => SeatHall(h.id, h.hallCode, h.layout)).toList();
   SeatingHallInfo hallOf(int id) => halls.firstWhere((h) => h.id == id);

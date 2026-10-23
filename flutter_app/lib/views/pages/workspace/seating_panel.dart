@@ -40,6 +40,16 @@ class _SeatingView extends StatelessWidget {
     final noLayout = halls.where((h) => h.benches == 0).toList();
     final found = c.found;
 
+    final locked = c.lockedHalls;
+    final withStudents = c.hallsWithStudents;
+    final lockedCodes = [for (final h in halls) if (locked.contains(h.id)) h.hallCode];
+
+    Future<void> regenerate() async {
+      final lockedText = locked.isEmpty ? 'Everyone selected' : 'Halls ${lockedCodes.join(', ')} are locked and stay exactly as they are. Everyone else';
+      if (!await confirmDialog(context, '$lockedText will be seated again in the halls that are not locked, under the rules. Continue?', title: 'Regenerate remaining', confirmLabel: 'Regenerate')) return;
+      showOutcome(c.regenerateRemaining());
+    }
+
     Future<void> configure({required bool select}) async {
       var ids = c.selectedIds;
       List<int>? subjects;
@@ -102,7 +112,7 @@ class _SeatingView extends StatelessWidget {
           Wrap(spacing: 8, runSpacing: 8, children: [
             if (c.seats.isNotEmpty)
               SecondaryButton(label: 'Clear', icon: Icons.delete_outline, danger: true, onPressed: () async {
-                if (!await confirmDialog(context, 'Remove the seating plan of this session?', danger: true, confirmLabel: 'Remove')) return;
+                if (!await confirmDialog(context, locked.isEmpty ? 'Remove the seating plan of this session?' : 'Remove the whole seating plan of this session? The locked halls (${lockedCodes.join(', ')}) are removed too.', danger: true, confirmLabel: 'Remove')) return;
                 c.clear();
                 toast('Seating removed.');
               }),
@@ -130,6 +140,20 @@ class _SeatingView extends StatelessWidget {
                 ? SecondaryButton(label: 'Reselect Students', icon: Icons.people_outline, onPressed: () => configure(select: true))
                 : PrimaryButton(label: 'Select Students & Configure Seating', icon: Icons.people_outline, onPressed: () => configure(select: true)),
             if (c.seats.isNotEmpty) SecondaryButton(label: 'Edit Configuration', icon: Icons.tune, onPressed: () => configure(select: false)),
+            if (c.seats.isNotEmpty)
+              Tooltip(
+                message: 'A locked hall keeps its students and seats when the students or the halls change and the rest is seated again.',
+                child: SecondaryButton(
+                  label: locked.length == withStudents.length ? 'Unlock all' : 'Lock all',
+                  icon: locked.length == withStudents.length ? Icons.lock_open_outlined : Icons.lock_outline,
+                  onPressed: () {
+                    final all = locked.length == withStudents.length;
+                    final e = c.setLocked(withStudents, !all);
+                    if (e != null) toast(e, error: true);
+                  },
+                ),
+              ),
+            if (locked.isNotEmpty || c.needSeat > 0) PrimaryButton(label: 'Regenerate remaining', icon: Icons.autorenew, onPressed: regenerate),
             if (c.seats.isNotEmpty)
               PopupMenuButton<String>(
                 onSelected: (k) async => showOutcome(await c.export(k)),
@@ -166,6 +190,18 @@ class _SeatingView extends StatelessWidget {
       const SizedBox(height: 14),
       if (noLayout.isNotEmpty)
         MessageBanner(kind: BannerKind.warning, lines: ['No bench layout for ${noLayout.map((h) => h.hallCode).join(', ')}: no students can sit there. Set the rows and columns in Master Data → Halls.']),
+      if (c.needSeat > 0)
+        MessageBanner(
+          kind: BannerKind.warning,
+          title: '${c.needSeat} selected student${c.needSeat == 1 ? ' has' : 's have'} no seat',
+          lines: const ['A hall was taken out of this session, so its students lost their seats. Regenerate remaining seats them again in the halls now available; locked halls stay as they are.'],
+        ),
+      if (locked.isNotEmpty)
+        MessageBanner(
+          kind: BannerKind.info,
+          title: '${locked.length} hall${locked.length == 1 ? ' is' : 's are'} locked: ${lockedCodes.join(', ')}',
+          lines: const ['Locked halls keep their students and seats. If the students or the available halls change, Regenerate remaining seats only the other students, in the other halls.'],
+        ),
       if (c.conflicts.isNotEmpty)
         MessageBanner(
           kind: BannerKind.warning,
@@ -205,6 +241,7 @@ class _SeatingView extends StatelessWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Expanded(child: Text(h.hallCode, style: monoSmall.copyWith(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 15))),
+                      if (locked.contains(h.id)) const Padding(padding: EdgeInsets.only(right: 6), child: Tooltip(message: 'Locked: kept as it is when the rest is seated again', child: Icon(Icons.lock, size: 16, color: AppColors.primary))),
                       Pill(h.benches == 0 ? 'No layout' : g != null ? groupLabel(g) : (c.seats.isNotEmpty ? 'Not used' : 'Empty'), bg: bg, fg: fg),
                     ]),
                     const SizedBox(height: 4),

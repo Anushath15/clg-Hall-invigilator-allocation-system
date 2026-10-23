@@ -220,9 +220,17 @@ class _HallSeatingDialogState extends State<HallSeatingDialog> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Row(children: [
-                  Pill(groupLabel(gender), bg: bg, fg: fg),
-                  const Spacer(),
+                // A Wrap, so the buttons drop to a second line in a narrow window instead of overflowing.
+                Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 10, runSpacing: 8, children: [
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Pill(groupLabel(gender), bg: bg, fg: fg),
+                    if (c != null && c.lockedHalls.contains(hall.id)) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.lock, size: 16, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      const Text('Locked', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                    ],
+                  ]),
                   if (editing && c != null) ...[
                     const Text('Hall shown: ', style: TextStyle(fontSize: 13, color: AppColors.textSec)),
                     Select<int>(
@@ -233,7 +241,20 @@ class _HallSeatingDialogState extends State<HallSeatingDialog> {
                         onChanged: (v) => setState(() {
                               if (v != null) hallId = v;
                             })),
-                    const SizedBox(width: 10),
+                  ],
+                  if (_canEdit && seats.isNotEmpty) ...[
+                    Builder(builder: (_) {
+                      final isLocked = c!.lockedHalls.contains(hall.id);
+                      return SecondaryButton(
+                        label: isLocked ? 'Unlock hall' : 'Lock hall',
+                        icon: isLocked ? Icons.lock_open_outlined : Icons.lock_outline,
+                        onPressed: () {
+                          final e = c.setLocked([hall.id], !isLocked);
+                          setState(() => note = e == null ? (isLocked ? 'Hall unlocked.' : 'Hall locked: it keeps its students and seats when the rest is seated again.') : null);
+                          if (e != null) setState(() => reasons = [e]);
+                        },
+                      );
+                    }),
                   ],
                   if (_canEdit)
                     editing

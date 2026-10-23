@@ -79,6 +79,15 @@ class SeatingSelection {
   const SeatingSelection({required this.id, required this.cycleId, required this.cycleName, required this.examDate, required this.sessionType, required this.studentCount, required this.hallIds});
 }
 
+/// The halls whose seating is locked in a session, with their saved seats and bench patterns.
+class _Locks {
+  final Set<int> halls;
+  final List<Seat> seats;
+  final Map<int, List<String>> patterns;
+  const _Locks(this.halls, this.seats, this.patterns);
+  static const none = _Locks({}, [], {});
+}
+
 class _SeatingInput {
   final String academicYear;
   final List<SeatHall> halls;
@@ -270,17 +279,27 @@ class StudentService {
     final raw = _input(sessionId, studentIds);
     if (raw is String) return AutoConfigResult(error: raw);
     final input = raw as _SeatingInput;
-    final students = applySessionSubjects(input.students, subjects, sessionSubjects);
+    final all = applySessionSubjects(input.students, subjects, sessionSubjects);
+    // Students in a locked hall keep their seat: the configuration is worked out for the others, in the other halls.
+    final locks = _locks(sessionId, input);
+    final kept = locks.seats.map((x) => x.studentId).toSet();
+    final students = locks.halls.isEmpty ? all : all.where((s) => !kept.contains(s.id)).toList();
+    final halls = input.halls.where((h) => !locks.halls.contains(h.id)).toList();
     final boys = students.where((s) => s.gender == 'M').length;
+    SeatingConfig configure({bool separateOnly = false, bool mixGenders = false}) {
+      if (halls.isEmpty || students.isEmpty) return SeatingConfig(halls: [for (final h in halls) HallSeatingConfig(h.id, const [])], classLimit: normalizeClassLimit(classLimit));
+      return autoConfigure(students, halls, separateOnly: separateOnly, mixGenders: mixGenders, classLimit: classLimit);
+    }
+
     return AutoConfigResult(
       classes: _sessionClasses(input.students, input.academicYear, sessionSubjects),
       mappedSubjects: _mappedSubjectCounts(input.students),
-      config: autoConfigure(students, input.halls, classLimit: classLimit),
-      separateConfig: autoConfigure(students, input.halls, separateOnly: true, classLimit: classLimit),
-      rollConfig: autoConfigure(students, input.halls, mixGenders: true, classLimit: classLimit),
+      config: configure(),
+      separateConfig: configure(separateOnly: true),
+      rollConfig: configure(mixGenders: true),
       boys: boys,
       girls: students.length - boys,
-      shortfall: seatingShortfall(students, input.halls, classLimit),
+      shortfall: students.isEmpty ? null : (halls.isEmpty ? 'Every hall is locked: unlock a hall to seat the other students.' : seatingShortfall(students, halls, classLimit)),
     );
   }
 
@@ -310,8 +329,33 @@ class StudentService {
     return [for (final e in counts.entries) (id: e.key, count: e.value)];
   }
 
-  PreviewResult _build(_SeatingInput raw, SeatingConfig rawConfig) {
-    final config = normalizeConfig(rawConfig, raw.halls);
+  /// The locked halls of a session that are still halls of the session, with the seats saved in them.
+  _Locks _locks(int sessionId, _SeatingInput input) {
+    final saved = savedSeating(sessionId);
+    if (saved == null || saved.config.lockedHalls.isEmpty) return _Locks.none;
+    final inSession = input.halls.map((h) => h.id).toSet();
+    final halls = saved.config.lockedHalls.where(inSession.contains).toSet();
+    if (halls.isEmpty) return _Locks.none;
+    final seats = db
+        .query('SELECT student_id, hall_id, bench_row, bench_col, bench_no, seat FROM seat_allocations WHERE session_id = ?', [sessionId])
+        .where((r) => halls.contains(asInt(r['hall_id'])))
+        .map((r) => Seat(studentId: asInt(r['student_id']), hallId: asInt(r['hall_id']), row: asInt(r['bench_row']), col: asInt(r['bench_col']), benchNo: asInt(r['bench_no']), seat: asStr(r['seat'])))
+        .toList();
+    final patterns = {for (final c in saved.config.halls) if (halls.contains(c.hallId)) c.hallId: c.pattern};
+    return _Locks(halls, seats, patterns);
+  }
+
+  PreviewResult _build(_SeatingInput raw, SeatingConfig rawConfig, [_Locks locks = _Locks.none]) {
+    // Locked halls keep the bench pattern they were seated with; only the other halls take the configuration given.
+    final merged = locks.halls.isEmpty
+        ? rawConfig
+        : rawConfig.copyWith(
+            halls: [
+              ...rawConfig.halls.where((h) => !locks.halls.contains(h.hallId)),
+              for (final id in locks.halls) HallSeatingConfig(id, locks.patterns[id] ?? const []),
+            ],
+            lockedHalls: locks.halls.toList()..sort());
+    final config = normalizeConfig(merged, raw.halls);
     final students = applySessionSubjects(raw.students, config.subjects, config.sessionSubjects);
     final twice = raw.students.where((s) => (sessionSubjectOf(s, config.subjects, config.sessionSubjects)?.also.length ?? 0) > 0).toList();
     final twiceWarning = twice.isEmpty
@@ -319,7 +363,7 @@ class StudentService {
         : [
             '${twice.length} student(s) are mapped to more than one subject of this exam and are seated for the first one chosen: ${twice.take(5).map((s) => s.rollNo).join(', ')}${twice.length > 5 ? '…' : ''}. Check their subjects in Master Data → Subjects.'
           ];
-    final plan = planSeating(students, raw.halls, config, raw.academicYear);
+    final plan = locks.halls.isEmpty ? planSeating(students, raw.halls, config, raw.academicYear) : planSeatingWithLocks(students, raw.halls, config, raw.academicYear, locks.seats);
     final checked = checkConfig(config, raw.halls, students);
     final valid = validateSeatingPlan(plan.seats, plan.unallocated, students, raw.halls, config);
     final info = students.map((s) {
@@ -332,7 +376,7 @@ class StudentService {
   PreviewResult preview(int sessionId, List<int> studentIds, SeatingConfig config) {
     final input = _input(sessionId, studentIds);
     if (input is String) return PreviewResult(error: input);
-    return _build(input as _SeatingInput, config);
+    return _build(input as _SeatingInput, config, _locks(sessionId, input));
   }
 
   /// Makes the plan again, checks it and saves it, replacing any earlier one (one transaction).
@@ -340,7 +384,7 @@ class StudentService {
     final input = _input(sessionId, studentIds);
     if (input is String) return ConfirmResult(success: false, error: input);
     final inp = input as _SeatingInput;
-    final built = _build(inp, config);
+    final built = _build(inp, config, _locks(sessionId, inp));
     final plan = built.plan!;
     if (built.errors.isNotEmpty) return ConfirmResult(success: false, error: 'The seating plan cannot be saved: ${built.errors.first}');
     if (plan.seats.isEmpty) return const ConfirmResult(success: false, error: 'No student can be seated with this configuration. Give the halls a bench pattern: boys, girls, or both.');
@@ -367,6 +411,35 @@ class StudentService {
     return ConfirmResult(success: true, warnings: plan.warnings, seated: plan.seats.length, unallocated: plan.unallocated);
   }
 
+  /// Locks or unlocks halls of the session's saved plan. A locked hall keeps its students and their seats when the
+  /// session is seated again; only a hall that has students can be locked. Returns an error message, or null.
+  String? setHallsLocked(int sessionId, List<int> hallIds, bool locked) {
+    final saved = savedSeating(sessionId);
+    if (saved == null) return 'This session has no seating plan to lock.';
+    final withStudents = db.query('SELECT DISTINCT hall_id FROM seat_allocations WHERE session_id = ?', [sessionId]).map((r) => asInt(r['hall_id'])).toSet();
+    final now = saved.config.lockedHalls.toSet();
+    if (locked) {
+      final empty = hallIds.where((id) => !withStudents.contains(id)).toList();
+      if (empty.isNotEmpty) return 'Only a hall that has students can be locked.';
+      now.addAll(hallIds);
+    } else {
+      now.removeAll(hallIds);
+    }
+    db.run('UPDATE seating_configs SET config = ? WHERE session_id = ?', [jsonEncode(saved.config.copyWith(lockedHalls: now.toList()..sort()).toJson()), sessionId]);
+    return null;
+  }
+
+  /// Seats everyone selected for the session who is not in a locked hall, in the halls that are not locked, and saves
+  /// the plan: locked halls stay exactly as they are. For when the students or the available halls have changed.
+  ConfirmResult regenerateRemaining(int sessionId) {
+    final saved = savedSeating(sessionId);
+    if (saved == null || saved.studentIds.isEmpty) return const ConfirmResult(success: false, error: 'This session has no seating plan to regenerate.');
+    final auto = autoConfigureSeating(sessionId, saved.studentIds, classLimit: saved.config.classLimit, subjects: saved.config.subjects, sessionSubjects: saved.config.sessionSubjects);
+    if (!auto.success) return ConfirmResult(success: false, error: auto.error);
+    final config = auto.config!.copyWith(classLimit: saved.config.classLimit, subjects: saved.config.subjects, sessionSubjects: saved.config.sessionSubjects);
+    return confirm(sessionId, saved.studentIds, config, acceptUnallocated: true);
+  }
+
   /// Moves one seated student to another seat of the session's halls, by hand. A taken target seat is a swap:
   /// its student takes the seat the mover leaves. Every rule is checked again on the plan as it would be after
   /// the move, by the same validator that checks a generated plan; the move is refused with the reasons when it
@@ -386,6 +459,12 @@ class StudentService {
         .toList();
     final mover = current.firstWhereOrNull((x) => x.studentId == studentId);
     if (mover == null) return const MoveSeatResult(success: false, error: 'Only a seated student can be moved.');
+    String codeOf(int id) => inp.halls.firstWhereOrNull((h) => h.id == id)?.hallCode ?? '#$id';
+    for (final id in {mover.hallId, hallId}) {
+      if (saved.config.lockedHalls.contains(id)) {
+        return MoveSeatResult(success: false, error: 'Hall ${codeOf(id)} is locked. Unlock it to change its seating.');
+      }
+    }
 
     final hall = inp.halls.firstWhereOrNull((h) => h.id == hallId);
     if (hall == null) return const MoveSeatResult(success: false, error: 'That hall is not one of the halls of this session.');
@@ -494,6 +573,8 @@ class StudentService {
       return ConfirmResult(success: false, error: 'The bench layout of ${c.join(', ')} has changed since the previous exam, so its seats cannot be reused. Configure the seating afresh.');
     }
     final config = db.queryOne('SELECT config, student_ids, unallocated FROM seating_configs WHERE session_id = ?', [fromSessionId]);
+    // Locks belong to the plan they were made for: a copy starts with every hall unlocked.
+    final copiedConfig = config == null ? null : jsonEncode(SeatingConfig.fromJson(jsonDecode(asStr(config['config']))).copyWith(lockedHalls: const []).toJson());
     try {
       db.transaction(() {
         db.run('DELETE FROM seat_allocations WHERE session_id = ?', [sessionId]);
@@ -503,7 +584,7 @@ class StudentService {
         }
         db.run('DELETE FROM seating_configs WHERE session_id = ?', [sessionId]);
         if (config != null) {
-          db.run('INSERT INTO seating_configs(session_id, config, student_ids, unallocated) VALUES(?,?,?,?)', [sessionId, config['config'], config['student_ids'], config['unallocated']]);
+          db.run('INSERT INTO seating_configs(session_id, config, student_ids, unallocated) VALUES(?,?,?,?)', [sessionId, copiedConfig, config['student_ids'], config['unallocated']]);
         }
       });
     } catch (e) {
@@ -550,7 +631,17 @@ class StudentService {
     if (seatHalls.isEmpty) return false;
     final halls = db.query('SELECT hall_id FROM allocations WHERE session_id = ?', [sessionId]).map((r) => asInt(r['hall_id'])).toSet();
     if (seatHalls.every(halls.contains)) return false;
-    clear(sessionId);
+    final saved = savedSeating(sessionId);
+    final keep = (saved?.config.lockedHalls ?? const <int>[]).where(halls.contains).toSet();
+    if (saved == null || keep.isEmpty) {
+      clear(sessionId);
+      return true;
+    }
+    // Locked halls that are still in the session keep their seats; the rest is removed and has to be seated again
+    // (Regenerate remaining): the students of the removed halls have no seat until then.
+    final marks = List.filled(keep.length, '?').join(',');
+    db.run('DELETE FROM seat_allocations WHERE session_id = ? AND hall_id NOT IN ($marks)', [sessionId, ...keep]);
+    db.run('UPDATE seating_configs SET config = ?, unallocated = ? WHERE session_id = ?', [jsonEncode(saved.config.copyWith(lockedHalls: keep.toList()..sort()).toJson()), '[]', sessionId]);
     return true;
   }
 }

@@ -93,6 +93,14 @@ class _ConfigView extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (c.lockedHallCodes.isNotEmpty) ...[
+          MessageBanner(
+            kind: BannerKind.info,
+            title: 'Locked: ${c.lockedHallCodes.join(', ')}',
+            lines: const ['These halls keep their students and seats. Only the other students are configured here, for the other halls.'],
+          ),
+          const SizedBox(height: 10),
+        ],
         const Text('Allocation method', style: TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
         for (final m in SeatingMethod.values)

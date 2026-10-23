@@ -22,6 +22,8 @@ void main() {
   setUp(() {
     services = AppServices(AppDatabase.open(':memory:', appVersion: 'test'));
     demo = seedDemo(services);
+    // One hall locked, so the lock banner, badge and buttons are laid out at every size too.
+    services.students.setHallsLocked(demo.sessionIds.first, [services.master.halls().firstWhere((h) => h.hallCode == 'H202').id], true);
   });
 
   for (final size in sizes) {

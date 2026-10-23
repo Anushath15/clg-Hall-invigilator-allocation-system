@@ -92,15 +92,18 @@ class SeatingConfig {
   final bool mixGenders;
   final Map<String, int>? subjects;
   final List<int>? sessionSubjects;
-  const SeatingConfig({required this.halls, this.classLimit, this.mixGenders = false, this.subjects, this.sessionSubjects});
+  /// Halls whose seating the administrator has locked: they keep their students and seats when the rest is seated again.
+  final List<int> lockedHalls;
+  const SeatingConfig({required this.halls, this.classLimit, this.mixGenders = false, this.subjects, this.sessionSubjects, this.lockedHalls = const []});
 
-  SeatingConfig copyWith({List<HallSeatingConfig>? halls, ClassLimit? classLimit, bool? mixGenders, Map<String, int>? subjects, List<int>? sessionSubjects}) =>
+  SeatingConfig copyWith({List<HallSeatingConfig>? halls, ClassLimit? classLimit, bool? mixGenders, Map<String, int>? subjects, List<int>? sessionSubjects, List<int>? lockedHalls}) =>
       SeatingConfig(
           halls: halls ?? this.halls,
           classLimit: classLimit ?? this.classLimit,
           mixGenders: mixGenders ?? this.mixGenders,
           subjects: subjects ?? this.subjects,
-          sessionSubjects: sessionSubjects ?? this.sessionSubjects);
+          sessionSubjects: sessionSubjects ?? this.sessionSubjects,
+          lockedHalls: lockedHalls ?? this.lockedHalls);
 
   Map<String, Object?> toJson() => {
         'halls': halls.map((h) => h.toJson()).toList(),
@@ -108,6 +111,7 @@ class SeatingConfig {
         if (mixGenders) 'mixGenders': true,
         if (subjects != null && subjects!.isNotEmpty) 'subjects': subjects,
         if (sessionSubjects != null && sessionSubjects!.isNotEmpty) 'sessionSubjects': sessionSubjects,
+        if (lockedHalls.isNotEmpty) 'lockedHalls': lockedHalls,
       };
 
   /// Reads a saved configuration (also older ones, which saved a gender per hall).
@@ -126,6 +130,7 @@ class SeatingConfig {
       mixGenders: json['mixGenders'] == true,
       subjects: cleanSubjects(json['subjects']).isEmpty ? null : cleanSubjects(json['subjects']),
       sessionSubjects: cleanSubjectIds(json['sessionSubjects']).isEmpty ? null : cleanSubjectIds(json['sessionSubjects']),
+      lockedHalls: cleanSubjectIds(json['lockedHalls']),
     );
   }
 }
@@ -317,6 +322,7 @@ SeatingConfig normalizeConfig(SeatingConfig? config, List<SeatHall> halls) {
     mixGenders: mix,
     subjects: subjects.isEmpty ? null : subjects,
     sessionSubjects: sessionSubjects.isEmpty ? null : sessionSubjects,
+    lockedHalls: [for (final id in config?.lockedHalls ?? const <int>[]) if (halls.any((h) => h.id == id)) id],
   );
 }
 
@@ -793,6 +799,69 @@ SeatingPlan _planTogether(List<SeatStudent> students, List<SeatHall> halls, Seat
       unallocated: unallocated,
       warnings: plan.warnings,
       groups: groups);
+}
+
+/// A plan in which the halls of `config.lockedHalls` are kept exactly as they are (`lockedSeats`; a student no longer
+/// selected simply leaves their seat) and only the other students are seated, in the other halls. With no locked hall
+/// this is [planSeating].
+SeatingPlan planSeatingWithLocks(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, List<Seat> lockedSeats) {
+  final config = normalizeConfig(rawConfig, halls);
+  final locked = config.lockedHalls.toSet();
+  if (locked.isEmpty) return planSeating(students, halls, config, academicYear);
+
+  final studentById = {for (final s in students) s.id: s};
+  final kept = lockedSeats.where((x) => locked.contains(x.hallId) && studentById.containsKey(x.studentId)).toList();
+  final keptIds = kept.map((x) => x.studentId).toSet();
+  final remaining = students.where((s) => !keptIds.contains(s.id)).toList();
+  final open = halls.where((h) => !locked.contains(h.id)).toList();
+
+  SeatingPlan rest;
+  if (open.isEmpty) {
+    rest = SeatingPlan(seats: const [], hallGender: const {}, halls: const [], warnings: const [], groups: const {}, unallocated: [
+      for (final s in remaining)
+        UnallocatedStudent(
+            studentId: s.id,
+            rollNo: s.rollNo,
+            name: s.name,
+            gender: s.gender,
+            categoryKey: studentCategory(s, academicYear).key,
+            category: studentCategory(s, academicYear).label,
+            reason: 'Every hall of this session is locked, so there is no hall left to seat this student in. Unlock a hall or add a hall.')
+    ]);
+  } else {
+    rest = planSeating(remaining, open, config.copyWith(halls: config.halls.where((c) => !locked.contains(c.hallId)).toList(), lockedHalls: const []), academicYear);
+  }
+
+  final hallOf = {for (final h in halls) h.id: h};
+  final hallGender = {...rest.hallGender};
+  final summaryOf = {for (final h in rest.halls) h.hallId: h};
+  for (final id in locked) {
+    final hall = hallOf[id];
+    if (hall == null) continue;
+    final pattern = config.halls.firstWhere((c) => c.hallId == id, orElse: () => HallSeatingConfig(id, const [])).pattern;
+    final benches = enabledBenches(hall.layout);
+    final here = kept.where((x) => x.hallId == id).map((x) => studentById[x.studentId]!).toList();
+    final genders = here.map((s) => s.gender).toSet();
+    hallGender[id] = genders.length > 1 ? 'mixed' : (genders.isEmpty ? patternGroup(pattern) : genders.first);
+    final counts = <String, ({String key, String label, int count})>{};
+    for (final s in here) {
+      final cat = studentCategory(s, academicYear);
+      final e = counts[cat.key];
+      counts[cat.key] = (key: cat.key, label: cat.label, count: (e?.count ?? 0) + 1);
+    }
+    summaryOf[id] = HallSummary(
+        hallId: id, hallCode: hall.hallCode, gender: hallGender[id], pattern: pattern, benches: benches.length, capacity: _seatsOf(hall),
+        seatsFor: patternSeats(pattern, benches), occupied: here.length, empty: _seatsOf(hall) - here.length, categories: counts.values.toList());
+  }
+  final summaries = [for (final h in halls) if (summaryOf[h.id] != null) summaryOf[h.id]!];
+
+  final groups = <String, GroupTotals>{};
+  for (final g in genders) {
+    final total = students.where((s) => s.gender == g).length;
+    final left = rest.unallocated.where((u) => u.gender == g).length;
+    groups[g] = GroupTotals(total, total - left, left, summaries.where((h) => (h.seatsFor[g] ?? 0) > 0).length, summaries.fold(0, (n, h) => n + (h.seatsFor[g] ?? 0)));
+  }
+  return SeatingPlan(seats: [...rest.seats, ...kept], hallGender: hallGender, halls: summaries, unallocated: rest.unallocated, warnings: rest.warnings, groups: groups);
 }
 
 // ── Validation ──────────────────────────────────────────────
