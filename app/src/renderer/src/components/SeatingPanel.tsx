@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Users, RefreshCw, Trash2, FileText, AlertTriangle, Settings2, Search, LayoutGrid, UserX, X, Copy, Download, ChevronDown } from "lucide-react"
+import { Users, RefreshCw, Trash2, FileText, AlertTriangle, Settings2, Search, LayoutGrid, UserX, X, Copy, Download, ChevronDown, Armchair } from "lucide-react"
 import { createPortal } from "react-dom"
 import toast from "react-hot-toast"
 import { api } from "../lib/api"
@@ -51,6 +51,8 @@ export default function SeatingPanel({ cycle, session, allocation, onReassignInv
   const [showUnallocated, setShowUnallocated] = useState(false)
   const [viewHallId, setViewHallId] = useState<number | null>(null)
   const [find, setFind] = useState("")
+  /** Which halls the grid shows: all, by the group they hold, or the ones not used. */
+  const [hallFilter, setHallFilter] = useState<"all" | "M" | "F" | "mixed" | "unused">("all")
   const [findOpen, setFindOpen] = useState(false)
   const findRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -101,6 +103,18 @@ export default function SeatingPanel({ cycle, session, allocation, onReassignInv
   const selectedIds = saved?.studentIds?.length ? saved.studentIds : seats.map(s => s.studentId)
   // The hall whose tile was clicked: its seating opens in a popup.
   const viewHall = sessionHalls.find(h => h.id === viewHallId) ?? null
+  const usedHalls = sessionHalls.filter(h => seatsIn(h.id).length > 0).length
+  const seatPercent = totalSeats ? Math.round(seats.length / totalSeats * 100) : 0
+  // The group chips: only those that have halls, each with its count.
+  const groupOf = (id: number) => (seatsIn(id).length ? genderOf(id) : null)
+  const filterChips = ([
+    { key: "all", label: "All halls", count: sessionHalls.length },
+    { key: "M", label: "Boys", count: sessionHalls.filter(h => groupOf(h.id) === "M").length },
+    { key: "F", label: "Girls", count: sessionHalls.filter(h => groupOf(h.id) === "F").length },
+    { key: "mixed", label: "Boys & Girls", count: sessionHalls.filter(h => groupOf(h.id) === "mixed").length },
+    { key: "unused", label: "Not used", count: sessionHalls.length - usedHalls }
+  ] as const).filter(c => c.key === "all" || c.key === hallFilter || c.count > 0)
+  const shownHalls = sessionHalls.filter(h => hallFilter === "all" || (hallFilter === "unused" ? seatsIn(h.id).length === 0 : groupOf(h.id) === hallFilter))
 
   async function onSaved(r: any) {
     setStep(null)
@@ -204,7 +218,7 @@ export default function SeatingPanel({ cycle, session, allocation, onReassignInv
       <div className="card flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="text-sm flex flex-wrap items-center gap-x-6 gap-y-2 flex-1 min-w-0">
           {seats.length > 0 && (
-            <div className="relative w-full max-w-sm" ref={findRef}>
+            <div className="relative w-full max-w-md" ref={findRef}>
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
               <input className="input-field pl-9" placeholder="Find a student's seat (roll no, register no, name)" value={find}
                 onChange={e => { setFind(e.target.value); setFindOpen(true) }} onFocus={() => setFindOpen(true)} />
@@ -223,9 +237,6 @@ export default function SeatingPanel({ cycle, session, allocation, onReassignInv
                 </div>
               )}
             </div>
-          )}
-          {unallocated.length > 0 && (
-            <button onClick={() => setShowUnallocated(true)} className="text-red-600 hover:underline flex items-center gap-1"><UserX className="w-4 h-4" /> Unallocated: <b>{unallocated.length}</b></button>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -271,13 +282,57 @@ export default function SeatingPanel({ cycle, session, allocation, onReassignInv
         </div>
       )}
 
+      {/* Totals for the session */}
+      {seats.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="card py-3 px-4">
+            <p className="text-xs font-medium text-brand-textsec flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Students seated</p>
+            <p className="text-2xl font-bold text-brand-textmain mt-1">{seats.length}</p>
+            <p className="text-xs text-brand-textsec">{seats.filter(s => s.gender === "M").length} boys · {seats.filter(s => s.gender === "F").length} girls</p>
+          </div>
+          <div className="card py-3 px-4">
+            <p className="text-xs font-medium text-brand-textsec flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" /> Halls in use</p>
+            <p className="text-2xl font-bold text-brand-textmain mt-1">{usedHalls}<span className="text-base font-medium text-brand-textsec"> / {sessionHalls.length}</span></p>
+            <p className="text-xs text-brand-textsec">{sessionHalls.length - usedHalls} not used</p>
+          </div>
+          <div className="card py-3 px-4">
+            <p className="text-xs font-medium text-brand-textsec flex items-center gap-1.5"><Armchair className="w-3.5 h-3.5" /> Seats filled</p>
+            <p className="text-2xl font-bold text-brand-textmain mt-1">{seatPercent}%<span className="text-base font-medium text-brand-textsec"> of {totalSeats}</span></p>
+            <div className="h-1.5 rounded-full bg-gray-100 mt-1.5 overflow-hidden"><div className="h-full rounded-full bg-brand-primary" style={{ width: `${seatPercent}%` }} /></div>
+          </div>
+          <button onClick={() => unallocated.length && setShowUnallocated(true)} disabled={!unallocated.length}
+            className={cn("card py-3 px-4 text-left", unallocated.length ? "border-red-200 bg-red-50/60 hover:border-red-300 cursor-pointer" : "cursor-default")}>
+            <p className={cn("text-xs font-medium flex items-center gap-1.5", unallocated.length ? "text-red-700" : "text-brand-textsec")}><UserX className="w-3.5 h-3.5" /> Unallocated</p>
+            <p className={cn("text-2xl font-bold mt-1", unallocated.length ? "text-red-700" : "text-emerald-700")}>{unallocated.length}</p>
+            <p className={cn("text-xs", unallocated.length ? "text-red-700 underline" : "text-brand-textsec")}>{unallocated.length ? "View the list" : "Everyone has a seat"}</p>
+          </button>
+        </div>
+      )}
+
       {/* Halls */}
+      {seats.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter halls">
+          {filterChips.map(c => (
+            <button key={c.key} onClick={() => setHallFilter(c.key)} aria-pressed={hallFilter === c.key}
+              className={cn("px-3 py-1 rounded-full text-sm font-medium border transition-colors",
+                hallFilter === c.key ? "bg-brand-primary text-white border-brand-primary" : "bg-white text-brand-textmain border-brand-border hover:bg-gray-50")}>
+              {c.label} <span className={cn("ml-1 text-xs", hallFilter === c.key ? "text-white/80" : "text-brand-textsec")}>{c.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {sessionHalls.map(h => {
-          const g = genderOf(h.id), n = seatsIn(h.id).length
+        {shownHalls.map(h => {
+          const g = genderOf(h.id), mine = seatsIn(h.id), n = mine.length
+          const pct = h.seats ? Math.round(n / h.seats * 100) : 0
+          const classes = [...new Set(mine.map(s => String(s.category ?? s.batch)))]
           return (
-            <div key={h.id} onClick={() => n && setViewHallId(h.id)}
-              className={cn("card p-3 transition-all", n && "cursor-pointer hover:border-brand-primary", viewHall?.id === h.id && n && "border-brand-primary ring-1 ring-brand-primary")}>
+            <div key={h.id} onClick={() => n && setViewHallId(h.id)} role={n ? "button" : undefined} tabIndex={n ? 0 : undefined}
+              onKeyDown={e => { if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setViewHallId(h.id) } }}
+              className={cn("card p-3 border-t-4 transition-all",
+                g === "M" ? "border-t-sky-400" : g === "F" ? "border-t-pink-400" : g === "mixed" ? "border-t-violet-400" : "border-t-gray-200",
+                n ? "cursor-pointer hover:border-brand-primary hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-primary" : seats.length > 0 && "opacity-60",
+                viewHall?.id === h.id && n && "ring-1 ring-brand-primary")}>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono font-bold text-brand-primary">{h.hall_code}</span>
                 <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
@@ -285,14 +340,24 @@ export default function SeatingPanel({ cycle, session, allocation, onReassignInv
                   {h.benches === 0 ? "No layout" : g ? groupLabel(g) : seats.length ? "Not used" : "Empty"}
                 </span>
               </div>
-              <p className="text-xs text-brand-textsec mt-1 truncate">{hallLocation(h) || "—"} · {h.invigilators.join(", ")}</p>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs"><b>{n}</b> / {h.seats} seats</span>
-                {n > 0 && <span className="text-[13px] text-brand-textsec truncate ml-2">{[...new Set(seatsIn(h.id).map(s => s.category ?? s.batch))].join(", ")}</span>}
+              <p className="text-xs text-brand-textsec mt-1 truncate" title={`${hallLocation(h) || "—"} · ${h.invigilators.join(", ")}`}>{hallLocation(h) || "—"} · {h.invigilators.join(", ")}</p>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-sm whitespace-nowrap"><b className="text-base">{n}</b> <span className="text-brand-textsec">/ {h.seats} seats</span></span>
+                {n > 0 && <span className="text-xs text-brand-textsec">{pct}%</span>}
               </div>
+              <div className="h-1.5 rounded-full bg-gray-100 mt-1 overflow-hidden">
+                <div className={cn("h-full rounded-full", g === "M" ? "bg-sky-400" : g === "F" ? "bg-pink-400" : "bg-violet-400")} style={{ width: `${pct}%` }} />
+              </div>
+              {n > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {classes.slice(0, 3).map(c => <span key={c} className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", colorOf(c))}>{c}</span>)}
+                  {classes.length > 3 && <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-700" title={classes.slice(3).join(", ")}>+{classes.length - 3} more</span>}
+                </div>
+              )}
             </div>
           )
         })}
+        {seats.length > 0 && shownHalls.length === 0 && <p className="col-span-full text-center text-sm text-brand-textsec py-6">No hall matches this filter.</p>}
       </div>
 
       {/* Seating of the clicked hall, in a popup */}
