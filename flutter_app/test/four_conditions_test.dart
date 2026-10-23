@@ -130,7 +130,7 @@ void main() {
       var seats = 0;
       while (seats < want) {
         final rows = 3 + rnd.nextInt(4), cols = 2 + rnd.nextInt(3);
-        final disabled = rnd.nextInt(3) == 0 ? ['1-${cols}'] : const <String>[];
+        final disabled = rnd.nextInt(3) == 0 ? ['1-$cols'] : const <String>[];
         final chairs = rnd.nextInt(3) == 0 ? {'2-1': SeatKind.chair} : const <String, SeatKind>{};
         halls.add(SeatHall(halls.length + 1, 'H${halls.length + 1}', HallLayout(rows: rows, cols: cols, disabled: disabled, kinds: chairs)));
         seats += seatCount(halls.last.layout);
