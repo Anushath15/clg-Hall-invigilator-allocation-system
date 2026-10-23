@@ -56,6 +56,7 @@ class StudentsTab extends StatelessWidget {
         columns: const ['Roll No', 'Register No', 'Name', 'Gender', 'Department', 'Section', 'Batch', 'Status', ''],
         flex: const [1, 1.3, 2, 0.9, 1, 0.8, 1.1, 1, 1],
         minWidth: 1000,
+        onRowTap: (i) => showDialog(context: context, builder: (_) => StudentSubjectsDialog(student: shown[i], subjects: c.subjectsOf(shown[i]))),
         empty: c.students.isNotEmpty ? 'No students match these filters.' : 'No students yet. Add them one by one or import an Excel sheet (download the template first).',
         rows: [
           for (final s in shown)
@@ -163,5 +164,52 @@ class _StudentFormState extends State<_StudentForm> {
               CheckboxListTile(value: active, onChanged: (v) => setState(() => active = v ?? true), title: const Text('Active'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading),
           ]),
         ),
+      );
+}
+
+/// What a student studies: the subjects the student is mapped to, each with its code, department and the staff who handle it.
+class StudentSubjectsDialog extends StatelessWidget {
+  const StudentSubjectsDialog({super.key, required this.student, required this.subjects});
+  final Student student;
+  final List<Subject> subjects;
+
+  @override
+  Widget build(BuildContext context) => ModalShell(
+        title: student.name,
+        subtitle: '${student.rollNo} · ${student.departmentCode ?? '—'} ${student.section} · ${student.batch}',
+        leadingIcon: Icons.menu_book_outlined,
+        maxWidth: 560,
+        footerLeading: Text(subjects.isEmpty ? '' : '${subjects.length} subject${subjects.length == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w600)),
+        actions: [ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+        child: subjects.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(28),
+                child: Text('No subjects are mapped to this student yet. Map them in Master Data → Subjects (the students button on each subject).', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSec)),
+              )
+            : ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(18),
+                itemCount: subjects.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) {
+                  final sb = subjects[i];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(10)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Flexible(child: Text(sb.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                        const SizedBox(width: 8),
+                        Pill(sb.code, bg: AppColors.violet600.withValues(alpha: 0.12), fg: AppColors.violet600, bold: true),
+                      ]),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${sb.departmentCode ?? 'All departments'}${sb.staff.isEmpty ? '' : ' · ${sb.staff.map((x) => x.name).join(', ')}'}',
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSec),
+                      ),
+                    ]),
+                  );
+                },
+              ),
       );
 }

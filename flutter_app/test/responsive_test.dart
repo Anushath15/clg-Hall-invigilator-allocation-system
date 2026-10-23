@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +8,8 @@ import 'package:hias/dev/demo_seed.dart';
 import 'package:hias/services/app_services.dart';
 import 'package:provider/provider.dart';
 
+import 'support/segoe_font.dart';
+
 /// Window sizes from a small laptop window to a large monitor (logical pixels).
 const sizes = <Size>[Size(640, 480), Size(800, 600), Size(1024, 700), Size(1280, 720), Size(1920, 1080)];
 
@@ -17,15 +17,7 @@ void main() {
   late AppServices services;
   late DemoSeedResult demo;
 
-  setUpAll(() async {
-    // The app's own font, so text is as wide as on a real Windows PC (tests would use a wide placeholder).
-    final loader = FontLoader('Segoe UI');
-    for (final f in ['segoeui.ttf', 'segoeuib.ttf']) {
-      final file = File('C:/Windows/Fonts/$f');
-      if (file.existsSync()) loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
-    }
-    await loader.load();
-  });
+  setUpAll(loadSegoeUi);
 
   setUp(() {
     services = AppServices(AppDatabase.open(':memory:', appVersion: 'test'));
@@ -93,6 +85,7 @@ void main() {
       nav.go(AppPage.master, tab: MasterTab.students);
       await tester.pump(const Duration(milliseconds: 400));
       await dialog('add student', find.text('Add Student'));
+      await dialog('student subjects', find.text('22CS001'));
       nav.go(AppPage.master, tab: MasterTab.halls);
       await tester.pump(const Duration(milliseconds: 400));
       await dialog('add hall', find.text('Add Hall'));
@@ -104,7 +97,7 @@ void main() {
       await dialog('new batch', find.textContaining('New Batch'));
 
       FlutterError.onError = previous;
-      expect(opened, containsAll(['add student', 'add hall', 'add staff']), reason: 'dialogs that opened');
+      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff']), reason: 'dialogs that opened');
       expect(problems.toList(), isEmpty, reason: 'at ${size.width.toInt()}x${size.height.toInt()}');
     });
   }

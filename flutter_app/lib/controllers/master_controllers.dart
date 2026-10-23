@@ -111,6 +111,9 @@ class StudentsController extends ChangeNotifier {
   String query = '', batch = '', section = '', gender = '';
   int? departmentId;
 
+  /// The active subjects a student studies (those the student is mapped to in Master Data → Subjects), by code.
+  List<Subject> subjectsOf(Student student) =>
+      services.subjects.list().where((sb) => sb.isActive && sb.studentIds.contains(student.id)).toList()..sort((a, b) => textCompare(a.code, b.code));
   void load() {
     students = services.students.list();
     departments = services.master.departments();
