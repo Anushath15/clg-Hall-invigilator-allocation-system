@@ -152,7 +152,7 @@ void main() {
       final classesIn = <int, Set<String>>{};
       final byId = {for (final s in students) s.id: s};
       for (final x in r.plan.seats) {
-        classesIn.putIfAbsent(x.hallId, () => {}).add(seatClassKey(byId[x.studentId]!));
+        classesIn.putIfAbsent(x.hallId, () => {}).add(seatVarietyKey(byId[x.studentId]!));
       }
       final most = classesIn.values.fold(0, (m, v) => max(m, v.length));
       expect(most, lessThanOrEqualTo(4), reason: 'seed $seed');

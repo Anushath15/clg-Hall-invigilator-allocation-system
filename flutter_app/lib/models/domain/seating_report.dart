@@ -123,14 +123,20 @@ PlanReport reportPlan({
           : const RuleFinding(priority: 3, rule: 'Gender / bench pattern', status: RuleStatus.met, detail: 'every seat is used only by the gender its bench pattern gives it');
 
   // 3: one class never twice on a bench, so a class can use at most one seat per bench.
+  // A class, and a subject, can use one seat on each bench at most: each is counted on its own.
   final tooBig = <String, ({String name, int n, int benches, String group, bool subject})>{};
   for (final g in groups) {
-    final sizes = <String, List<SeatStudent>>{};
-    for (final s in students.where((s) => groupOf(s.gender) == g)) {
-      sizes.putIfAbsent(seatClassKey(s), () => []).add(s);
+    final ofGroup = students.where((s) => groupOf(s.gender) == g).toList();
+    final classes = <String, List<SeatStudent>>{}, subjectsOf = <String, List<SeatStudent>>{};
+    for (final s in ofGroup) {
+      classes.putIfAbsent(seatClassOnly(s), () => []).add(s);
+      if (s.paper != null) subjectsOf.putIfAbsent(s.paper!, () => []).add(s);
     }
-    sizes.forEach((key, list) {
-      if (benchesFor[g]! > 0 && list.length > benchesFor[g]!) tooBig['$g|$key'] = (name: label(list.first), n: list.length, benches: benchesFor[g]!, group: g, subject: key.startsWith('sub:'));
+    classes.forEach((key, list) {
+      if (benchesFor[g]! > 0 && list.length > benchesFor[g]!) tooBig['$g|c|$key'] = (name: studentCategory(list.first, academicYear).label, n: list.length, benches: benchesFor[g]!, group: g, subject: false);
+    });
+    subjectsOf.forEach((key, list) {
+      if (benchesFor[g]! > 0 && list.length > benchesFor[g]!) tooBig['$g|s|$key'] = (name: label(list.first), n: list.length, benches: benchesFor[g]!, group: g, subject: true);
     });
   }
   final classTooBig = tooBig.values.where((x) => !x.subject).toList(), subjectTooBig = tooBig.values.where((x) => x.subject).toList();
@@ -181,7 +187,7 @@ PlanReport reportPlan({
   final classesIn = <int, Set<String>>{};
   for (final x in plan.seats) {
     final s = studentById[x.studentId];
-    if (s != null) classesIn.putIfAbsent(x.hallId, () => {}).add(seatClassKey(s));
+    if (s != null) classesIn.putIfAbsent(x.hallId, () => {}).add(seatVarietyKey(s));
   }
   final overPreferred = [for (final e in classesIn.entries) if (e.value.length > limit.preferred) (hall: hallOf[e.key]?.hallCode ?? '#${e.key}', n: e.value.length)]
     ..sort((a, b) => a.hall.compareTo(b.hall));
@@ -189,7 +195,7 @@ PlanReport reportPlan({
   final tooFewHalls = <String>[];
   var hallsMissing = 0;
   for (final g in groups) {
-    final classes = students.where((s) => groupOf(s.gender) == g).map(seatClassKey).toSet().length;
+    final classes = students.where((s) => groupOf(s.gender) == g).map(seatVarietyKey).toSet().length;
     final need = (classes + limit.max - 1) ~/ limit.max;
     if (hallsFor[g]! > 0 && need > hallsFor[g]!) {
       tooFewHalls.add('${g == '*' ? 'the students' : _word(g)} are in $classes different classes, at most ${limit.max} to a hall, so they need at least $need halls but only ${hallsFor[g]} ${hallsFor[g] == 1 ? 'is' : 'are'} set for them');
@@ -229,12 +235,12 @@ PlanReport reportPlan({
       return 'Blocked by hall capacity: ${total[g]} $word are selected but the halls have only ${seatsFor[g]} seats for them. ${capacity.suggestion}';
     }
     final s = studentById[u.studentId];
-    final key = s == null ? null : '$g|${seatClassKey(s)}';
-    final big = key == null ? null : tooBig[key];
+    final subjectKey = s == null || s.paper == null ? null : '$g|s|${s.paper}', classKey = s == null ? null : '$g|c|${seatClassOnly(s)}';
+    final subjectBig = subjectKey == null ? null : tooBig[subjectKey], classBig = classKey == null ? null : tooBig[classKey];
     // 2. Same subject: too many of one subject for the benches, or only a seat beside the same subject is left.
-    if (big != null && big.subject && benchLeft[key]! > 0) {
-      benchLeft[key!] = benchLeft[key]! - 1;
-      return 'Blocked by the same-subject rule: ${big.name} has ${big.n} ${_word(big.group)} but only ${big.benches} benches are available for them, and two students writing one subject never share a bench.';
+    if (subjectBig != null && benchLeft[subjectKey]! > 0) {
+      benchLeft[subjectKey!] = benchLeft[subjectKey]! - 1;
+      return 'Blocked by the same-subject rule: ${subjectBig.name} has ${subjectBig.n} ${_word(subjectBig.group)} but only ${subjectBig.benches} benches are available for them, and two students writing one subject never share a bench.';
     }
     if (sideLeft > 0 && !noSeats.contains(g)) {
       sideLeft--;
@@ -243,9 +249,9 @@ PlanReport reportPlan({
     // 3. Gender / bench pattern.
     if (noSeats.contains(g)) return 'Blocked by the gender / bench pattern rule: ${gender.detail}.';
     // 4. Same class on one bench.
-    if (big != null && !big.subject && benchLeft[key]! > 0) {
-      benchLeft[key!] = benchLeft[key]! - 1;
-      return 'Blocked by the same-class bench rule: ${big.name} has ${big.n} ${_word(big.group)} but only ${big.benches} benches are available for them, and two of one class never share a bench.';
+    if (classBig != null && benchLeft[classKey]! > 0) {
+      benchLeft[classKey!] = benchLeft[classKey]! - 1;
+      return 'Blocked by the same-class bench rule: ${classBig.name} has ${classBig.n} ${_word(classBig.group)} but only ${classBig.benches} benches are available for them, and two of one class never share a bench.';
     }
     // 5. Classes per hall.
     if (limitLeft > 0) {

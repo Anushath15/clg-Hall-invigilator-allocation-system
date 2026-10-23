@@ -95,6 +95,31 @@ void main() {
     });
   });
 
+  group('a class that writes more than one subject', () {
+    test('classmates stay apart on a bench even when their subjects differ, and the same subject stays apart too', () {
+      // Two classes, each writing two subjects (X and Y): 24 boys, 12 benches. A bench may hold X of one class with Y
+      // of the other, never two of one class, never two of one subject.
+      final students = [
+        for (var i = 1; i <= 6; i++) st(i, 'M', 1, 'X'),
+        for (var i = 7; i <= 12; i++) st(i, 'M', 1, 'Y'),
+        for (var i = 13; i <= 18; i++) st(i, 'M', 2, 'X'),
+        for (var i = 19; i <= 24; i++) st(i, 'M', 2, 'Y'),
+      ];
+      final r = run(students, [hall(1, 3, 4)]);
+      expect(r.problems, isEmpty, reason: '${r.problems}');
+      expect(r.plan.unallocated, isEmpty, reason: 'there is a legal arrangement for everyone');
+      expect(benches(r.plan, students).sameSubject, 0);
+      final byBench = <String, List<int>>{};
+      for (final x in r.plan.seats) {
+        byBench.putIfAbsent('${x.row}-${x.col}', () => []).add(x.studentId);
+      }
+      final classOf = {for (final s in students) s.id: s.departmentId};
+      for (final l in byBench.values) {
+        if (l.length == 2) expect(classOf[l[0]], isNot(classOf[l[1]]), reason: 'two classmates share a bench');
+      }
+    });
+  });
+
   group('only one subject', () {
     test('the rule is lifted: students of that subject share benches, and nobody is turned away', () {
       // 40 boys of four classes, all writing X, and exactly 20 benches: every bench must hold two of them.

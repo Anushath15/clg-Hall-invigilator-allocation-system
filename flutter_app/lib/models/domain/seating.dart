@@ -59,12 +59,16 @@ class SeatStudent {
   final int? departmentId;
   final String? deptCode, name;
   final String? paper;
+  /// Set by [withSubjectRules] when some class writes more than one subject: the student is then grouped by class AND
+  /// subject, so classmates stay apart even when their subjects differ. Otherwise a subject is enough (a class that writes
+  /// one subject is that subject).
+  final bool byClass;
   final List<int>? subjectIds;
-  const SeatStudent({required this.id, required this.rollNo, required this.gender, required this.batch, this.departmentId, this.deptCode, this.name, this.paper, this.subjectIds});
+  const SeatStudent({required this.id, required this.rollNo, required this.gender, required this.batch, this.departmentId, this.deptCode, this.name, this.paper, this.byClass = false, this.subjectIds});
 
-  SeatStudent copyWith({String? gender, String? paper, bool clearPaper = false}) => SeatStudent(
+  SeatStudent copyWith({String? gender, String? paper, bool clearPaper = false, bool? byClass}) => SeatStudent(
       id: id, rollNo: rollNo, gender: gender ?? this.gender, batch: batch, departmentId: departmentId, deptCode: deptCode, name: name,
-      paper: clearPaper ? null : (paper ?? this.paper), subjectIds: subjectIds);
+      paper: clearPaper ? null : (paper ?? this.paper), byClass: clearPaper ? false : (byClass ?? this.byClass), subjectIds: subjectIds);
 }
 
 class SeatHall {
@@ -244,7 +248,39 @@ List<String> hallPattern(Object? h) {
 
 // ── Configuration ───────────────────────────────────────────
 
-String _classOf(SeatStudent s) => s.paper ?? categoryKey(s.departmentId, s.batch);
+/// The class of a student: department + batch.
+String _classKeyOf(SeatStudent s) => categoryKey(s.departmentId, s.batch);
+
+/// A key is `class#subject`: just the class for a student with no subject, `#subject` when the subject is enough, both when
+/// a class writes several.
+///
+/// The group a student is seated with: the subject they write when the exam has more than one (a class that writes one
+/// subject IS that subject), joined with the class when some class writes several (see [SeatStudent.byClass]).
+/// The class and the subject are two different things with two different rules (see [_benchConflict], [_sideConflict]).
+String _classOf(SeatStudent s) => s.paper == null ? _classKeyOf(s) : (s.byClass ? '${_classKeyOf(s)}#${s.paper}' : '#${s.paper}');
+
+String _classPart(String key) {
+  final i = key.indexOf('#');
+  return i < 0 ? key : key.substring(0, i);
+}
+
+String? _paperPart(String key) {
+  final i = key.indexOf('#');
+  return i < 0 ? null : key.substring(i + 1);
+}
+
+/// Two students on one bench: never of one class, and never writing one subject.
+bool _benchConflict(String a, String b) => (_classPart(a).isNotEmpty && _classPart(a) == _classPart(b)) || (_paperPart(a) != null && _paperPart(a) == _paperPart(b));
+
+/// Two students side by side across the aisle: never writing one subject.
+bool _sideConflict(String a, String b) => _paperPart(a) != null && _paperPart(a) == _paperPart(b);
+
+/// What a hall's "number of different classes" counts: the subject when the exam has subjects (the papers an invigilator
+/// hands out), else the class.
+String _varietyOf(String key) => _paperPart(key) ?? _classPart(key);
+
+/// Whether [key] cannot sit next to the bench mate [mate] and the side neighbours [sides].
+bool _clashes(String key, String? mate, Iterable<String?> sides) => (mate != null && _benchConflict(mate, key)) || sides.any((n) => n != null && _sideConflict(n, key));
 
 Map<String, int> cleanSubjects(Object? subjects) {
   final out = <String, int>{};
@@ -299,8 +335,17 @@ bool subjectRulesApply(Iterable<SeatStudent> students) => subjectsInExam(student
 
 /// The students as the rules see them: with more than one subject each keeps the paper they write; with one subject (or
 /// none) the papers are dropped, so only the class rule is left.
-List<SeatStudent> withSubjectRules(List<SeatStudent> students) =>
-    subjectRulesApply(students) ? students : [for (final s in students) s.paper == null ? s : s.copyWith(clearPaper: true)];
+List<SeatStudent> withSubjectRules(List<SeatStudent> students) {
+  if (!subjectRulesApply(students)) return [for (final s in students) s.paper == null && !s.byClass ? s : s.copyWith(clearPaper: true)];
+  // Does some class write more than one subject, or some of its students none? Then classmates must be kept apart by
+  // class as well as by subject, so every student is grouped by both.
+  final papers = <String, Set<String?>>{};
+  for (final s in students) {
+    papers.putIfAbsent(_classKeyOf(s), () => {}).add(s.paper);
+  }
+  final split = papers.values.any((p) => p.length > 1);
+  return [for (final s in students) s.paper == null || s.byClass == split ? s : s.copyWith(byClass: split)];
+}
 
 /// The students with the subject each writes as their paper, ready for planning: see [subjectRulesApply].
 List<SeatStudent> applySessionSubjects(List<SeatStudent> students, Object? subjects, [Object? sessionSubjects]) =>
@@ -311,8 +356,14 @@ bool _whatIfNoSideRule = false, _whatIfNoClassLimit = false;
 
 bool _bySubject(List<SeatStudent> students) => !_whatIfNoSideRule && students.any((s) => s.paper != null);
 
-/// The key of the class a student belongs to for seating: the subject paper written, else department + batch.
+/// The group a student is seated with: the class, and the subject written when the exam has more than one.
 String seatClassKey(SeatStudent s) => _classOf(s);
+
+/// The class of a student (department + batch), whatever subject they write.
+String seatClassOnly(SeatStudent s) => _classKeyOf(s);
+
+/// What counts towards the limit of different classes in a hall: the subject written, else the class.
+String seatVarietyKey(SeatStudent s) => _varietyOf(_classOf(s));
 
 typedef _BenchAt = Bench? Function(int row, int col);
 
@@ -523,7 +574,8 @@ void _repairLeftovers(List<SeatStudent> students, SeatingConfig config, Map<int,
     Map<String, Map<String, List<SeatStudent>>> pools, int most) {
   final studentById = {for (final s in students) s.id: s};
   final inHall = <int, Map<String, int>>{};
-  void count(int hallId, String cls, int by) {
+  void count(int hallId, String group, int by) {
+    final cls = _varietyOf(group);
     final m = inHall.putIfAbsent(hallId, () => <String, int>{});
     final n = (m[cls] ?? 0) + by;
     if (n > 0) {
@@ -536,7 +588,8 @@ void _repairLeftovers(List<SeatStudent> students, SeatingConfig config, Map<int,
   for (final x in seats) {
     count(x.hallId, _classOf(studentById[x.studentId]!), 1);
   }
-  bool fits(int hallId, String cls, [String? leaving]) {
+  bool fits(int hallId, String group, [String? leavingGroup]) {
+    final cls = _varietyOf(group), leaving = leavingGroup == null ? null : _varietyOf(leavingGroup);
     final m = inHall[hallId] ?? const <String, int>{};
     if (m.containsKey(cls) && !(cls == leaving && m[cls] == 1)) return true;
     final size = m.length - (leaving != null && m[leaving] == 1 && leaving != cls ? 1 : 0);
@@ -552,16 +605,19 @@ void _repairLeftovers(List<SeatStudent> students, SeatingConfig config, Map<int,
     return m == null ? null : _classOf(studentById[m.studentId]!);
   }
 
-  List<String?> mateClass(int hallId, int row, int col, int benchNo, String seat) {
-    final out = <String?>[classAt(hallId, benchNo, seat == 'L' ? 'R' : 'L')];
+  /// Who sits around a seat: the bench mate and, when the exam has subjects, the neighbours across the aisle.
+  ({String? mate, List<String?> sides}) around(int hallId, int row, int col, int benchNo, String seat) {
+    final sideList = <String?>[];
     if (sides) {
       final find = finders[hallId]!;
       for (final n in _sideNeighbours(find, row, col, seat)) {
-        out.add(classAt(hallId, find(n.row, n.col)!.benchNo, n.side));
+        sideList.add(classAt(hallId, find(n.row, n.col)!.benchNo, n.side));
       }
     }
-    return out;
+    return (mate: classAt(hallId, benchNo, seat == 'L' ? 'R' : 'L'), sides: sideList);
   }
+
+  bool blocked(String key, ({String? mate, List<String?> sides}) near) => _clashes(key, near.mate, near.sides);
 
   final empty = <({int hallId, int row, int col, int benchNo, String seat, String gender})>[];
   for (final c in config.halls) {
@@ -581,7 +637,7 @@ void _repairLeftovers(List<SeatStudent> students, SeatingConfig config, Map<int,
       final cls = entry.key, left = entry.value;
       while (left.isNotEmpty) {
         final x = left.first;
-        final direct = empty.indexWhere((e) => e.gender == g && !mateClass(e.hallId, e.row, e.col, e.benchNo, e.seat).contains(cls) && fits(e.hallId, cls));
+        final direct = empty.indexWhere((e) => e.gender == g && !blocked(cls, around(e.hallId, e.row, e.col, e.benchNo, e.seat)) && fits(e.hallId, cls));
         if (direct >= 0) {
           final e = empty.removeAt(direct);
           final seat = Seat(studentId: x.id, hallId: e.hallId, row: e.row, col: e.col, benchNo: e.benchNo, seat: e.seat);
@@ -594,10 +650,10 @@ void _repairLeftovers(List<SeatStudent> students, SeatingConfig config, Map<int,
         var done = false;
         for (final y in List.of(seats)) {
           final ys = studentById[y.studentId]!, ycls = _classOf(ys);
-          if (ys.gender != g || ycls == cls || mateClass(y.hallId, y.row, y.col, y.benchNo, y.seat).contains(cls)) continue;
+          if (ys.gender != g || ycls == cls || blocked(cls, around(y.hallId, y.row, y.col, y.benchNo, y.seat))) continue;
           final ei = empty.indexWhere((e) =>
               e.gender == g &&
-              !mateClass(e.hallId, e.row, e.col, e.benchNo, e.seat).contains(ycls) &&
+              !blocked(ycls, around(e.hallId, e.row, e.col, e.benchNo, e.seat)) &&
               !(e.hallId == y.hallId && e.benchNo == y.benchNo) &&
               (e.hallId == y.hallId ? fits(y.hallId, cls) : fits(y.hallId, cls, ycls) && fits(e.hallId, ycls)));
           if (ei < 0) continue;
@@ -688,13 +744,16 @@ int _fewestLeft(List<SeatStudent> students, SeatingConfig config, Map<int, SeatH
         if (seatGender(c.pattern, i, 'L') == g) benches++;
       }
     }
-    final byClass = <String, int>{};
-    for (final s in inGroup) {
-      byClass[_classOf(s)] = (byClass[_classOf(s)] ?? 0) + 1;
+    // One seat per bench for a class, and one for a subject.
+    int beyond(String Function(SeatStudent) key) {
+      final by = <String, int>{};
+      for (final s in inGroup) {
+        by[key(s)] = (by[key(s)] ?? 0) + 1;
+      }
+      return by.values.fold(0, (n, c) => n + (c > benches ? c - benches : 0));
     }
-    // Seats first; then, of what fits, the students of a class beyond its benches.
-    final beyondBenches = byClass.values.fold(0, (n, c) => n + (c > benches ? c - benches : 0));
-    left += max(inGroup.length > seats ? inGroup.length - seats : 0, beyondBenches);
+
+    left += max(inGroup.length > seats ? inGroup.length - seats : 0, max(beyond(_classKeyOf), beyond((s) => s.paper ?? _classKeyOf(s))));
   }
   return left;
 }
@@ -732,13 +791,13 @@ SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, Seatin
     final out = <Seat>[];
     final classes = <String>{};
     var empty = 0;
-    String? nextClass(String g, List<String?> avoid) {
+    String? nextClass(String g, bool Function(String) blocked) {
       final list = order[g]!;
       for (var k = 0; k < list.length; k++) {
         final i = (st.turn[g]! + k) % list.length, cls = list[i];
-        if (st.pools[g]![cls]!.isNotEmpty && !avoid.contains(cls) && (classes.contains(cls) || classes.length < most)) {
+        if (st.pools[g]![cls]!.isNotEmpty && !blocked(cls) && (classes.contains(_varietyOf(cls)) || classes.length < most)) {
           st.turn[g] = (i + 1) % list.length;
-          classes.add(cls);
+          classes.add(_varietyOf(cls));
           return cls;
         }
       }
@@ -760,9 +819,10 @@ SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, Seatin
           if (side == 'R' && b.seats == 1) continue;
           final g = seatGender(c.pattern, i, side);
           final mate = side == 'R' ? leftClass[i] : null;
-          final avoid = <String?>[mate, if (sides) ..._sideNeighbours(find, b.row, b.col, side).map((n) => placed['${n.row}-${n.col}-${n.side}'])];
+          final beside = <String?>[if (sides) ..._sideNeighbours(find, b.row, b.col, side).map((n) => placed['${n.row}-${n.col}-${n.side}'])];
+          bool blocked(String key) => _clashes(key, mate, beside);
           var cls = seatColumn[g];
-          if (cls == null || st.pools[g]![cls]!.isEmpty || avoid.contains(cls)) cls = seatColumn[g] = nextClass(g, avoid);
+          if (cls == null || st.pools[g]![cls]!.isEmpty || blocked(cls)) cls = seatColumn[g] = nextClass(g, blocked);
           if (cls == null) {
             empty++;
             continue;
@@ -1045,7 +1105,7 @@ List<String> validateSeatingPlan(List<Seat> planSeats, List<UnallocatedStudent> 
         errors.add('Hall $code, bench ${x.benchNo}: ${s.rollNo} sits in the ${x.seat == 'L' ? 'left' : 'right'} seat, which the bench pattern gives to a ${want == 'M' ? 'boy' : 'girl'}.');
       }
     }
-    final classes = list.map((x) => studentOf[x.studentId]).whereType<SeatStudent>().map(_classOf).toSet();
+    final classes = list.map((x) => studentOf[x.studentId]).whereType<SeatStudent>().map(seatVarietyKey).toSet();
     if (classes.length > config.classLimit!.max) errors.add('Hall $code has ${classes.length} different classes, more than the limit of ${config.classLimit!.max}.');
     final benches = <int, List<Seat>>{};
     for (final x in list) {
@@ -1057,8 +1117,8 @@ List<String> validateSeatingPlan(List<Seat> planSeats, List<UnallocatedStudent> 
       if (b.length > most) errors.add('Hall $code, ${most == 1 ? 'chair' : 'bench'} $no has ${b.length} students (at most $most).');
       if (b.map((x) => x.seat).toSet().length != b.length) errors.add('Hall $code, bench $no: two students in the same seat.');
       final mates = b.map((x) => studentOf[x.studentId]).whereType<SeatStudent>().toList();
-      if (mates.length == 2 && _classOf(mates[0]) == _classOf(mates[1])) {
-        errors.add(mates[0].paper != null
+      if (mates.length == 2 && _benchConflict(_classOf(mates[0]), _classOf(mates[1]))) {
+        errors.add(_classKeyOf(mates[0]) != _classKeyOf(mates[1])
             ? 'Hall $code, bench $no: ${mates[0].rollNo} and ${mates[1].rollNo} write the same subject.'
             : 'Hall $code, bench $no: ${mates[0].rollNo} and ${mates[1].rollNo} are from the same class.');
       }
