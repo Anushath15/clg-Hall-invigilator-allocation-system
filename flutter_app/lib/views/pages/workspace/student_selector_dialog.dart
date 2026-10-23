@@ -128,14 +128,15 @@ class _SubjectsTab extends StatelessWidget {
                       final sb = list[i];
                       final ids = c.idsOfSubject(sb);
                       final n = ids.where(c.selected.contains).length;
-                      final all = ids.isNotEmpty && n == ids.length;
+                      final picked = c.isPicked(sb);
                       return _PickTile(
-                        value: all ? true : (n > 0 ? null : false),
-                        onTap: () => c.setSubject(sb, !all),
+                        // Ticked only when this subject itself was clicked, never because its students are selected through another subject.
+                        value: picked,
+                        onTap: () => c.setSubject(sb, !picked),
                         title: sb.name,
                         badge: sb.code,
                         subtitle: '${sb.departmentCode ?? 'All departments'} · ${ids.length} students',
-                        count: '$n / ${ids.length}',
+                        count: picked ? '${ids.length} selected' : (n > 0 ? '$n already selected' : ''),
                         accent: AppColors.violet600,
                       );
                     },

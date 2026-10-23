@@ -219,11 +219,21 @@ class StudentSelectorController extends ChangeNotifier {
     return out;
   }
 
+  /// Whether a subject was chosen as one written in this exam. Only what was clicked counts: students
+  /// who study several subjects are selected by any of them, but that does not choose the other subjects.
+  bool isPicked(Subject sb) => picked.contains(sb.id);
+
   /// Ticks or unticks a whole subject (its students, and the subject as one written in this exam).
+  /// Unticking keeps the students that another chosen subject still needs.
   void setSubject(Subject sb, bool on) {
-    setMany(idsOfSubject(sb), on);
-    if (on && !picked.contains(sb.id)) picked.add(sb.id);
-    if (!on) picked.remove(sb.id);
+    if (on) {
+      selected.addAll(idsOfSubject(sb));
+      if (!picked.contains(sb.id)) picked.add(sb.id);
+    } else {
+      picked.remove(sb.id);
+      final kept = {for (final other in subjects.where((x) => picked.contains(x.id))) ...idsOfSubject(other)};
+      selected.removeAll(idsOfSubject(sb).where((id) => !kept.contains(id)));
+    }
     notifyListeners();
   }
 
