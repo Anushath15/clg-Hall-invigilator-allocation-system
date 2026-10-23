@@ -4,9 +4,9 @@
 /// Priority of the rules (a rule is given up only after every rule above it has been kept; the first two are physical
 /// and are never given up):
 ///   1. Hall capacity           seats for a group of students must be at least as many as the students
-///   2. Gender rule             a seat is used only by the gender its bench pattern gives it
+///   2. Gender / bench pattern a seat is used only by the gender its bench pattern gives it
 ///   3. Same class on a bench   two students of one class (or one subject) never share a bench
-///   4. Subject separation      students writing the same subject do not sit side by side
+///   4. Same subject adjacent   students writing the same subject do not sit side by side
 ///   5. Classes per hall        3 by default (the preferred number), 4 at the most; the 4th class is allowed only
 ///                              when otherwise somebody would be left without a seat
 ///
@@ -104,16 +104,16 @@ PlanReport reportPlan({
           suggestion: 'Add a hall, or benches, or give another hall to ${short.map(_word).join(' and ')}.')
       : const RuleFinding(priority: 1, rule: 'Hall capacity', status: RuleStatus.met, detail: 'every group has at least as many seats as students');
   final gender = mix
-      ? const RuleFinding(priority: 2, rule: 'Gender rule', status: RuleStatus.notApplicable, detail: 'boys and girls are seated together in roll-number order')
+      ? const RuleFinding(priority: 2, rule: 'Gender / bench pattern', status: RuleStatus.notApplicable, detail: 'boys and girls are seated together in roll-number order')
       : noSeats.isNotEmpty
           ? RuleFinding(
               priority: 2,
-              rule: 'Gender rule',
+              rule: 'Gender / bench pattern',
               status: RuleStatus.blocking,
               students: noSeats.fold(0, (n, g) => n + total[g]!),
               detail: 'no hall has a bench pattern with seats for ${noSeats.map(_word).join(' and ')}, so ${noSeats.map((g) => '${total[g]} ${_word(g)}').join(' and ')} cannot sit anywhere',
               suggestion: 'Give a hall a bench pattern with seats for ${noSeats.map(_word).join(' and ')}.')
-          : const RuleFinding(priority: 2, rule: 'Gender rule', status: RuleStatus.met, detail: 'every seat is used only by the gender its bench pattern gives it');
+          : const RuleFinding(priority: 2, rule: 'Gender / bench pattern', status: RuleStatus.met, detail: 'every seat is used only by the gender its bench pattern gives it');
 
   // 3: one class never twice on a bench, so a class can use at most one seat per bench.
   final tooBig = <String, ({String name, int n, int benches, String group})>{};
@@ -148,16 +148,16 @@ PlanReport reportPlan({
     limitGain = unseated - planWithoutRule(students, halls, config, academicYear, lockedSeats, noClassLimit: true).unallocated.length;
   }
   final side = !bySubject
-      ? const RuleFinding(priority: 4, rule: 'Subject separation', status: RuleStatus.notApplicable, detail: 'no subjects were chosen for this exam')
+      ? const RuleFinding(priority: 4, rule: 'Same subject never adjacent', status: RuleStatus.notApplicable, detail: 'no subjects were chosen for this exam')
       : sideGain > 0
           ? RuleFinding(
               priority: 4,
-              rule: 'Subject separation',
+              rule: 'Same subject never adjacent',
               status: RuleStatus.blocking,
               students: sideGain,
               detail: '$sideGain student${sideGain == 1 ? '' : 's'} could be seated only beside a student writing the same subject',
               suggestion: 'Add halls or benches so that students writing one subject can be spread out.')
-          : const RuleFinding(priority: 4, rule: 'Subject separation', status: RuleStatus.met, detail: 'nobody sits beside a student writing the same subject');
+          : const RuleFinding(priority: 4, rule: 'Same subject never adjacent', status: RuleStatus.met, detail: 'nobody sits beside a student writing the same subject');
 
   final classesIn = <int, Set<String>>{};
   for (final x in plan.seats) {

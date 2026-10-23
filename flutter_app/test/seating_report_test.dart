@@ -45,11 +45,11 @@ void main() {
     expect(reasons.first, contains('only 6 seats'));
   });
 
-  test('no seats for a gender: the Gender rule is named, not a generic message', () {
+  test('no seats for a gender: the Gender / bench pattern rule is named, not a generic message', () {
     final students = [for (var i = 1; i <= 4; i++) st(i, 'M', i), for (var i = 5; i <= 7; i++) st(i, 'F', i)];
     final cfg = SeatingConfig(halls: const [HallSeatingConfig(1, ['MM'])], classLimit: defaultClassLimit);
     final r = run(students, [hall(1, 3, 1)], config: cfg);
-    final f = rule(r.report, 'Gender rule');
+    final f = rule(r.report, 'Gender / bench pattern');
     expect(f.status, RuleStatus.blocking);
     expect(f.students, 3);
     expect(r.report.unallocated.map((u) => u.rollNo), unorderedEquals(['S5', 'S6', 'S7']));
@@ -113,7 +113,7 @@ void main() {
       // The class limit is reported whenever it was stretched, and never stretched past the maximum.
       if (rule(r.report, 'Classes per hall').status == RuleStatus.relaxed) relaxedSeen++;
       if (rule(r.report, 'Classes per hall').status == RuleStatus.blocking) limitSeen++;
-      if (rule(r.report, 'Subject separation').status == RuleStatus.blocking) sideSeen++;
+      if (rule(r.report, 'Same subject never adjacent').status == RuleStatus.blocking) sideSeen++;
       final classesIn = <int, Set<String>>{};
       final byId = {for (final s in students) s.id: s};
       for (final x in r.plan.seats) {
