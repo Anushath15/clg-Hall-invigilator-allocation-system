@@ -49,7 +49,7 @@ void main() {
       }
       final cfg = normalizeConfig(autoConfigure(students, halls), halls);
       final plan = planSeatingWithLocks(students, halls, cfg, '2026-2027', const []);
-      final who = {for (final s in students) s.id: Sitter(s.gender, seatClassKey(s), s.paper)};
+      final who = {for (final s in students) s.id: Sitter(s.gender, '${s.departmentId}|${s.batch}', s.paper)};
       final found = violations(halls, {for (final c in cfg.halls) c.hallId: c.pattern}, who, plan.seats.map(placed).toList());
       expect(found, isEmpty, reason: 'seed $seed: $found');
       seated += plan.seats.length;
@@ -86,7 +86,7 @@ void main() {
       final merged = first.copyWith(
           halls: [...first.halls.where((c) => locked.contains(c.hallId)), ...cfg2.halls.where((c) => !locked.contains(c.hallId))], lockedHalls: locked);
       final plan2 = planSeatingWithLocks(now, halls, merged, '2026-2027', plan1.seats);
-      final who = {for (final s in now) s.id: Sitter(s.gender, seatClassKey(s), s.paper)};
+      final who = {for (final s in now) s.id: Sitter(s.gender, '${s.departmentId}|${s.batch}', s.paper)};
       final norm = normalizeConfig(merged, halls);
       final found = violations(halls, {for (final c in norm.halls) c.hallId: c.pattern}, who, plan2.seats.map(placed).toList());
       expect(found, isEmpty, reason: 'seed $seed: $found');

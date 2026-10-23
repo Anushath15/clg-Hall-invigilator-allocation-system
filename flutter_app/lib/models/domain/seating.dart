@@ -282,10 +282,29 @@ SessionSubject? sessionSubjectOf(SeatStudent s, Object? subjects, Object? sessio
   return id != null ? SessionSubject(id, 'class', const []) : null;
 }
 
-List<SeatStudent> applySessionSubjects(List<SeatStudent> students, Object? subjects, [Object? sessionSubjects]) => students.map((s) {
+/// The students with the subject each writes in the session as their paper (none for a student with no subject).
+List<SeatStudent> papersOf(List<SeatStudent> students, Object? subjects, [Object? sessionSubjects]) => students.map((s) {
       final sub = sessionSubjectOf(s, subjects, sessionSubjects);
       return sub != null ? s.copyWith(paper: 'sub:${sub.id}') : s.copyWith(clearPaper: true);
     }).toList();
+
+/// How many different subjects the students write in the session.
+int subjectsInExam(Iterable<SeatStudent> students) => students.map((s) => s.paper).whereType<String>().toSet().length;
+
+/// THE SUBJECT RULE of an exam hall: students writing the same subject never share a bench and never sit side by side.
+/// It applies when the exam has MORE THAN ONE subject. When everyone writes the same one subject (or no subject was
+/// chosen) there is nobody to keep apart, so the rule does not apply and students of that subject may sit together;
+/// the class rule (two students of one class never share a bench) still does.
+bool subjectRulesApply(Iterable<SeatStudent> students) => subjectsInExam(students) > 1;
+
+/// The students as the rules see them: with more than one subject each keeps the paper they write; with one subject (or
+/// none) the papers are dropped, so only the class rule is left.
+List<SeatStudent> withSubjectRules(List<SeatStudent> students) =>
+    subjectRulesApply(students) ? students : [for (final s in students) s.paper == null ? s : s.copyWith(clearPaper: true)];
+
+/// The students with the subject each writes as their paper, ready for planning: see [subjectRulesApply].
+List<SeatStudent> applySessionSubjects(List<SeatStudent> students, Object? subjects, [Object? sessionSubjects]) =>
+    withSubjectRules(papersOf(students, subjects, sessionSubjects));
 
 /// Switches used only while finding out which rule keeps students without a seat (see [planWithoutRule]).
 bool _whatIfNoSideRule = false, _whatIfNoClassLimit = false;
@@ -692,6 +711,7 @@ List<String> _otherOrder(List<String> base, int v, String group) {
 
 /// The seating plan for the students in the halls under the configuration.
 SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, [bool together = false]) {
+  students = withSubjectRules(students);
   final config = normalizeConfig(rawConfig, halls);
   if (config.mixGenders) return _planTogether(students, halls, config, academicYear);
   String groupWord(String g) => together ? 'students' : _groupWordOf(g);
@@ -903,6 +923,7 @@ SeatingPlan _planWithLocksBudget(List<SeatStudent> students, List<SeatHall> hall
 }
 
 SeatingPlan _planWithLocks(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, List<Seat> lockedSeats) {
+  students = withSubjectRules(students);
   final config = normalizeConfig(rawConfig, halls);
   final locked = config.lockedHalls.toSet();
   if (locked.isEmpty) return planSeating(students, halls, config, academicYear);
@@ -966,6 +987,7 @@ SeatingPlan _planWithLocks(List<SeatStudent> students, List<SeatHall> halls, Sea
 
 /// Checks a plan against the rules, independently of how it was made. Any error blocks saving.
 List<String> validateSeatingPlan(List<Seat> planSeats, List<UnallocatedStudent> planUnallocated, List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig) {
+  students = withSubjectRules(students);
   final config = normalizeConfig(rawConfig, halls);
   final errors = <String>[];
   final studentOf = {for (final s in students) s.id: s};

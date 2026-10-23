@@ -63,6 +63,9 @@ PlanReport reportPlan({
   List<Seat> lockedSeats = const [],
   String Function(SeatStudent)? classLabel,
 }) {
+  // One subject (or none): the subject rule does not apply, and the papers are not used. See [subjectRulesApply].
+  final subjectsWritten = subjectsInExam(students);
+  students = withSubjectRules(students);
   final mix = config.mixGenders;
   String groupOf(String gender) => mix ? '*' : gender;
   final groups = mix ? const ['*'] : genders;
@@ -120,25 +123,26 @@ PlanReport reportPlan({
           : const RuleFinding(priority: 3, rule: 'Gender / bench pattern', status: RuleStatus.met, detail: 'every seat is used only by the gender its bench pattern gives it');
 
   // 3: one class never twice on a bench, so a class can use at most one seat per bench.
-  final tooBig = <String, ({String name, int n, int benches, String group})>{};
+  final tooBig = <String, ({String name, int n, int benches, String group, bool subject})>{};
   for (final g in groups) {
     final sizes = <String, List<SeatStudent>>{};
     for (final s in students.where((s) => groupOf(s.gender) == g)) {
       sizes.putIfAbsent(seatClassKey(s), () => []).add(s);
     }
     sizes.forEach((key, list) {
-      if (benchesFor[g]! > 0 && list.length > benchesFor[g]!) tooBig['$g|$key'] = (name: label(list.first), n: list.length, benches: benchesFor[g]!, group: g);
+      if (benchesFor[g]! > 0 && list.length > benchesFor[g]!) tooBig['$g|$key'] = (name: label(list.first), n: list.length, benches: benchesFor[g]!, group: g, subject: key.startsWith('sub:'));
     });
   }
-  final bench = tooBig.isNotEmpty
+  final classTooBig = tooBig.values.where((x) => !x.subject).toList(), subjectTooBig = tooBig.values.where((x) => x.subject).toList();
+  final bench = classTooBig.isNotEmpty
       ? RuleFinding(
           priority: 4,
           rule: 'Same class never on one bench',
           status: RuleStatus.blocking,
-          students: tooBig.values.fold(0, (n, x) => n + x.n - x.benches),
-          detail: tooBig.values.take(3).map((x) => '${x.name} has ${x.n} ${_word(x.group)} but there are only ${x.benches} benches for them, and two of one class never share a bench').join('; ') +
-              (tooBig.length > 3 ? '; and ${tooBig.length - 3} more' : ''),
-          suggestion: 'Add benches or halls for ${tooBig.values.map((x) => _word(x.group)).toSet().join(' and ')}.')
+          students: classTooBig.fold(0, (n, x) => n + x.n - x.benches),
+          detail: classTooBig.take(3).map((x) => '${x.name} has ${x.n} ${_word(x.group)} but there are only ${x.benches} benches for them, and two of one class never share a bench').join('; ') +
+              (classTooBig.length > 3 ? '; and ${classTooBig.length - 3} more' : ''),
+          suggestion: 'Add benches or halls for ${classTooBig.map((x) => _word(x.group)).toSet().join(' and ')}.')
       : const RuleFinding(priority: 4, rule: 'Same class never on one bench', status: RuleStatus.met, detail: 'no bench has two students of one class (or one subject)');
 
   // 4 and 5: what-if runs. Only when somebody is left without a seat, plan again with one rule switched off and see
@@ -151,17 +155,28 @@ PlanReport reportPlan({
     }
     limitGain = unseated - planWithoutRule(students, halls, config, academicYear, lockedSeats, noClassLimit: true).unallocated.length;
   }
+  final subjectBenchLeft = subjectTooBig.fold(0, (n, x) => n + x.n - x.benches);
   final side = !bySubject
-      ? const RuleFinding(priority: 2, rule: 'Same subject never adjacent', status: RuleStatus.notApplicable, detail: 'no subjects were chosen for this exam')
-      : sideGain > 0
+      ? RuleFinding(
+          priority: 2,
+          rule: 'Same subject never adjacent',
+          status: RuleStatus.notApplicable,
+          detail: subjectsWritten == 1
+              ? 'only one subject is written in this exam, so there is nobody to keep apart: students writing it may sit together'
+              : 'no subjects were chosen for this exam')
+      : (sideGain > 0 || subjectBenchLeft > 0)
           ? RuleFinding(
               priority: 2,
               rule: 'Same subject never adjacent',
               status: RuleStatus.blocking,
-              students: sideGain,
-              detail: '$sideGain student${sideGain == 1 ? '' : 's'} could be seated only beside a student writing the same subject',
+              students: sideGain + subjectBenchLeft,
+              detail: [
+                for (final x in subjectTooBig.take(3))
+                  '${x.name} has ${x.n} ${_word(x.group)} but there are only ${x.benches} benches for them, and two students writing one subject never share a bench',
+                if (sideGain > 0) '$sideGain student${sideGain == 1 ? '' : 's'} could be seated only beside a student writing the same subject',
+              ].join('; '),
               suggestion: 'Add halls or benches so that students writing one subject can be spread out.')
-          : const RuleFinding(priority: 2, rule: 'Same subject never adjacent', status: RuleStatus.met, detail: 'nobody sits beside a student writing the same subject');
+          : const RuleFinding(priority: 2, rule: 'Same subject never adjacent', status: RuleStatus.met, detail: 'nobody shares a bench with, or sits beside, a student writing the same subject');
 
   final classesIn = <int, Set<String>>{};
   for (final x in plan.seats) {
@@ -213,7 +228,14 @@ PlanReport reportPlan({
       capacityLeft[g] = capacityLeft[g]! - 1;
       return 'Blocked by hall capacity: ${total[g]} $word are selected but the halls have only ${seatsFor[g]} seats for them. ${capacity.suggestion}';
     }
-    // 2. Same subject adjacency (a student with no seat for their gender at all was not held back by it: see rule 3).
+    final s = studentById[u.studentId];
+    final key = s == null ? null : '$g|${seatClassKey(s)}';
+    final big = key == null ? null : tooBig[key];
+    // 2. Same subject: too many of one subject for the benches, or only a seat beside the same subject is left.
+    if (big != null && big.subject && benchLeft[key]! > 0) {
+      benchLeft[key!] = benchLeft[key]! - 1;
+      return 'Blocked by the same-subject rule: ${big.name} has ${big.n} ${_word(big.group)} but only ${big.benches} benches are available for them, and two students writing one subject never share a bench.';
+    }
     if (sideLeft > 0 && !noSeats.contains(g)) {
       sideLeft--;
       return 'Blocked by the same-subject adjacency rule: the only free seats are beside a student writing the same subject.';
@@ -221,11 +243,8 @@ PlanReport reportPlan({
     // 3. Gender / bench pattern.
     if (noSeats.contains(g)) return 'Blocked by the gender / bench pattern rule: ${gender.detail}.';
     // 4. Same class on one bench.
-    final s = studentById[u.studentId];
-    final key = s == null ? null : '$g|${seatClassKey(s)}';
-    if (key != null && (benchLeft[key] ?? 0) > 0) {
-      benchLeft[key] = benchLeft[key]! - 1;
-      final big = tooBig[key]!;
+    if (big != null && !big.subject && benchLeft[key]! > 0) {
+      benchLeft[key!] = benchLeft[key]! - 1;
       return 'Blocked by the same-class bench rule: ${big.name} has ${big.n} ${_word(big.group)} but only ${big.benches} benches are available for them, and two of one class never share a bench.';
     }
     // 5. Classes per hall.

@@ -7,6 +7,9 @@ import 'package:hias/models/domain/seating.dart';
 ///   3. Gender / bench pattern   a seat is used only by the gender its bench pattern gives it
 ///   4. Same class on one bench  two students of one class never share a bench
 ///
+/// The subject rule (2) applies only when the exam has MORE THAN ONE subject: with one subject (or none) there is nobody
+/// to keep apart. The class (4) is always the real class, department + batch.
+///
 /// This checker is written from scratch and uses neither validateSeatingPlan nor the planner's helpers, so it checks the
 /// validator as well as the plans.
 class Sitter {
@@ -19,6 +22,7 @@ typedef Placed = ({int studentId, int hallId, int row, int col, String seat});
 
 List<String> violations(List<SeatHall> halls, Map<int, List<String>> patterns, Map<int, Sitter> who, List<Placed> seats) {
   final out = <String>[];
+  final subjectRule = who.values.map((w) => w.paper).whereType<String>().toSet().length > 1;
   for (final hall in halls) {
     final lay = hall.layout;
     // The benches of the hall in seating order (column by column, front to back), straight from the layout.
@@ -71,7 +75,7 @@ List<String> violations(List<SeatHall> halls, Map<int, List<String>> patterns, M
     final at = {for (final x in here) '${x.row}-${x.col}-${x.seat}': x};
     for (final x in here) {
       final paper = who[x.studentId]!.paper;
-      if (paper == null) continue;
+      if (!subjectRule || paper == null) continue;
       final b = bench['${x.row}-${x.col}'];
       if (b == null) continue;
       final neighbours = <String>[];

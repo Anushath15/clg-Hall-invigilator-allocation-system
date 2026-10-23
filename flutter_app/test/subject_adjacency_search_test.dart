@@ -44,7 +44,7 @@ void main() {
       final plan = planSeatingWithLocks(x.students, x.halls, cfg, '2026-2027', const []);
       expect(plan.unallocated, isEmpty, reason: 'everyone has a seat');
       expect(plan.seats.length, x.students.length);
-      final who = {for (final s in x.students) s.id: Sitter(s.gender, seatClassKey(s), s.paper)};
+      final who = {for (final s in x.students) s.id: Sitter(s.gender, '${s.departmentId}|${s.batch}', s.paper)};
       expect(violations(x.halls, {for (final c in cfg.halls) c.hallId: c.pattern}, who, plan.seats.map(placed).toList()), isEmpty);
     });
   }

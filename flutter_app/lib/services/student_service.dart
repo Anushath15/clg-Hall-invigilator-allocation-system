@@ -462,7 +462,7 @@ class StudentService {
     // Which rules were kept, which relaxed, and which one stopped each student left without a seat: never silent.
     final subjectNames = {for (final r in db.query('SELECT id, code, name FROM subjects')) 'sub:${asInt(r['id'])}': '${asStr(r['code'])} ${asStr(r['name'])}'.trim()};
     final report = reportPlan(
-      students: students,
+      students: papersOf(raw.students, config.subjects, config.sessionSubjects),
       halls: raw.halls,
       config: config,
       academicYear: raw.academicYear,
