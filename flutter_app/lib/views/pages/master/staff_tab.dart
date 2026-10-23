@@ -37,6 +37,7 @@ class StaffTab extends StatelessWidget {
         columns: const ['Staff ID', 'Name', 'Department', 'Designation', 'Status', ''],
         flex: const [1, 2, 1.6, 1.6, 1, 1.4],
         empty: 'No staff members yet. Add or import from Excel.',
+        onRowTap: (i) => showDialog(context: context, builder: (_) => StaffSubjectsDialog(member: c.staff[i], subjects: c.subjectsOf(c.staff[i]))),
         rows: [
           for (final u in c.staff)
             [
@@ -170,5 +171,49 @@ class _TypeToConfirmDialogState extends State<TypeToConfirmDialog> {
             if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: MessageBanner(kind: BannerKind.error, lines: [error!])),
           ]),
         ),
+      );
+}
+
+/// What a staff member handles: the subjects they are mapped to, each with its code, department and how many students study it.
+class StaffSubjectsDialog extends StatelessWidget {
+  const StaffSubjectsDialog({super.key, required this.member, required this.subjects});
+  final Staff member;
+  final List<Subject> subjects;
+
+  @override
+  Widget build(BuildContext context) => ModalShell(
+        title: member.name,
+        subtitle: '${member.staffId} · ${member.departmentName ?? '—'}${member.designation == null ? '' : ' · ${member.designation}'}',
+        leadingIcon: Icons.menu_book_outlined,
+        maxWidth: 560,
+        footerLeading: Text(subjects.isEmpty ? '' : '${subjects.length} subject${subjects.length == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w600)),
+        actions: [ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+        child: subjects.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(28),
+                child: Text('This staff member handles no subjects yet. Add them in Master Data → Subjects (edit a subject and choose its staff).', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSec)),
+              )
+            : ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(18),
+                itemCount: subjects.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) {
+                  final sb = subjects[i];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(10)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Flexible(child: Text(sb.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                        const SizedBox(width: 8),
+                        Pill(sb.code, bg: AppColors.violet600.withValues(alpha: 0.12), fg: AppColors.violet600, bold: true),
+                      ]),
+                      const SizedBox(height: 3),
+                      Text('${sb.departmentCode ?? 'All departments'} · ${sb.studentIds.length} student${sb.studentIds.length == 1 ? '' : 's'}', style: const TextStyle(fontSize: 13, color: AppColors.textSec)),
+                    ]),
+                  );
+                },
+              ),
       );
 }

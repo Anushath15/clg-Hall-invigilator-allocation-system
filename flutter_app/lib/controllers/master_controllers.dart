@@ -16,6 +16,9 @@ class StaffController extends ChangeNotifier {
   List<Staff> staff = [];
   List<Department> departments = [];
 
+  /// The active subjects a staff member handles (Master Data → Subjects), by code.
+  List<Subject> subjectsOf(Staff member) =>
+      services.subjects.list().where((sb) => sb.isActive && sb.staff.any((x) => x.id == member.id)).toList()..sort((a, b) => textCompare(a.code, b.code));
   void load() {
     staff = services.master.staff(role: 'staff')..sort((a, b) => naturalCompare(a.staffId, b.staffId));
     departments = services.master.departments();

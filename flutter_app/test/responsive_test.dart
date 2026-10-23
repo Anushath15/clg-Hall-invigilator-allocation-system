@@ -92,12 +92,13 @@ void main() {
       nav.go(AppPage.master, tab: MasterTab.staff);
       await tester.pump(const Duration(milliseconds: 400));
       await dialog('add staff', find.text('Add Staff'));
+      await dialog('staff subjects', find.text('STF001'));
       nav.go(AppPage.cycles);
       await tester.pump(const Duration(milliseconds: 400));
       await dialog('new batch', find.textContaining('New Batch'));
 
       FlutterError.onError = previous;
-      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff']), reason: 'dialogs that opened');
+      expect(opened, containsAll(['add student', 'student subjects', 'add hall', 'add staff', 'staff subjects']), reason: 'dialogs that opened');
       expect(problems.toList(), isEmpty, reason: 'at ${size.width.toInt()}x${size.height.toInt()}');
     });
   }
