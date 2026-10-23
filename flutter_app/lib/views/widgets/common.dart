@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../controllers/workspace_controller.dart';
@@ -215,8 +217,12 @@ class EmptyState extends StatelessWidget {
 }
 
 /// A table in a card: a grey header row and divided rows. Columns size by flex, or fixed width.
-class DataTableCard extends StatelessWidget {
-  const DataTableCard({super.key, required this.columns, required this.rows, this.flex, this.footer, this.empty, this.rowColor, this.minWidth = 760, this.onRowTap});
+///
+/// Long tables are shown a page at a time ([pageSize] rows, 50 unless told otherwise; the pager at the bottom changes the
+/// page and the rows per page). Only the rows of the page are built, so a list of 500 students opens at once and a
+/// filter or a search does not rebuild 500 rows on every key.
+class DataTableCard extends StatefulWidget {
+  const DataTableCard({super.key, required this.columns, required this.rows, this.flex, this.footer, this.empty, this.rowColor, this.minWidth = 760, this.onRowTap, this.pageSize = 50});
   final List<String> columns;
   final List<List<Widget>> rows;
   final List<double>? flex;
@@ -224,44 +230,119 @@ class DataTableCard extends StatelessWidget {
   final String? empty;
   final Color? Function(int i)? rowColor;
   final double minWidth;
+  /// Called with the index in [rows] (not in the page).
   final void Function(int i)? onRowTap;
+  /// Rows to a page at first; the user may choose 25, 50, 100, 200 or all.
+  final int pageSize;
+
+  @override
+  State<DataTableCard> createState() => _DataTableCardState();
+}
+
+class _DataTableCardState extends State<DataTableCard> {
+  int page = 0;
+  late int size = widget.pageSize;
+
+  static const sizes = [25, 50, 100, 200, 100000];
+
+  @override
+  void didUpdateWidget(DataTableCard old) {
+    super.didUpdateWidget(old);
+    // A filter or a search changes the list a lot: back to the first page. One row added or removed keeps the page.
+    if ((old.rows.length - widget.rows.length).abs() > 1) page = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final w = widget;
     Widget row(List<Widget> cells, {bool head = false, Color? color, VoidCallback? onTap}) {
       final r = Container(
         color: head ? AppColors.gray50 : color,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(children: [
-          for (var i = 0; i < cells.length; i++) Expanded(flex: ((flex != null && i < flex!.length ? flex![i] : 1) * 10).round(), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: cells[i])),
+          for (var i = 0; i < cells.length; i++) Expanded(flex: ((w.flex != null && i < w.flex!.length ? w.flex![i] : 1) * 10).round(), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: cells[i])),
         ]),
       );
       return onTap == null ? r : InkWell(onTap: onTap, child: r);
     }
 
+    final total = w.rows.length;
+    final pages = total == 0 ? 1 : (total + size - 1) ~/ size;
+    if (page >= pages) page = pages - 1;
+    final from = page * size, to = total < from + size ? total : from + size;
+
+    Widget pager() => Container(
+          color: AppColors.gray50,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Wrap(alignment: WrapAlignment.end, crossAxisAlignment: WrapCrossAlignment.center, spacing: 14, children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Rows per page ', style: TextStyle(fontSize: 12.5, color: AppColors.textSec)),
+              DropdownButton<int>(
+                value: size,
+                isDense: true,
+                underline: const SizedBox.shrink(),
+                items: [for (final n in sizes) DropdownMenuItem(value: n, child: Text(n >= 100000 ? 'All' : '$n', style: const TextStyle(fontSize: 13)))],
+                onChanged: (n) => setState(() {
+                  size = n!;
+                  page = 0;
+                }),
+              ),
+            ]),
+            Text('${from + 1}–$to of $total', style: const TextStyle(fontSize: 12.5, color: AppColors.textSec)),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              MiniIconButton(icon: Icons.chevron_left, tooltip: 'Previous page', onTap: page > 0 ? () => setState(() => page--) : null),
+              Text('Page ${page + 1} of $pages', style: const TextStyle(fontSize: 12.5)),
+              MiniIconButton(icon: Icons.chevron_right, tooltip: 'Next page', onTap: page < pages - 1 ? () => setState(() => page++) : null),
+            ]),
+          ]),
+        );
+
     return AppCard(
       padding: EdgeInsets.zero,
       child: LayoutBuilder(builder: (context, c) {
-        final w = c.maxWidth < minWidth ? minWidth : c.maxWidth;
+        final width = c.maxWidth < w.minWidth ? w.minWidth : c.maxWidth;
         final table = SizedBox(
-          width: w,
+          width: width,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: row([for (final h in columns) Text(h.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSec, letterSpacing: 0.5))], head: true),
+              child: row([for (final h in w.columns) Text(h.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSec, letterSpacing: 0.5))], head: true),
             ),
             const Divider(),
-            if (rows.isEmpty && empty != null) Padding(padding: const EdgeInsets.all(40), child: Center(child: Text(empty!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSec)))),
-            for (var i = 0; i < rows.length; i++) ...[
-              row(rows[i], color: rowColor?.call(i), onTap: onRowTap == null ? null : () => onRowTap!(i)),
-              if (i < rows.length - 1) const Divider(),
+            if (w.rows.isEmpty && w.empty != null) Padding(padding: const EdgeInsets.all(40), child: Center(child: Text(w.empty!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSec)))),
+            for (var i = from; i < to; i++) ...[
+              row(w.rows[i], color: w.rowColor?.call(i), onTap: w.onRowTap == null ? null : () => w.onRowTap!(i)),
+              if (i < to - 1) const Divider(),
             ],
-            if (footer != null) ...[const Divider(), Container(color: AppColors.gray50, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: footer)],
+            if (w.footer != null) ...[const Divider(), Container(color: AppColors.gray50, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: w.footer)],
+            if (total > sizes.first) ...[const Divider(), pager()],
           ]),
         );
-        return c.maxWidth < minWidth ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: table) : table;
+        return c.maxWidth < w.minWidth ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: table) : table;
       }),
     );
+  }
+}
+
+/// A small icon button for table rows and pagers: much cheaper to build than a Material IconButton, which matters when a
+/// page shows dozens of rows with two buttons each.
+class MiniIconButton extends StatelessWidget {
+  const MiniIconButton({super.key, required this.icon, required this.onTap, this.tooltip, this.color, this.size = 18});
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String? tooltip;
+  final Color? color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final button = InkResponse(
+      onTap: onTap,
+      radius: size + 6,
+      child: Padding(padding: const EdgeInsets.all(7), child: Icon(icon, size: size, color: enabled ? (color ?? AppColors.textSec) : AppColors.gray300)),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
 
@@ -292,18 +373,36 @@ class Field extends StatelessWidget {
       ]);
 }
 
-class SearchField extends StatelessWidget {
+/// A search box. [onChanged] is called a moment after the last key, so typing stays smooth on a long list.
+class SearchField extends StatefulWidget {
   const SearchField({super.key, required this.hint, required this.onChanged, this.controller, this.autofocus = false});
   final String hint;
   final ValueChanged<String> onChanged;
   final TextEditingController? controller;
   final bool autofocus;
+
+  @override
+  State<SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<SearchField> {
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => TextField(
-        controller: controller,
-        autofocus: autofocus,
-        onChanged: onChanged,
-        decoration: InputDecoration(hintText: hint, prefixIcon: const Icon(Icons.search, size: 20)),
+        controller: widget.controller,
+        autofocus: widget.autofocus,
+        onChanged: (v) {
+          _timer?.cancel();
+          _timer = Timer(const Duration(milliseconds: 180), () => widget.onChanged(v));
+        },
+        decoration: InputDecoration(hintText: widget.hint, prefixIcon: const Icon(Icons.search, size: 20)),
       );
 }
 

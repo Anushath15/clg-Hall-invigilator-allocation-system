@@ -368,8 +368,14 @@ const seatingMethodLabel = {
 /// subjects written, with a live preview of the plan; saving re-checks everything.
 class SeatingConfigController extends ChangeNotifier {
   SeatingConfigController(this.services, this.session, this.halls, this.studentIds, {List<int>? sessionSubjectIds}) {
-    _init(sessionSubjectIds);
+    // The screen opens at once with its spinner; the automatic configuration (which takes a moment on a big session) is
+    // worked out right after the first frame.
+    _starting = Timer(const Duration(milliseconds: 20), () {
+      _init(sessionSubjectIds);
+      notifyListeners();
+    });
   }
+  Timer? _starting;
   final AppServices services;
   final ExamSession session;
   final List<SeatingHallInfo> halls;
@@ -582,6 +588,7 @@ class SeatingConfigController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _starting?.cancel();
     _debounce?.cancel();
     super.dispose();
   }

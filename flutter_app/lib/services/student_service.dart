@@ -384,15 +384,17 @@ class StudentService {
       return autoConfigure(students, halls, separateOnly: separateOnly, mixGenders: mixGenders, classLimit: classLimit);
     }
 
+    // Gender based allocation and the automatic configuration are the same arrangement: it is worked out once.
+    final base = configure();
     return AutoConfigResult(
       classes: _sessionClasses(input.students, input.academicYear, sessionSubjects),
       mappedSubjects: _mappedSubjectCounts(input.students),
-      config: configure(),
-      separateConfig: configure(),
+      config: base,
+      separateConfig: base,
       rollConfig: configure(mixGenders: true),
       boys: boys,
       girls: students.length - boys,
-      shortfall: students.isEmpty ? null : (halls.isEmpty ? 'Every hall is locked: unlock a hall to seat the other students.' : seatingShortfall(students, halls, classLimit)),
+      shortfall: students.isEmpty ? null : (halls.isEmpty ? 'Every hall is locked: unlock a hall to seat the other students.' : seatingShortfallWith(students, halls, base)),
     );
   }
 

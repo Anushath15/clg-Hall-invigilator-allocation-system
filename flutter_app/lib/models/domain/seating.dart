@@ -498,9 +498,26 @@ SeatingConfig autoConfigure(List<SeatStudent> students, List<SeatHall> halls, {b
       final left = planSeating(students, halls, config.copyWith(classLimit: ClassLimit(limit.preferred, limit.preferred)), '').unallocated;
       final unused = halls.where((h) => _seatsOf(h) > 0 && config.halls.firstWhere((c) => c.hallId == h.id).pattern.isEmpty).firstOrNull;
       if (left.isEmpty || unused == null) return (config: config, left: left.isEmpty ? 0 : planSeating(students, halls, config.copyWith(classLimit: limit), '').unallocated.length);
-      final boys = left.where((u) => u.gender == 'M').length;
-      config = config.copyWith(
-          halls: config.halls.map((c) => c.hallId == unused.id ? HallSeatingConfig(c.hallId, [boys * 2 >= left.length ? 'MM' : 'FF']) : c).toList());
+      // A big shortage is met in coarse steps (halls for each gender that take about half of its students left), so it does
+      // not cost one plan for every hall; the last few halls are added one at a time, each for the gender with more left.
+      final boys = left.where((u) => u.gender == 'M').length, girls = left.length - boys;
+      final spare = halls.where((h) => _seatsOf(h) > 0 && config.halls.firstWhere((c) => c.hallId == h.id).pattern.isEmpty).toList();
+      final given = <int, String>{};
+      if (left.length > 24) {
+        var wantBoys = boys ~/ 2, wantGirls = girls ~/ 2;
+        for (final h in spare) {
+          if (wantBoys <= 0 && wantGirls <= 0) break;
+          final toBoys = wantBoys >= wantGirls;
+          given[h.id] = toBoys ? 'MM' : 'FF';
+          if (toBoys) {
+            wantBoys -= _seatsOf(h);
+          } else {
+            wantGirls -= _seatsOf(h);
+          }
+        }
+      }
+      if (given.isEmpty) given[unused.id] = boys * 2 >= left.length ? 'MM' : 'FF';
+      config = config.copyWith(halls: config.halls.map((c) => given.containsKey(c.hallId) ? HallSeatingConfig(c.hallId, [given[c.hallId]!]) : c).toList());
     }
   }
 
@@ -597,7 +614,17 @@ String? seatingShortfall(List<SeatStudent> students, List<SeatHall> halls, [Clas
   if (students.length > total) {
     return '${students.length} students are selected ($boys boys, $girls girls), but this session\'s halls have only $total seats. Add halls with at least ${students.length - total} more seats to the invigilator allocation, or select fewer students.';
   }
-  final left = planSeating(students, halls, autoConfigure(students, halls, classLimit: classLimit), '').unallocated.length;
+  return seatingShortfallWith(students, halls, autoConfigure(students, halls, classLimit: classLimit));
+}
+
+/// The same as [seatingShortfall], for a configuration that has already been worked out (so it is not worked out twice).
+String? seatingShortfallWith(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig config) {
+  final boys = students.where((s) => s.gender == 'M').length, girls = students.length - boys;
+  final total = halls.fold(0, (n, h) => n + _seatsOf(h));
+  if (students.length > total) {
+    return '${students.length} students are selected ($boys boys, $girls girls), but this session\'s halls have only $total seats. Add halls with at least ${students.length - total} more seats to the invigilator allocation, or select fewer students.';
+  }
+  final left = planSeating(students, halls, config, '').unallocated.length;
   if (left == 0) return null;
   return 'There are $total seats for ${students.length} students, but two students of the same class never share a bench and each hall holds only a few different classes, so some seats stay empty: $left cannot be seated. Add halls or benches, allow more classes per hall, or select fewer students of the largest classes.';
 }
