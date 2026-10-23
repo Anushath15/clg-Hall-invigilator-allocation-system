@@ -137,12 +137,37 @@ class StudentService {
     return rows;
   }
 
-  String? _clash(String rollNo, String registerNo, int id) {
-    final roll = db.queryOne('SELECT roll_no, name FROM students WHERE roll_no = ? COLLATE NOCASE AND id != ?', [rollNo, id]);
-    if (roll != null) return 'Roll Number ${roll['roll_no']} is already used by ${roll['name']}.';
-    final reg = db.queryOne('SELECT register_no, name FROM students WHERE register_no = ? COLLATE NOCASE AND id != ?', [registerNo, id]);
-    if (reg != null) return 'Register Number ${reg['register_no']} is already used by ${reg['name']}.';
+  /// Another student (active or not) who already has this number, comparing numbers as [studentNumberKey] does.
+  DbRow? _holder(String column, String number, int exceptId) {
+    final key = studentNumberKey(number);
+    final digits = RegExp(r'^\d+$').hasMatch(key);
+    return db.queryOne(
+        digits
+            ? "SELECT $column AS number, name, roll_no, is_active FROM students WHERE id != ? AND $column NOT GLOB '*[^0-9]*' AND LTRIM($column, '0') = LTRIM(?, '0') LIMIT 1"
+            : 'SELECT $column AS number, name, roll_no, is_active FROM students WHERE id != ? AND $column = ? COLLATE NOCASE LIMIT 1',
+        [exceptId, digits ? key : number.trim()]);
+  }
+
+  /// Why a roll or register number cannot be used (it belongs to another student), or null. The number is unique
+  /// among all students, those no longer active included.
+  String? numberClash({required String rollNo, required String registerNo, int exceptId = 0}) {
+    String who(DbRow r) => '${r['name']}${asBool(r['is_active']) ? '' : ' (not active, but the number stays theirs)'}';
+    final roll = _holder('roll_no', rollNo, exceptId);
+    if (roll != null) return 'Roll Number ${roll['number']} is already used by ${who(roll)}.';
+    final reg = _holder('register_no', registerNo, exceptId);
+    if (reg != null) return 'Register Number ${reg['number']} is already used by ${who(reg)}, roll number ${reg['roll_no']}.';
     return null;
+  }
+
+  String? _clash(String rollNo, String registerNo, int id) => numberClash(rollNo: rollNo, registerNo: registerNo, exceptId: id);
+
+  /// What a failed save of seats means for the administrator, in plain words (the database refuses a student with two
+  /// seats in one session, and a seat given to two students).
+  String explainSeatError(Object e) {
+    final text = '$e';
+    if (text.contains('seat_allocations.session_id, seat_allocations.student_id')) return 'a student would have two seats in this session';
+    if (text.contains('seat_allocations.session_id, seat_allocations.hall_id')) return 'two students would share one seat';
+    return text;
   }
 
   ActionResult<void> save({int? id, required String rollNo, required String registerNo, required String name, required String gender, int? departmentId, required String section, required String batch, bool isActive = true}) {
@@ -193,8 +218,23 @@ class StudentService {
     if (body.isEmpty) return const ImportResult.fail('This Excel file has no data rows below the header.');
     var inserted = 0;
     final issues = <({int row, String reason})>[];
+    // A number used twice in the file: the first row is kept, each later row says which row it repeats.
+    final rollRows = <String, int>{}, registerRows = <String, int>{};
     for (final b in body) {
       String cell(int i) => i < 0 || i >= b.r.length ? '' : '${b.r[i] ?? ''}'.trim();
+      final rollKey = studentNumberKey(cell(idx[0])), registerKey = studentNumberKey(cell(idx[1]));
+      final sameRoll = rollKey.isEmpty ? null : rollRows[rollKey], sameRegister = registerKey.isEmpty ? null : registerRows[registerKey];
+      if (rollKey.isNotEmpty) rollRows.putIfAbsent(rollKey, () => b.row);
+      if (registerKey.isNotEmpty) registerRows.putIfAbsent(registerKey, () => b.row);
+      if (sameRegister != null || sameRoll != null) {
+        issues.add((
+          row: b.row,
+          reason: sameRegister != null
+              ? 'Register Number ${cell(idx[1])} is repeated: row $sameRegister of this file already has it, so this row was skipped (Roll No "${cell(idx[0])}")'
+              : 'Roll Number ${cell(idx[0])} is repeated: row $sameRoll of this file already has it, so this row was skipped'
+        ));
+        continue;
+      }
       final dept = cell(idx[4]);
       if (dept.isEmpty) {
         issues.add((row: b.row, reason: 'Missing Department'));
@@ -421,7 +461,7 @@ class StudentService {
         ]);
       });
     } catch (e) {
-      return ConfirmResult(success: false, error: 'The seating plan could not be saved, so the previous plan was kept unchanged. ($e)');
+      return ConfirmResult(success: false, error: 'The seating plan could not be saved, so the previous plan was kept unchanged: ${explainSeatError(e)}.');
     }
     return ConfirmResult(success: true, warnings: [...plan.warnings, ...built.report!.warnings], seated: plan.seats.length, unallocated: plan.unallocated);
   }
@@ -518,7 +558,7 @@ class StudentService {
         }
       });
     } catch (e) {
-      return MoveSeatResult(success: false, error: 'The move could not be saved, so the seating was left unchanged. ($e)');
+      return MoveSeatResult(success: false, error: 'The move could not be saved, so the seating was left unchanged: ${explainSeatError(e)}.');
     }
     return MoveSeatResult(success: true, swappedWith: other);
   }
@@ -603,7 +643,7 @@ class StudentService {
         }
       });
     } catch (e) {
-      return ConfirmResult(success: false, error: 'The seating could not be copied, so this exam\'s plan was kept unchanged. ($e)');
+      return ConfirmResult(success: false, error: 'The seating could not be copied, so this exam\'s plan was kept unchanged: ${explainSeatError(e)}.');
     }
     var unallocated = <UnallocatedStudent>[];
     try {

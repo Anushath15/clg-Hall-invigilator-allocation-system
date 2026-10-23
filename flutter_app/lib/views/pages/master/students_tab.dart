@@ -104,6 +104,9 @@ class _StudentFormState extends State<_StudentForm> {
   late int? dept = widget.student?.departmentId;
   late bool active = widget.student?.isActive ?? true;
 
+  /// Shown under the field while typing: the number already belongs to another student.
+  String? get _clash => widget.c.numberClash(roll.text, reg.text, widget.student?.id);
+
   void _save() {
     final problem = validateStudent(rollNo: roll.text, registerNo: reg.text, name: name.text, gender: gender, section: section.text, batch: batch.text);
     if (problem != null) return toast(problem, error: true);
@@ -135,9 +138,9 @@ class _StudentFormState extends State<_StudentForm> {
           padding: const EdgeInsets.all(22),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(child: Field(label: 'Roll Number *', child: TextField(controller: roll, autofocus: true, decoration: const InputDecoration(hintText: 'e.g. 23CS001')))),
+              Expanded(child: Field(label: 'Roll Number *', child: TextField(controller: roll, autofocus: true, onChanged: (_) => setState(() {}), decoration: InputDecoration(hintText: 'e.g. 23CS001', errorText: _clash?.startsWith('Roll') == true ? _clash : null, errorMaxLines: 3)))),
               const SizedBox(width: 12),
-              Expanded(child: Field(label: 'Register Number *', child: TextField(controller: reg, decoration: const InputDecoration(hintText: 'e.g. 961223104001')))),
+              Expanded(child: Field(label: 'Register Number *', child: TextField(controller: reg, onChanged: (_) => setState(() {}), decoration: InputDecoration(hintText: 'e.g. 961223104001', errorText: _clash?.startsWith('Register') == true ? _clash : null, errorMaxLines: 3)))),
             ]),
             const SizedBox(height: 12),
             Field(label: 'Name *', child: TextField(controller: name)),

@@ -81,6 +81,18 @@ String? validateStudentNumber(String label, Object? value) {
   return null;
 }
 
+/// The key that decides whether two roll or register numbers are the same: case and surrounding spaces do not matter,
+/// and neither do leading zeros of a number made only of digits (Excel drops them: 0961223104001 and 961223104001 are
+/// one number).
+String studentNumberKey(Object? value) {
+  final v = _s(value).toLowerCase();
+  if (v.isNotEmpty && RegExp(r'^\d+$').hasMatch(v)) {
+    final trimmed = v.replaceFirst(RegExp(r'^0+'), '');
+    return trimmed.isEmpty ? '0' : trimmed;
+  }
+  return v;
+}
+
 /// "M" or "F" for Male, Female, Boy, Girl, M, F; null otherwise.
 String? parseGender(Object? value) {
   final v = _s(value).toLowerCase();

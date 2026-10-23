@@ -109,6 +109,12 @@ class StudentsController extends ChangeNotifier {
     load();
   }
   final AppServices services;
+
+  /// Why this roll or register number cannot be used (it belongs to another student), or null: shown while typing.
+  String? numberClash(String rollNo, String registerNo, int? exceptId) {
+    if (rollNo.trim().isEmpty && registerNo.trim().isEmpty) return null;
+    return services.students.numberClash(rollNo: rollNo.trim(), registerNo: registerNo.trim(), exceptId: exceptId ?? 0);
+  }
   List<Student> students = [];
   List<Department> departments = [];
   String query = '', batch = '', section = '', gender = '';
