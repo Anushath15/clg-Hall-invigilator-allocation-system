@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:collection/collection.dart';
 
 import '../../core/format.dart';
@@ -641,6 +643,53 @@ class _State {
       );
 }
 
+/// The most class orders a plan may try when somebody is left without a seat (1: only the usual one). Set higher only by
+/// [planSeatingWithLocks], which makes the plan that is shown and saved; the quick plans made while a configuration is
+/// being chosen keep to one. How many are really tried also depends on the size of the session (see [_startsFor]), never
+/// on the clock, so the same data always gives the same plan.
+int _planStarts = 1;
+
+/// How many class orders to try for a session: a big session with many classes costs more for each try, so it gets
+/// fewer, which keeps the longest plan to about a second.
+int _startsFor(int students, int classes) => min(_planStarts, max(1, 50000 ~/ max(1, students * classes)));
+
+/// The fewest students that must be left without a seat whatever the order: those beyond the seats of their group, and
+/// those of a class beyond the benches (one seat per bench for a class). When a plan leaves no more than this, no other
+/// order can do better, so the search stops.
+int _fewestLeft(List<SeatStudent> students, SeatingConfig config, Map<int, SeatHall> hallOf, Map<int, Map<String, int>> seatsIn) {
+  var left = 0;
+  for (final g in genders) {
+    final inGroup = students.where((s) => s.gender == g).toList();
+    final seats = seatsIn.values.fold(0, (n, x) => n + x[g]!);
+    var benches = 0;
+    for (final c in config.halls) {
+      if (c.pattern.isEmpty) continue;
+      final list = enabledBenches(hallOf[c.hallId]!.layout);
+      for (var i = 0; i < list.length; i++) {
+        if (seatGender(c.pattern, i, 'L') == g) benches++;
+      }
+    }
+    final byClass = <String, int>{};
+    for (final s in inGroup) {
+      byClass[_classOf(s)] = (byClass[_classOf(s)] ?? 0) + 1;
+    }
+    // Seats first; then, of what fits, the students of a class beyond its benches.
+    final beyondBenches = byClass.values.fold(0, (n, c) => n + (c > benches ? c - benches : 0));
+    left += max(inGroup.length > seats ? inGroup.length - seats : 0, beyondBenches);
+  }
+  return left;
+}
+
+/// Another, repeatable order of the classes of a group: odd [v] rotate the usual order, even [v] shuffle it.
+List<String> _otherOrder(List<String> base, int v, String group) {
+  if (base.length < 2) return base;
+  if (v.isOdd) {
+    final k = (v ~/ 2 + 1) % base.length;
+    return [...base.skip(k), ...base.take(k)];
+  }
+  return [...base]..shuffle(Random(v * 7919 + (group == 'M' ? 1 : 2)));
+}
+
 /// The seating plan for the students in the halls under the configuration.
 SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, [bool together = false]) {
   final config = normalizeConfig(rawConfig, halls);
@@ -654,7 +703,7 @@ SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, Seatin
     pools[s.gender]!.putIfAbsent(_classOf(s), () => []).add(s);
   }
   List<String> bySize(String g) => _stable(pools[g]!.keys, (a, b) => pools[g]![b]!.length - pools[g]![a]!.length);
-  final order = {'M': bySize('M'), 'F': bySize('F')};
+  var order = {'M': bySize('M'), 'F': bySize('F')};
   final limit = _whatIfNoClassLimit ? const ClassLimit(99, 99) : config.classLimit!;
   final warnings = <String>[];
 
@@ -730,11 +779,29 @@ SeatingPlan planSeating(List<SeatStudent> students, List<SeatHall> halls, Seatin
     return (out: out, pools: state.pools, left: left);
   }
 
-  var result = attempt(false);
-  if (result.left > 0 && limit.max > limit.preferred) {
-    final relaxed = attempt(true);
-    if (relaxed.left < result.left) result = relaxed;
+  // One pass: strict first (the preferred classes per hall), then relaxed up to the maximum only if somebody is left.
+  ({List<Seat> out, Map<String, Map<String, List<SeatStudent>>> pools, int left}) solve() {
+    var best = attempt(false);
+    if (best.left > 0 && limit.max > limit.preferred) {
+      final relaxed = attempt(true);
+      if (relaxed.left < best.left) best = relaxed;
+    }
+    return best;
   }
+
+  var result = solve();
+  // Still somebody without a seat: the order in which the classes take their turns decides who ends up beside whom, so
+  // try other orders (always the same ones, so a plan is repeatable) and keep the plan that seats the most. The first
+  // order stays the winner unless another really seats more people.
+  final firstOrder = order;
+  final starts = _planStarts > 1 && result.left > 0 ? _startsFor(students.length, order['M']!.length + order['F']!.length) : 1;
+  final floor = starts > 1 ? _fewestLeft(students, config, hallOf, seatsIn) : 0;
+  for (var v = 1; v < starts && result.left > floor; v++) {
+    order = {for (final g in genders) g: _otherOrder(firstOrder[g]!, v, g)};
+    final tried = solve();
+    if (tried.left < result.left) result = tried;
+  }
+  order = firstOrder;
   final seats = result.out;
   pools = result.pools;
 
@@ -813,7 +880,7 @@ SeatingPlan planWithoutRule(List<SeatStudent> students, List<SeatHall> halls, Se
   _whatIfNoClassLimit = noClassLimit;
   _whatIfNoSideRule = noSideRule;
   try {
-    return planSeatingWithLocks(students, halls, config, academicYear, lockedSeats);
+    return _planWithLocksBudget(students, halls, config, academicYear, lockedSeats, 12);
   } finally {
     _whatIfNoClassLimit = false;
     _whatIfNoSideRule = false;
@@ -823,7 +890,19 @@ SeatingPlan planWithoutRule(List<SeatStudent> students, List<SeatHall> halls, Se
 /// A plan in which the halls of `config.lockedHalls` are kept exactly as they are (`lockedSeats`; a student no longer
 /// selected simply leaves their seat) and only the other students are seated, in the other halls. With no locked hall
 /// this is [planSeating].
-SeatingPlan planSeatingWithLocks(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, List<Seat> lockedSeats) {
+SeatingPlan planSeatingWithLocks(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, List<Seat> lockedSeats) =>
+    _planWithLocksBudget(students, halls, rawConfig, academicYear, lockedSeats, 24);
+
+SeatingPlan _planWithLocksBudget(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, List<Seat> lockedSeats, int starts) {
+  _planStarts = starts;
+  try {
+    return _planWithLocks(students, halls, rawConfig, academicYear, lockedSeats);
+  } finally {
+    _planStarts = 1;
+  }
+}
+
+SeatingPlan _planWithLocks(List<SeatStudent> students, List<SeatHall> halls, SeatingConfig? rawConfig, Object? academicYear, List<Seat> lockedSeats) {
   final config = normalizeConfig(rawConfig, halls);
   final locked = config.lockedHalls.toSet();
   if (locked.isEmpty) return planSeating(students, halls, config, academicYear);

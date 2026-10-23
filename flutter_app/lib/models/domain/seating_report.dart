@@ -76,13 +76,16 @@ PlanReport reportPlan({
   final total = {for (final g in groups) g: students.where((s) => groupOf(s.gender) == g).length};
   final seatsFor = {for (final g in groups) g: 0};
   final benchesFor = {for (final g in groups) g: 0};
+  final hallsFor = {for (final g in groups) g: 0};
   for (final c in config.halls) {
     final hall = hallOf[c.hallId];
     if (hall == null || c.pattern.isEmpty) continue;
     final benches = enabledBenches(hall.layout);
     final seats = patternSeats(c.pattern, benches);
     for (final g in groups) {
-      seatsFor[g] = seatsFor[g]! + (mix ? seats['M']! + seats['F']! : seats[g]!);
+      final n = mix ? seats['M']! + seats['F']! : seats[g]!;
+      seatsFor[g] = seatsFor[g]! + n;
+      if (n > 0) hallsFor[g] = hallsFor[g]! + 1;
     }
     for (var i = 0; i < benches.length; i++) {
       for (final g in groups) {
@@ -168,14 +171,24 @@ PlanReport reportPlan({
   final overPreferred = [for (final e in classesIn.entries) if (e.value.length > limit.preferred) (hall: hallOf[e.key]?.hallCode ?? '#${e.key}', n: e.value.length)]
     ..sort((a, b) => a.hall.compareTo(b.hall));
   final String limitNote = 'preferred ${limit.preferred}, at most ${limit.max} classes in a hall';
+  final tooFewHalls = <String>[];
+  var hallsMissing = 0;
+  for (final g in groups) {
+    final classes = students.where((s) => groupOf(s.gender) == g).map(seatClassKey).toSet().length;
+    final need = (classes + limit.max - 1) ~/ limit.max;
+    if (hallsFor[g]! > 0 && need > hallsFor[g]!) {
+      tooFewHalls.add('${g == '*' ? 'the students' : _word(g)} are in $classes different classes, at most ${limit.max} to a hall, so they need at least $need halls but only ${hallsFor[g]} ${hallsFor[g] == 1 ? 'is' : 'are'} set for them');
+      hallsMissing += need - hallsFor[g]!;
+    }
+  }
   final classLimit = limitGain > 0
       ? RuleFinding(
           priority: 5,
           rule: 'Classes per hall',
           status: RuleStatus.blocking,
           students: limitGain,
-          detail: '$limitGain student${limitGain == 1 ? '' : 's'} could not be seated because a hall may hold at most ${limit.max} different classes ($limitNote)',
-          suggestion: 'Add halls so that fewer classes share one hall.')
+          detail: '$limitGain student${limitGain == 1 ? '' : 's'} could not be seated because a hall may hold at most ${limit.max} different classes ($limitNote)${tooFewHalls.isEmpty ? '' : ': ${tooFewHalls.join('; ')}'}',
+          suggestion: hallsMissing > 0 ? 'Add at least $hallsMissing more hall${hallsMissing == 1 ? '' : 's'} for them, or choose fewer different subjects.' : 'Add halls so that fewer classes share one hall.')
       : overPreferred.isNotEmpty
           ? RuleFinding(
               priority: 5,

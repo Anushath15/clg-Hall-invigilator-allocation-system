@@ -68,6 +68,18 @@ void main() {
     expect(reasons.first, contains('only 6 seats'));
   });
 
+  test('too many different classes for the halls: the class-limit message gives the arithmetic', () {
+    // 9 boys, each from a different class: plenty of seats, but a hall holds at most 4 classes, so 2 halls seat 8.
+    final students = [for (var i = 1; i <= 9; i++) st(i, 'M', i)];
+    final r = run(students, [hall(1, 4, 2), hall(2, 4, 2)]);
+    expect(r.plan.unallocated.length, 1);
+    final f = rule(r.report, 'Classes per hall');
+    expect(f.status, RuleStatus.blocking);
+    expect(f.detail, contains('at least 3 halls but only 2'));
+    expect(f.suggestion, contains('Add at least 1 more hall'));
+    expect(rule(r.report, 'Hall capacity').status, RuleStatus.met, reason: 'there are plenty of seats');
+  });
+
   test('no seats for a gender: the Gender / bench pattern rule is named, not a generic message', () {
     final students = [for (var i = 1; i <= 4; i++) st(i, 'M', i), for (var i = 5; i <= 7; i++) st(i, 'F', i)];
     final cfg = SeatingConfig(halls: const [HallSeatingConfig(1, ['MM'])], classLimit: defaultClassLimit);
