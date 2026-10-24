@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'core/database.dart';
+import 'dev/demo_extras.dart';
 import 'dev/demo_seed.dart';
 import 'services/app_services.dart';
 
@@ -20,6 +21,7 @@ Future<void> main(List<String> args) async {
     final db = AppDatabase.open(path, appVersion: appVersion);
     final services = AppServices(db, appVersion: appVersion);
     if (demo && db.queryOne('SELECT id FROM departments LIMIT 1') == null) seedDemo(services);
+    if (demo) seedDemoExtras(services);
     runApp(HiasApp(services: services));
   } catch (e, st) {
     runApp(StartupErrorApp(message: '$e\n\n$st'));
